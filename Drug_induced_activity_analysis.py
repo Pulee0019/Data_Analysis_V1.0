@@ -21,7 +21,7 @@ DAY_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
               '#1abc9c', '#e67e22', '#34495e', '#f1c40f', '#95a5a6']
 FIBER_COLORS = ['#008000', "#FF0000", '#FFA500']
 
-def show_drug_induced_analysis(root, multi_animal_data):
+def show_drug_induced_analysis(root, multi_animal_data, analysis_mode="drug"):
     """
     Show drug-induced analysis configuration window with parameters and table
     """

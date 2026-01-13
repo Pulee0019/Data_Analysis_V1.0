@@ -23,6 +23,7 @@ from Running_analysis import running_bout_analysis_classify, preprocess_running_
 from Running_induced_activity_analysis import show_running_induced_analysis
 from Drug_induced_activity_analysis import show_drug_induced_analysis
 from Optogenetic_induced_activity_analysis import show_optogenetic_induced_analysis
+from Multimodal_analysis import identify_optogenetic_events, identify_drug_events
 
 from logger import log_message, set_log_widget
 
@@ -822,12 +823,13 @@ class BodypartVisualizationWindow:
             except tk.TclError:
                 central_label = tk.Label(central_display_frame, text="Central Display Area\nBodyparts position visualization will be shown after reading CSV file", bg="#f8f8f8", fg="#666666")
                 central_label.pack(pady=20)
-
 class FiberVisualizationWindow:
-    def __init__(self, parent_frame, animal_data=None, target_signal="470"):
+    def __init__(self, parent_frame, animal_data=None, target_signal="470", input3_events=None, drug_events=None):
         self.parent_frame = parent_frame
         self.animal_data = animal_data
         self.is_minimized = False
+        self.input3_events = input3_events
+        self.drug_events = drug_events
 
         if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
             self.window_width = 615
@@ -1056,16 +1058,14 @@ class FiberVisualizationWindow:
             target_signal = self.target_signal
         
         if fiber_data is None or not active_channels:
-            self.ax.text(0.5, 0.5, "No fiber data available\nPlease load fiber data first", 
-                        ha='center', va='center', transform=self.ax.transAxes, fontsize=12)
+            self.ax.text(0.5, 0.5, "No fiber data available\nPlease load fiber data first", ha='center', va='center', transform=self.ax.transAxes, fontsize=12)
             self.ax.set_title("Fiber Photometry Data - No Data Available")
             self.canvas.draw()
             return
         
         time_col = channels.get('time')
         if time_col is None or time_col not in fiber_data.columns:
-            self.ax.text(0.5, 0.5, f"Time column '{time_col}' not found in fiber data", 
-                        ha='center', va='center', transform=self.ax.transAxes, fontsize=10)
+            self.ax.text(0.5, 0.5, f"Time column '{time_col}' not found in fiber data", ha='center', va='center', transform=self.ax.transAxes, fontsize=10)
             self.ax.set_title("Fiber Photometry Data - Error")
             self.canvas.draw()
             return
@@ -1122,7 +1122,7 @@ class FiberVisualizationWindow:
                             ha='center', va='center', transform=self.ax.transAxes, fontsize=10)
             
             title_suffix = f" ({target_signal}nm)" if target_signal else ""
-            self.ax.set_title(f"Fiber Photometry Data - Raw Signals{title_suffix}", fontsize=12, fontweight='bold')
+            self.ax.set_title(f"Fiber Photometry Data - Raw Signals{title_suffix}", fontsize=14, fontweight='bold')
 
         elif self.plot_type == "smoothed":
             if self.animal_data:
@@ -1138,8 +1138,7 @@ class FiberVisualizationWindow:
                         if raw_col and raw_col in fiber_data.columns:
                             color_scheme = wavelength_colors.get(wavelength, wavelength_colors['470'])
                             raw_color = color_scheme['lighter']
-                            self.ax.plot(time_data, fiber_data[raw_col], color=raw_color, 
-                                    alpha=0.4, linewidth=1.0, linestyle=':', 
+                            self.ax.plot(time_data, fiber_data[raw_col], color=raw_color, alpha=0.4, linewidth=1.0, linestyle=':', 
                                     label=f'CH{channel_num} {wavelength}nm Raw')
                         
                         # Plot smoothed data (main color)
@@ -1149,14 +1148,13 @@ class FiberVisualizationWindow:
                             main_color = color_scheme['main'] if wl_idx == 0 else color_scheme['light']
                             
                             label = f'CH{channel_num} {wavelength}nm Smoothed'
-                            line = self.ax.plot(time_data, data_source[smoothed_col], color=main_color,
-                                            linewidth=1.8, label=label)[0]
+                            line = self.ax.plot(time_data, data_source[smoothed_col], color=main_color, linewidth=1.8, label=label)[0]
                             all_time_data.extend(time_data)
                             all_value_data.extend(data_source[smoothed_col].values)
                             has_plotted_data = True
             
             title_suffix = f" ({target_signal}nm)" if target_signal else ""
-            self.ax.set_title(f"Fiber Photometry Data - Smoothed{title_suffix}")
+            self.ax.set_title(f"Fiber Photometry Data - Smoothed{title_suffix}", fontsize=14, fontweight='bold')
 
         elif self.plot_type == "baseline_corrected":
             if self.animal_data:
@@ -1213,7 +1211,7 @@ class FiberVisualizationWindow:
                         has_plotted_data = True
             
             title_suffix = f" ({target_signal}nm)" if target_signal else ""
-            self.ax.set_title(f"Fiber Photometry Data - Baseline Corrected{title_suffix}")
+            self.ax.set_title(f"Fiber Photometry Data - Baseline Corrected{title_suffix}", fontsize=14, fontweight='bold')
 
         elif self.plot_type == "motion_corrected":
             if self.animal_data:
@@ -1275,7 +1273,7 @@ class FiberVisualizationWindow:
                         has_plotted_data = True
             
             title_suffix = f" ({target_signal}nm)" if target_signal else ""
-            self.ax.set_title(f"Fiber Photometry Data - Motion Corrected{title_suffix}")
+            self.ax.set_title(f"Fiber Photometry Data - Motion Corrected{title_suffix}", fontsize=14, fontweight='bold')
 
         elif self.plot_type == "dff":
             for i, channel_num in enumerate(active_channels):
@@ -1310,7 +1308,7 @@ class FiberVisualizationWindow:
                         has_plotted_data = True
             
             title_suffix = f" ({target_signal}nm)" if target_signal else ""
-            self.ax.set_title(f"Fiber Photometry Data - ΔF/F{title_suffix}")
+            self.ax.set_title(f"Fiber Photometry Data - ΔF/F{title_suffix}", fontsize=14, fontweight='bold')
 
         elif self.plot_type == "zscore":
             for i, channel_num in enumerate(active_channels):
@@ -1345,14 +1343,22 @@ class FiberVisualizationWindow:
                         has_plotted_data = True
             
             title_suffix = f" ({target_signal}nm)" if target_signal else ""
-            self.ax.set_title(f"Fiber Photometry Data - Z-Score{title_suffix}")
+            self.ax.set_title(f"Fiber Photometry Data - Z-Score{title_suffix}", fontsize=14, fontweight='bold')
 
         # Plot running analysis markers if available
-        if disp_var.get():
+        if self.animal_data.get('running_processed_data'):
             self._plot_running_analysis_markers()
 
-        self.ax.set_xlabel("Time (s)")
-        self.ax.set_ylabel("ΔF/F" if self.plot_type == "dff" else "Z-Score" if self.plot_type == "zscore" else "Fluorescence")
+        # Plot optogenetic stimulation markers if available
+        if self.input3_events is not None:
+            self._plot_optogenetic_markers()
+
+        # Plot drug administration markers if available
+        if self.drug_events is not None:
+            self._plot_drug_markers()
+
+        self.ax.set_xlabel("Time (s)", fontsize=12)
+        self.ax.set_ylabel("ΔF/F" if self.plot_type == "dff" else "Z-Score" if self.plot_type == "zscore" else "Fluorescence", fontsize=12)
         if has_plotted_data:
             self.ax.legend(loc='best', fontsize=8, framealpha=0.9)
         self.ax.grid(False)
@@ -1386,8 +1392,34 @@ class FiberVisualizationWindow:
             lbl = analysis_type if idx == 0 else '_nolegend_'
             self.ax.axvspan(start/fs, end/fs,
                             color='orange',
-                            alpha=0.3,
+                            alpha=0.1,
                             label=lbl)
+    
+    def _plot_optogenetic_markers(self):
+        """Plot optogenetic stimulation periods"""
+        if 'fiber_events' in self.animal_data:
+            fiber_events = self.animal_data['fiber_events']
+            optogenetic_events = identify_optogenetic_events(fiber_events)
+            for idx in range(0, len(optogenetic_events), 2):
+                (start, _), (end, _) = optogenetic_events[idx], optogenetic_events[idx+1]
+                lbl = "Optogenetic Stimulation" if idx == 0 else '_nolegend_'
+                self.ax.axvspan(int(start), int(end),
+                                color='blue',
+                                alpha=0.1,
+                                label=lbl)
+    
+    def _plot_drug_markers(self):
+        """Plot drug administration events"""
+        if "fiber_events" in self.animal_data:
+            fiber_events = self.animal_data['fiber_events']
+            drug_events = identify_drug_events(fiber_events)
+            for idx in range(0, len(drug_events), 2):
+                (start, _), (end, _) = drug_events[idx], drug_events[idx+1]
+                lbl = "Drug Administration" if idx == 0 else '_nolegend_'
+                self.ax.axvspan(int(start), int(end),
+                                color='red',
+                                alpha=0.1,
+                                label=lbl)
 
     def set_plot_type(self, plot_type):
         self.plot_type = plot_type
@@ -1449,7 +1481,6 @@ class FiberVisualizationWindow:
         global fiber_plot_window
         self.window_frame.destroy()
         fiber_plot_window = None
-
 class RunningVisualizationWindow:
     def __init__(self, parent_frame, animal_data=None):
         self.parent_frame = parent_frame
@@ -1661,18 +1692,18 @@ class RunningVisualizationWindow:
             self.ax.plot(timestamps, speed, 'b-', label='Running Speed', linewidth=1, alpha=0.7)
             
             # Plot analysis data if available
-            if disp_var.get():
+            if self.animal_data.get('running_processed_data'):
                 self.plot_analysis_data()
             
             # Set title based on current analysis
-            if disp_var.get():
+            if self.animal_data.get('running_processed_data'):
                 title = f"Running Data - {disp_var.get()}"
             else:
                 title = f"Running Data"
                 
-            self.ax.set_title(title)
-            self.ax.set_xlabel("Time (s)")
-            self.ax.set_ylabel("Speed (cm/s)")
+            self.ax.set_title(title, fontsize=14, fontweight='bold')
+            self.ax.set_xlabel("Time (s)", fontsize=12)
+            self.ax.set_ylabel("Speed (cm/s)", fontsize=12)
             self.ax.legend()
             self.ax.grid(False)
             
@@ -1788,9 +1819,10 @@ def import_multi_animals():
             for num_dir in num_dirs:
                 if not os.path.isdir(num_dir):
                     continue
+                num_name = os.path.basename(num_dir)
                 ear_bar_dirs = glob.glob(os.path.join(num_dir, "*"))[0]
                 ear_tag = os.path.basename(ear_bar_dirs)
-                base_animal_id = f"{date_name}-{ear_tag}"
+                base_animal_id = f"{num_name}-{ear_tag}"
 
                 files_found = {}
                 patterns = {
@@ -1926,8 +1958,9 @@ def import_single_animal():
             return
 
         batch_name = path_parts[-3]
+        num_name = path_parts[-2]
         ear_tag = path_parts[-1]
-        base_animal_id = f"{batch_name}-{ear_tag}"
+        base_animal_id = f"{num_name}-{ear_tag}"
 
         patterns = {
             'dlc': ['*dlc*.csv'],
@@ -2414,6 +2447,8 @@ def align_data(animal_data=None):
             log_message("Could not find Input2 events for running start", "ERROR")
             return False
         
+        global input3_events, drug_events
+
         input3_events = fiber_data[fiber_data[events_col].str.contains('Input3', na=False)]
         if len(input3_events) < 1:
             multimodal_menu.entryconfig("Optogenetic-Induced Activity Analysis", state="disabled")
@@ -2425,12 +2460,17 @@ def align_data(animal_data=None):
         
         drug_events = fiber_data[fiber_data[events_col].str.contains('Event1', na=False)]
         if len(drug_events) < 1:
-            multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="disabled")
+            drug_induced_menu.entryconfig("Drug", state="disabled")
             running_induced_menu.entryconfig("Running + Drug", state="disabled")
             log_message("Could not find Event1 events for drug analysis", "INFO")
         else:
-            multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="normal")
+            drug_induced_menu.entryconfig("Drug", state="normal")
             running_induced_menu.entryconfig("Running + Drug", state="normal")
+
+        if len(input3_events) < 1 or len(drug_events) < 1:
+            drug_induced_menu.entryconfig("Drug + Optogenetics", state="disabled")
+        elif len(input3_events) >= 1 and len(drug_events) >= 1:
+            drug_induced_menu.entryconfig("Drug + Optogenetics", state="normal")
 
         # Get running start time (first Input2 event)
         running_start_time = input2_events[time_col].iloc[0]
@@ -3407,7 +3447,7 @@ def main_visualization(animal_data=None):
         create_running_visualization(animal_data)
 
 def create_fiber_visualization(animal_data=None):
-    global fiber_plot_window
+    global fiber_plot_window, input3_events, drug_events
     
     if fiber_plot_window:
         fiber_plot_window.close_window()
@@ -3416,7 +3456,7 @@ def create_fiber_visualization(animal_data=None):
     
     if animal_data:
         if 'preprocessed_data' in animal_data:
-            fiber_plot_window = FiberVisualizationWindow(central_display_frame, animal_data, target_signal)
+            fiber_plot_window = FiberVisualizationWindow(central_display_frame, animal_data, target_signal, input3_events, drug_events)
         else:
             if 'fiber_data_trimmed' not in animal_data or animal_data['fiber_data_trimmed'] is None:
                 if 'fiber_data' in animal_data and animal_data['fiber_data'] is not None:
@@ -3434,7 +3474,7 @@ def create_fiber_visualization(animal_data=None):
                 log_message("No active channels in animal_data", "WARNING")
                 return
                 
-            fiber_plot_window = FiberVisualizationWindow(central_display_frame, animal_data, target_signal)
+            fiber_plot_window = FiberVisualizationWindow(central_display_frame, animal_data, target_signal, input3_events, drug_events)
 
 def create_running_visualization(animal_data=None):
     global running_plot_window
@@ -4631,9 +4671,15 @@ running_induced_menu.add_command(
 )
 
 # Drug-Induced Activity Analysis
-multimodal_menu.add_command(
-    label="Drug-Induced Activity Analysis", 
-    command=lambda: show_drug_induced_analysis(root, multi_animal_data)
+drug_induced_menu = tk.Menu(multimodal_menu, tearoff=0)
+multimodal_menu.add_cascade(label="Drug-Induced Activity Analysis", menu=drug_induced_menu)
+drug_induced_menu.add_command(
+    label="Drug", 
+    command=lambda: show_drug_induced_analysis(root, multi_animal_data, "drug")
+)
+drug_induced_menu.add_command(
+    label="Drug + Optogenetics", 
+    command=lambda: show_drug_induced_analysis(root, multi_animal_data, "drug+optogenetics")
 )
 
 # Optogenetic-Induced Activity Analysis

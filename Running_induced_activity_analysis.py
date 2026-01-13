@@ -969,7 +969,7 @@ def analyze_day_running(day_name, animals, params):
             animal_id = animal_data.get('animal_single_channel_id', 'Unknown')
 
             # Get events
-            events = get_events_from_bouts(animal_data, params['full_event_type'])
+            events = get_events_from_bouts(animal_data, params['full_event_type'], duation = False)
             if not events:
                 log_message(f"No events for {animal_id}", "WARNING")
                 continue
@@ -1110,7 +1110,7 @@ def analyze_day_running_drug(day_name, animals, params):
             drug_start_time = drug_events[time_col].iloc[0]
             
             # Get running events
-            events = get_events_from_bouts(animal_data, params['full_event_type'])
+            events = get_events_from_bouts(animal_data, params['full_event_type'], duration = False)
             if not events:
                 continue
             
@@ -1313,7 +1313,7 @@ def analyze_day_running_optogenetics(day_name, animals, params, all_optogenetic_
             opto_session = opto_sessions[0]
             
             # Get running events
-            running_events = get_events_from_bouts(animal_data, params['full_event_type'])
+            running_events = get_events_from_bouts(animal_data, params['full_event_type'], duration = True)
             if not running_events:
                 log_message(f"No running events for {animal_id}", "WARNING")
                 continue

@@ -11,7 +11,7 @@ import os
 
 from logger import log_message
 
-def get_events_from_bouts(animal_data, event_type):
+def get_events_from_bouts(animal_data, event_type, duration = False):
     """Extract events from bouts data based on event type"""
     events = []
     
@@ -46,10 +46,12 @@ def get_events_from_bouts(animal_data, event_type):
                 start_idx, end_idx = bout[0], bout[1]
                 
                 if start_idx < len(timestamps) and end_idx < len(timestamps):
-                    if event_kind == 'onset':
+                    if event_kind == 'onset' and not duration:  # onset
                         events.append(timestamps[start_idx])
-                    else:  # offset
+                    elif event_kind == 'offset' and not duration:  # offset
                         events.append(timestamps[end_idx])
+                    elif duration:  # duration
+                        events.append((timestamps[start_idx], timestamps[end_idx]))
     
     return events
 
@@ -275,6 +277,36 @@ def identify_optogenetic_events(fiber_events):
     events.sort(key=lambda x: x[0])
     return events
 
+def identify_drug_events(fiber_events):
+    """
+    Identify drug administration events from fiber data
+    Event1: Drug administration
+    State 0: Drug administered
+    State 1: Drug administration ended
+    Returns list of (time, event_type) tuples
+    """
+    events = []
+
+    # Find drug administration events
+    drug_start_mask = (fiber_events['Name'] == 'Event1') & (fiber_events['State'] == 0)
+    drug_end_mask = (fiber_events['Name'] == 'Event1') & (fiber_events['State'] == 1)
+    
+    running_start_time = fiber_events.loc[(fiber_events['Name'] == 'Input2') & (fiber_events['State'] == 0), 'TimeStamp'].values
+
+    # Extract start events
+    start_times = (fiber_events.loc[drug_start_mask, 'TimeStamp'].values - running_start_time) / 1000
+    for time in start_times:
+        events.append((float(time), 'start'))
+    
+    # Extract end events
+    end_times = (fiber_events.loc[drug_end_mask, 'TimeStamp'].values - running_start_time) / 1000
+    for time in end_times:
+        events.append((float(time), 'end'))
+    
+    # Sort by time
+    events.sort(key=lambda x: x[0])
+    return events
+
 def calculate_optogenetic_pulse_info(session_events, animal_id):
     """
     Calculate frequency, pulse width, and duration from a session of events
@@ -331,19 +363,33 @@ def get_events_within_optogenetic(session_events, running_events, event_type):
             opto_periods.append((start_time, time))
             start_time = None
     
+    # Parse event type to get bout type and event kind
+    if event_type.endswith('_onsets'):
+        bout_type = event_type.replace('_onsets', '_bouts')
+        event_kind = 'onset'
+    elif event_type.endswith('_offsets'):
+        bout_type = event_type.replace('_offsets', '_bouts')
+        event_kind = 'offset'
+
     # Check each running event
-    for event in running_events:
+    for start, end in running_events:
         event_within_opto = False
         
         for opto_start, opto_end in opto_periods:
-            if opto_start <= event <= opto_end:
+            if start <= opto_start <= end and event_kind == 'onset' or start <= opto_end <= end and event_kind == 'offset':
                 event_within_opto = True
                 break
         
         if event_within_opto:
-            with_opto.append(event)
+            if event_kind == 'onset':
+                with_opto.append(start)
+            elif event_kind == 'offset':
+                with_opto.append(end)
         else:
-            without_opto.append(event)
+            if event_kind == 'onset':
+                without_opto.append(start)
+            elif event_kind == 'offset':
+                without_opto.append(end)
     
     return with_opto, without_opto
 
