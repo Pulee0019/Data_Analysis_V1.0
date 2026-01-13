@@ -1101,7 +1101,7 @@ def analyze_day_running_drug(day_name, animals, params):
             if not events_col or events_col not in fiber_data.columns:
                 continue
             
-            drug_events = fiber_data[fiber_data[events_col].str.contains('Event1', na=False)]
+            drug_events = fiber_data[fiber_data[events_col].str.contains('Event2', na=False)]
             if len(drug_events) == 0:
                 log_message(f"No drug events for {animal_id}", "WARNING")
                 continue

@@ -280,7 +280,7 @@ def identify_optogenetic_events(fiber_events):
 def identify_drug_events(fiber_events):
     """
     Identify drug administration events from fiber data
-    Event1: Drug administration
+    Event2: Drug administration
     State 0: Drug administered
     State 1: Drug administration ended
     Returns list of (time, event_type) tuples
@@ -288,8 +288,8 @@ def identify_drug_events(fiber_events):
     events = []
 
     # Find drug administration events
-    drug_start_mask = (fiber_events['Name'] == 'Event1') & (fiber_events['State'] == 0)
-    drug_end_mask = (fiber_events['Name'] == 'Event1') & (fiber_events['State'] == 1)
+    drug_start_mask = (fiber_events['Name'] == 'Event2') & (fiber_events['State'] == 0)
+    drug_end_mask = (fiber_events['Name'] == 'Event2') & (fiber_events['State'] == 1)
     
     running_start_time = fiber_events.loc[(fiber_events['Name'] == 'Input2') & (fiber_events['State'] == 0), 'TimeStamp'].values
 

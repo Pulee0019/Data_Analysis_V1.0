@@ -2451,26 +2451,26 @@ def align_data(animal_data=None):
 
         input3_events = fiber_data[fiber_data[events_col].str.contains('Input3', na=False)]
         if len(input3_events) < 1:
-            multimodal_menu.entryconfig("Optogenetic-Induced Activity Analysis", state="disabled")
+            multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="disabled")
             log_message("Could not find Input3 events for optogenetic analysis", "INFO")
             running_induced_menu.entryconfig("Running + Optogenetics", state="disabled")
         else:
-            multimodal_menu.entryconfig("Optogenetic-Induced Activity Analysis", state="normal")
+            multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="normal")
             running_induced_menu.entryconfig("Running + Optogenetics", state="normal")
         
-        drug_events = fiber_data[fiber_data[events_col].str.contains('Event1', na=False)]
+        drug_events = fiber_data[fiber_data[events_col].str.contains('Event2', na=False)]
         if len(drug_events) < 1:
-            drug_induced_menu.entryconfig("Drug", state="disabled")
+            multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="disabled")
             running_induced_menu.entryconfig("Running + Drug", state="disabled")
-            log_message("Could not find Event1 events for drug analysis", "INFO")
+            log_message("Could not find Event2 events for drug analysis", "INFO")
         else:
-            drug_induced_menu.entryconfig("Drug", state="normal")
+            multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="normal")
             running_induced_menu.entryconfig("Running + Drug", state="normal")
 
         if len(input3_events) < 1 or len(drug_events) < 1:
-            drug_induced_menu.entryconfig("Drug + Optogenetics", state="disabled")
+            optogenetics_induced_menu.entryconfig("Optogenetics + Drug", state="disabled")
         elif len(input3_events) >= 1 and len(drug_events) >= 1:
-            drug_induced_menu.entryconfig("Drug + Optogenetics", state="normal")
+            optogenetics_induced_menu.entryconfig("Optogenetics + Drug", state="normal")
 
         # Get running start time (first Input2 event)
         running_start_time = input2_events[time_col].iloc[0]
@@ -4671,20 +4671,20 @@ running_induced_menu.add_command(
 )
 
 # Drug-Induced Activity Analysis
-drug_induced_menu = tk.Menu(multimodal_menu, tearoff=0)
-multimodal_menu.add_cascade(label="Drug-Induced Activity Analysis", menu=drug_induced_menu)
-drug_induced_menu.add_command(
-    label="Drug", 
-    command=lambda: show_drug_induced_analysis(root, multi_animal_data, "drug")
-)
-drug_induced_menu.add_command(
-    label="Drug + Optogenetics", 
-    command=lambda: show_drug_induced_analysis(root, multi_animal_data, "drug+optogenetics")
-)
+multimodal_menu.add_command(label="Drug-Induced Activity Analysis", 
+                             command=lambda: show_drug_induced_analysis(root, multi_animal_data))
 
-# Optogenetic-Induced Activity Analysis
-multimodal_menu.add_command(label="Optogenetic-Induced Activity Analysis", 
-                             command=lambda: show_optogenetic_induced_analysis(root, multi_animal_data))
+# Optogenetics-Induced Activity Analysis
+optogenetics_induced_menu = tk.Menu(multimodal_menu, tearoff=0)
+multimodal_menu.add_cascade(label="Optogenetics-Induced Activity Analysis", menu=optogenetics_induced_menu)
+optogenetics_induced_menu.add_command(
+    label="Optogenetics", 
+    command=lambda: show_optogenetic_induced_analysis(root, multi_animal_data, "optogenetics")
+)
+optogenetics_induced_menu.add_command(
+    label="Optogenetics + Drug", 
+    command=lambda: show_optogenetic_induced_analysis(root, multi_animal_data, "optogenetics+drug")
+)
 
 setting_menu = tk.Menu(menubar, tearoff=0)
 menubar.add_cascade(label="Settings", menu=setting_menu)
