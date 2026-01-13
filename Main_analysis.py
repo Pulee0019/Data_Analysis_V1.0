@@ -2469,8 +2469,10 @@ def align_data(animal_data=None):
 
         if len(input3_events) < 1 or len(drug_events) < 1:
             optogenetics_induced_menu.entryconfig("Optogenetics + Drug", state="disabled")
+            running_induced_menu.entryconfig("Running + Optogenetics + Drug", state="disabled")
         elif len(input3_events) >= 1 and len(drug_events) >= 1:
             optogenetics_induced_menu.entryconfig("Optogenetics + Drug", state="normal")
+            running_induced_menu.entryconfig("Running + Optogenetics + Drug", state="normal")
 
         # Get running start time (first Input2 event)
         running_start_time = input2_events[time_col].iloc[0]
@@ -4668,6 +4670,10 @@ running_induced_menu.add_command(
 running_induced_menu.add_command(
     label="Running + Optogenetics", 
     command=lambda: show_running_induced_analysis(root, multi_animal_data, "running+optogenetics")
+)
+running_induced_menu.add_command(
+    label="Running + Optogenetics + Drug", 
+    command=lambda: show_running_induced_analysis(root, multi_animal_data, "running+optogenetics+drug")
 )
 
 # Drug-Induced Activity Analysis

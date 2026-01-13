@@ -1390,8 +1390,7 @@ def analyze_day_running_optogenetics(day_name, animals, params, all_optogenetic_
                                         'wavelength': wl,
                                         'trial': episode_idx + 1,
                                         'condition': 'with_opto',
-                                        'signal_type': 'fiber_dff',
-                                        # ... (add other statistics fields)
+                                        'signal_type': 'fiber_dff'
                                     })
             
             # Process events without optogenetics
@@ -1428,8 +1427,7 @@ def analyze_day_running_optogenetics(day_name, animals, params, all_optogenetic_
                                         'wavelength': wl,
                                         'trial': episode_idx + 1,
                                         'condition': 'without_opto',
-                                        'signal_type': 'fiber_dff',
-                                        # ... (add other statistics fields)
+                                        'signal_type': 'fiber_dff'
                                     })
                         
         except Exception as e:

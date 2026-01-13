@@ -1336,6 +1336,8 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
                 if timing_key in param_data:
                     data = param_data[timing_key]
                     episodes = data['dff'].get(wavelength, [])
+                    if timing_key == 'pre_drug':
+                        n_pre = len(episodes)
                     if episodes:
                         all_episodes.extend(episodes)
         else:
@@ -1359,6 +1361,8 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
                     ax_dff_heat.set_yticks(np.arange(0, len(all_episodes)+1, 1))
                 ax_dff_heat.set_ylabel('Trials')
             
+            if analysis_mode == "optogenetics+drug":
+                ax_dff_heat.axhline(y=n_pre, color="#000000", linestyle='--', alpha=0.8)
             ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
             ax_dff_heat.set_xlabel('Time (s)')
             ax_dff_heat.set_title(f'{param_name} - Fiber ΔF/F Heatmap {wavelength}nm')
@@ -1388,6 +1392,8 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
                 if timing_key in param_data:
                     data = param_data[timing_key]
                     episodes = data['zscore'].get(wavelength, [])
+                    if timing_key == 'pre_drug':
+                        n_pre = len(episodes)
                     if episodes:
                         all_episodes.extend(episodes)
         else:
@@ -1412,6 +1418,8 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
                     ax_zscore_heat.set_yticks(np.arange(0, len(all_episodes)+1, 1))
                 ax_zscore_heat.set_ylabel('Trials')
             
+            if analysis_mode == "optogenetics+drug":
+                ax_zscore_heat.axhline(y=n_pre, color="#000000", linestyle='--', alpha=0.8)
             ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
             ax_zscore_heat.set_xlabel('Time (s)')
             ax_zscore_heat.set_title(f'{param_name} - Fiber Z-score Heatmap {wavelength}nm')
