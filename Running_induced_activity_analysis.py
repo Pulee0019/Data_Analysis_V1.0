@@ -3722,11 +3722,6 @@ def plot_comparison_window(results, params, condition1, condition2,
 def create_individual_day_windows_running_optogenetics_drug(results, params):
     """Create individual windows for each day - running+optogenetics+drug"""
     for day_name, data in results.items():
-        create_single_day_window_running_optogenetics_drug(day_name, data, params)
-
-def create_individual_day_windows_running_optogenetics_drug(results, params):
-    """Create individual windows for each day - running+optogenetics+drug"""
-    for day_name, data in results.items():
         conditions = [
             {
                 'condition1': 'pre_drug_with_opto',
