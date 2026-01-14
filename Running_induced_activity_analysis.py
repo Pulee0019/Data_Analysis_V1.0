@@ -12,7 +12,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from logger import log_message
 from Multimodal_analysis import (
     get_events_from_bouts, calculate_running_episodes, export_statistics,
-    create_table_window, initialize_table, create_control_panel, identify_optogenetic_events, calculate_optogenetic_pulse_info, get_events_within_optogenetic, create_opto_parameter_string
+    create_table_window, initialize_table, create_control_panel, identify_optogenetic_events, identify_drug_events,     calculate_optogenetic_pulse_info, get_events_within_optogenetic, create_opto_parameter_string
 )
 
 # Colors for different days
@@ -30,31 +30,61 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
         return
     
     # For optogenetics mode, identify optogenetic events first
-    if analysis_mode == "running+optogenetics":
+    if analysis_mode == "running+optogenetics" or analysis_mode == "running+optogenetics+drug":
         log_message("Identifying optogenetic events for running+optogenetics analysis...")
         
-        # Collect all optogenetic events for all animals
-        all_optogenetic_events = {}
+        # Initialize event dictionaries
+    all_optogenetic_events = {}
+    all_drug_events = {}
+    
+    # For optogenetics modes, identify optogenetic events
+    if "optogenetics" in analysis_mode:
+        log_message("Identifying optogenetic events...")
+        
         for animal_data in multi_animal_data:
             animal_id = animal_data.get('animal_single_channel_id', 'Unknown')
             events_data = animal_data.get('fiber_events')
+            
+            if events_data is None:
+                continue
         
             # Identify optogenetic events
             events = identify_optogenetic_events(events_data)
             log_message(f"Found {len(events)} optogenetic events for {animal_id}")
             
             if events:
-                # Group events into stimulation sessions based on frequency threshold
+                # Group events into stimulation sessions
                 sessions = group_optogenetic_sessions_running(events, animal_id)
                 all_optogenetic_events[animal_id] = sessions
                 log_message(f"Found {len(sessions)} optogenetic sessions for {animal_id}")
 
         if not all_optogenetic_events:
-            log_message("No optogenetic events found for running+optogenetics analysis", "ERROR")
+            log_message("No optogenetic events found", "ERROR")
+            return
+    
+    # For drug modes, identify drug events
+    if "drug" in analysis_mode:
+        log_message("Identifying drug events...")
+        
+        for animal_data in multi_animal_data:
+            animal_id = animal_data.get('animal_single_channel_id', 'Unknown')
+            events_data = animal_data.get('fiber_events')
+            
+            if events_data is None:
+                continue
+            
+            # Get drug events
+            drug_events = identify_drug_events(events_data)
+            log_message(f"Found {len(drug_events)} drug events for {animal_id}")
+            
+            if drug_events:
+                all_drug_events[animal_id] = drug_events
+
+        if not all_drug_events:
+            log_message("No drug events found", "ERROR")
             return
     
     # Get available bout types
-    
     for animal_data in multi_animal_data:
         if 'running_bouts' in animal_data and animal_data['running_bouts']:
             bouts_data = animal_data['running_bouts']
@@ -70,8 +100,10 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
         title = "Running-Induced Activity Analysis"
     elif analysis_mode == "running+drug":
         title = "Running+Drug-Induced Activity Analysis"
-    else:  # running+optogenetics
+    elif analysis_mode == "running+optogenetics":
         title = "Running+Optogenetics-Induced Activity Analysis"
+    elif analysis_mode == "running+optogenetics+drug":
+        title = "Running+Optogenetics+Drug-Induced Activity Analysis"
     
     main_window.title(title)
     main_window.geometry("900x700")
@@ -94,7 +126,7 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
     btn_frame.pack(fill=tk.X, padx=10, pady=10)
 
     # Initialize table manager
-    if analysis_mode == "running+optogenetics":
+    if analysis_mode == "running+optogenetics" or analysis_mode == "running+optogenetics+drug":
         # Show power input dialog for optogenetic events
         power_dialog = OptoPowerInputDialog(root, all_optogenetic_events)
         root.wait_window(power_dialog.dialog)
@@ -105,7 +137,7 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
         
         table_manager = OptogeneticTableManager(root, table_frame, btn_frame, 
                                               multi_animal_data, analysis_mode,
-                                              all_optogenetic_events, power_dialog.power_values)
+                                              all_optogenetic_events,power_dialog.power_values, all_drug_events)
     else:
         table_manager = TableManager(root, table_frame, btn_frame, multi_animal_data, analysis_mode)
 
@@ -647,7 +679,7 @@ class OptoPowerInputDialog:
 class OptogeneticTableManager:
     """Manage table for running+optogenetics configuration"""
     def __init__(self, root, table_frame, btn_frame, multi_animal_data, 
-                 analysis_mode, all_optogenetic_events, power_values):
+                 analysis_mode, all_optogenetic_events, power_values, all_drug_events):
         self.root = root
         self.table_frame = table_frame
         self.btn_frame = btn_frame
@@ -655,6 +687,7 @@ class OptogeneticTableManager:
         self.analysis_mode = analysis_mode
         self.all_optogenetic_events = all_optogenetic_events
         self.power_values = power_values
+        self.all_drug_events = all_drug_events
         
         self.table_data = {}
         self.row_headers = {}
@@ -861,7 +894,7 @@ class OptogeneticTableManager:
         
         run_running_optogenetics_analysis(day_data, params, 
                                          self.all_optogenetic_events, 
-                                         self.power_values)
+                                         self.power_values, self.all_drug_events, self.analysis_mode)
 
 def run_running_only_analysis(day_data, params):
     """Run running-only analysis"""
@@ -909,33 +942,6 @@ def run_running_drug_analysis(day_data, params):
     
     if results:
         plot_running_drug_results(results, params)
-        log_message("Analysis completed successfully")
-    else:
-        log_message("No valid results", "ERROR")
-
-def run_running_optogenetics_analysis(day_data, params, all_optogenetic_events, power_values):
-    """Run running+optogenetics analysis"""
-    log_message(f"Starting running+optogenetics analysis for {len(day_data)} day(s)...")
-    
-    results = {}
-    all_statistics = []
-    
-    for day_name, animals in day_data.items():
-        log_message(f"Analyzing {day_name} with {len(animals)} animal(s)...")
-        day_result, day_stats = analyze_day_running_optogenetics(
-            day_name, animals, params, all_optogenetic_events, power_values
-        )
-        
-        if day_result:
-            results[day_name] = day_result
-        if day_stats:
-            all_statistics.extend(day_stats)
-    
-    if params['export_stats'] and all_statistics:
-        export_statistics(all_statistics, "running_optogenetics_induced", params['full_event_type'])
-    
-    if results:
-        plot_running_optogenetics_results(results, params)
         log_message("Analysis completed successfully")
     else:
         log_message("No valid results", "ERROR")
@@ -3157,3 +3163,876 @@ def create_single_day_window_running_optogenetics(day_name, data, params):
     toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
     
     log_message(f"Individual day plot created for {day_name} (with/without optogenetics)")
+
+def run_running_optogenetics_analysis(day_data, params, all_optogenetic_events, 
+                                     power_values, all_drug_events, analysis_mode):
+    """Run running+optogenetics analysis"""
+    log_message(f"Starting running+optogenetics analysis for {len(day_data)} day(s)...")
+    
+    results = {}
+    all_statistics = []
+    
+    for day_name, animals in day_data.items():
+        log_message(f"Analyzing {day_name} with {len(animals)} animal(s)...")
+        
+        if analysis_mode == "running+optogenetics+drug":
+            # Drug mode
+            day_result, day_stats = analyze_day_running_optogenetics_drug(
+                day_name, animals, params, all_optogenetic_events, 
+                power_values, all_drug_events
+            )
+        else:
+            # No drug mode
+            day_result, day_stats = analyze_day_running_optogenetics(
+                day_name, animals, params, all_optogenetic_events, power_values
+            )
+        
+        if day_result:
+            results[day_name] = day_result
+        if day_stats:
+            all_statistics.extend(day_stats)
+    
+    if params['export_stats'] and all_statistics:
+        export_type = "running_opto_drug_induced" if analysis_mode == "running+optogenetics+drug" else "running_opto_induced"
+        export_statistics(all_statistics, export_type, params['full_event_type'])
+    
+    if results:
+        if analysis_mode == "running+optogenetics+drug":
+            plot_running_optogenetics_drug_results(results, params)
+        else:
+            plot_running_optogenetics_results(results, params)
+        log_message("Analysis completed successfully")
+    else:
+        log_message("No valid results", "ERROR")
+
+def analyze_day_running_optogenetics_drug(day_name, animals, params, 
+                                          all_optogenetic_events, power_values, all_drug_events):
+    """Analyze one day for running+optogenetics+drug mode"""
+    time_array = np.linspace(-params['pre_time'], params['post_time'], 
+                            int((params['pre_time'] + params['post_time']) * 10))
+    
+    # Collect wavelengths
+    target_wavelengths = []
+    for animal_data in animals:
+        if 'target_signal' in animal_data:
+            signal = animal_data['target_signal']
+            wls = signal.split('+') if '+' in signal else [signal]
+            target_wavelengths.extend(wls)
+    
+    target_wavelengths = sorted(list(set(target_wavelengths)))
+    if not target_wavelengths:
+        target_wavelengths = ['470']
+    
+    # Initialize storage for four conditions
+    conditions = {
+        'pre_drug_with_opto': {
+            'running': [],
+            'dff': {wl: [] for wl in target_wavelengths},
+            'zscore': {wl: [] for wl in target_wavelengths}
+        },
+        'pre_drug_without_opto': {
+            'running': [],
+            'dff': {wl: [] for wl in target_wavelengths},
+            'zscore': {wl: [] for wl in target_wavelengths}
+        },
+        'post_drug_with_opto': {
+            'running': [],
+            'dff': {wl: [] for wl in target_wavelengths},
+            'zscore': {wl: [] for wl in target_wavelengths}
+        },
+        'post_drug_without_opto': {
+            'running': [],
+            'dff': {wl: [] for wl in target_wavelengths},
+            'zscore': {wl: [] for wl in target_wavelengths}
+        }
+    }
+    
+    statistics_rows = []
+    
+    # Process each animal
+    for animal_data in animals:
+        try:
+            animal_id = animal_data.get('animal_single_channel_id', 'Unknown')
+            
+            # Check if animal has optogenetic events
+            if animal_id not in all_optogenetic_events:
+                log_message(f"No optogenetic events for {animal_id}", "WARNING")
+                continue
+            
+            # Get optogenetic sessions
+            opto_sessions = all_optogenetic_events[animal_id]
+            if not opto_sessions:
+                continue
+            
+            # Use first session
+            opto_session = opto_sessions[0]
+            
+            # Find drug event
+            fiber_data = animal_data.get('fiber_data_trimmed')
+            if fiber_data is None or fiber_data.empty:
+                fiber_data = animal_data.get('fiber_data')
+            
+            channels = animal_data.get('channels', {})
+            events_col = channels.get('events')
+            
+            if not events_col or events_col not in fiber_data.columns:
+                continue
+            
+            drug_events = fiber_data[fiber_data[events_col].str.contains('Event2', na=False)]
+            if len(drug_events) == 0:
+                log_message(f"No drug events for {animal_id}", "WARNING")
+                continue
+            
+            time_col = channels['time']
+            drug_start_time = drug_events[time_col].iloc[0]
+            
+            # Get running events
+            running_events = get_events_from_bouts(animal_data, params['full_event_type'], duration=True)
+            if not running_events:
+                log_message(f"No running events for {animal_id}", "WARNING")
+                continue
+            
+            # Categorize running events into four groups
+            pre_drug_events = [e for e in running_events if e[0] < drug_start_time]
+            post_drug_events = [e for e in running_events if e[0] >= drug_start_time]
+            
+            # Further categorize by optogenetics
+            pre_with_opto, pre_without_opto = get_events_within_optogenetic(
+                opto_session, pre_drug_events, params['full_event_type']
+            )
+            post_with_opto, post_without_opto = get_events_within_optogenetic(
+                opto_session, post_drug_events, params['full_event_type']
+            )
+            
+            # Get data
+            ast2_data = animal_data.get('ast2_data_adjusted')
+            if not ast2_data:
+                continue
+            
+            running_timestamps = ast2_data['data']['timestamps']
+            processed_data = animal_data.get('running_processed_data')
+            running_speed = processed_data['filtered_speed'] if processed_data else ast2_data['data']['speed']
+            
+            preprocessed_data = animal_data.get('preprocessed_data')
+            if preprocessed_data is None or preprocessed_data.empty:
+                continue
+            
+            fiber_timestamps = preprocessed_data[time_col].values
+            dff_data = animal_data.get('dff_data', {})
+            active_channels = animal_data.get('active_channels', [])
+            
+            # Process four conditions
+            condition_events = {
+                'pre_drug_with_opto': pre_with_opto,
+                'pre_drug_without_opto': pre_without_opto,
+                'post_drug_with_opto': post_with_opto,
+                'post_drug_without_opto': post_without_opto
+            }
+            
+            for condition_name, events in condition_events.items():
+                if events:
+                    result = calculate_running_episodes(
+                        events, running_timestamps, running_speed,
+                        fiber_timestamps, dff_data,
+                        active_channels, target_wavelengths,
+                        params['pre_time'], params['post_time'],
+                        params['baseline_start'], params['baseline_end']
+                    )
+                    
+                    if len(result['running']) > 0:
+                        conditions[condition_name]['running'].extend(result['running'])
+                    
+                    for wl in target_wavelengths:
+                        if wl in result['dff']:
+                            conditions[condition_name]['dff'][wl].extend(result['dff'][wl])
+                        if wl in result['zscore']:
+                            conditions[condition_name]['zscore'][wl].extend(result['zscore'][wl])
+                    
+                    # Collect statistics
+                    if params['export_stats'] and len(result['running']) > 0:
+                        stats = collect_statistics_with_condition(
+                            day_name, animal_id, params['full_event_type'],
+                            result, time_array, params, target_wavelengths, 
+                            active_channels, condition_name
+                        )
+                        statistics_rows.extend(stats)
+        
+        except Exception as e:
+            log_message(f"Error analyzing {animal_id}: {str(e)}", "ERROR")
+            continue
+    
+    # Combine results
+    result = {
+        'time': time_array,
+        'target_wavelengths': target_wavelengths
+    }
+    
+    # Process each condition
+    for condition_name, condition_data in conditions.items():
+        result[condition_name] = {
+            'running': {
+                'episodes': np.array(condition_data['running']) if condition_data['running'] else np.array([]),
+                'mean': np.nanmean(condition_data['running'], axis=0) if condition_data['running'] else None,
+                'sem': np.nanstd(condition_data['running'], axis=0) / np.sqrt(len(condition_data['running'])) if condition_data['running'] else None
+            },
+            'dff': {},
+            'zscore': {}
+        }
+        
+        for wl in target_wavelengths:
+            if condition_data['dff'][wl]:
+                episodes_array = np.array(condition_data['dff'][wl])
+                result[condition_name]['dff'][wl] = {
+                    'episodes': episodes_array,
+                    'mean': np.nanmean(episodes_array, axis=0),
+                    'sem': np.nanstd(episodes_array, axis=0) / np.sqrt(len(condition_data['dff'][wl]))
+                }
+            
+            if condition_data['zscore'][wl]:
+                episodes_array = np.array(condition_data['zscore'][wl])
+                result[condition_name]['zscore'][wl] = {
+                    'episodes': episodes_array,
+                    'mean': np.nanmean(episodes_array, axis=0),
+                    'sem': np.nanstd(episodes_array, axis=0) / np.sqrt(len(condition_data['zscore'][wl]))
+                }
+    
+    return result, statistics_rows if params['export_stats'] else None
+
+def collect_statistics_with_condition(day_name, animal_id, event_type, result, 
+                                      time_array, params, target_wavelengths, 
+                                      active_channels, condition):
+    """Collect statistics with condition label"""
+    rows = []
+    pre_mask = (time_array >= -params['pre_time']) & (time_array <= 0)
+    post_mask = (time_array >= 0) & (time_array <= params['post_time'])
+    
+    # Fiber statistics
+    for channel in active_channels:
+        for wl in target_wavelengths:
+            # dFF
+            if wl in result['dff']:
+                for trial_idx, episode_data in enumerate(result['dff'][wl]):
+                    pre_data = episode_data[pre_mask]
+                    post_data = episode_data[post_mask]
+                    
+                    rows.append({
+                        'day': day_name,
+                        'animal_single_channel_id': animal_id,
+                        'event_type': event_type,
+                        'channel': channel,
+                        'wavelength': wl,
+                        'trial': trial_idx + 1,
+                        'condition': condition,
+                        'pre_min': np.min(pre_data) if len(pre_data) > 0 else np.nan,
+                        'pre_max': np.max(pre_data) if len(pre_data) > 0 else np.nan,
+                        'pre_mean': np.mean(pre_data) if len(pre_data) > 0 else np.nan,
+                        'pre_area': np.trapz(pre_data, time_array[pre_mask]) if len(pre_data) > 0 else np.nan,
+                        'post_min': np.min(post_data) if len(post_data) > 0 else np.nan,
+                        'post_max': np.max(post_data) if len(post_data) > 0 else np.nan,
+                        'post_mean': np.mean(post_data) if len(post_data) > 0 else np.nan,
+                        'post_area': np.trapz(post_data, time_array[post_mask]) if len(post_data) > 0 else np.nan,
+                        'signal_type': 'fiber_dff',
+                        'baseline_start': params['baseline_start'],
+                        'baseline_end': params['baseline_end']
+                    })
+    
+    return rows
+
+def plot_running_optogenetics_drug_results(results, params):
+    """Plot running+optogenetics+drug results"""
+    
+    # 1. Pre Drug: With vs Without Opto
+    plot_comparison_window(
+        results, params, 
+        'pre_drug_with_opto', 'pre_drug_without_opto',
+        'Pre Drug: With vs Without Optogenetics',
+        'Pre Drug + Opto', 'Pre Drug - Opto'
+    )
+    
+    # 2. Post Drug: With vs Without Opto
+    plot_comparison_window(
+        results, params,
+        'post_drug_with_opto', 'post_drug_without_opto',
+        'Post Drug: With vs Without Optogenetics',
+        'Post Drug + Opto', 'Post Drug - Opto'
+    )
+    
+    # 3. With Opto: Pre vs Post Drug
+    plot_comparison_window(
+        results, params,
+        'pre_drug_with_opto', 'post_drug_with_opto',
+        'With Optogenetics: Pre vs Post Drug',
+        'Pre Drug', 'Post Drug'
+    )
+    
+    # 4. Without Opto: Pre vs Post Drug
+    plot_comparison_window(
+        results, params,
+        'pre_drug_without_opto', 'post_drug_without_opto',
+        'Without Optogenetics: Pre vs Post Drug',
+        'Pre Drug', 'Post Drug'
+    )
+    
+    # Create individual day windows
+    create_individual_day_windows_running_optogenetics_drug(results, params)
+
+def plot_comparison_window(results, params, condition1, condition2, 
+                           window_title, label1, label2):
+    """Create a comparison window for two conditions"""
+    target_wavelengths = []
+    for day_name, data in results.items():
+        if 'target_wavelengths' in data:
+            target_wavelengths = data['target_wavelengths']
+            break
+    
+    if not target_wavelengths:
+        target_wavelengths = ['470']
+    
+    result_window = tk.Toplevel()
+    result_window.title(f"{window_title} - All Days")
+    result_window.state('zoomed')
+    result_window.configure(bg='#f8f8f8')
+    
+    num_wavelengths = len(target_wavelengths)
+    num_cols = 1 + 2 * num_wavelengths
+    
+    fig = Figure(figsize=(4 * num_cols, 8), dpi=100)
+    
+    plot_idx = 1
+    time_array = list(results.values())[0]['time']
+    
+    # Row 1: Traces
+    # Running trace
+    ax_running = fig.add_subplot(2, num_cols, plot_idx)
+    for idx, (day_name, data) in enumerate(results.items()):
+        day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+        
+        # Condition 1
+        if condition1 in data and data[condition1]['running']['mean'] is not None:
+            ax_running.plot(time_array, data[condition1]['running']['mean'],
+                          color=day_color, linestyle='-', linewidth=2, alpha=1,
+                          label=f"{day_name} {label1}")
+            ax_running.fill_between(time_array,
+                                   data[condition1]['running']['mean'] - data[condition1]['running']['sem'],
+                                   data[condition1]['running']['mean'] + data[condition1]['running']['sem'],
+                                   color=day_color, alpha=0.5)
+        
+        # Condition 2
+        if condition2 in data and data[condition2]['running']['mean'] is not None:
+            ax_running.plot(time_array, data[condition2]['running']['mean'],
+                          color=day_color, linestyle='-', linewidth=2, alpha=0.5,
+                          label=f"{day_name} {label2}")
+            ax_running.fill_between(time_array,
+                                   data[condition2]['running']['mean'] - data[condition2]['running']['sem'],
+                                   data[condition2]['running']['mean'] + data[condition2]['running']['sem'],
+                                   color=day_color, alpha=0.3)
+    
+    ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
+    ax_running.set_xlim(time_array[0], time_array[-1])
+    ax_running.set_xlabel('Time (s)')
+    ax_running.set_ylabel('Speed (cm/s)')
+    ax_running.set_title(f'Running Speed - {window_title}')
+    ax_running.legend(fontsize=7, ncol=2)
+    ax_running.grid(False)
+    plot_idx += 1
+    
+    # Fiber traces
+    for wl_idx, wl in enumerate(target_wavelengths):
+        color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
+        
+        # dFF trace
+        ax_dff = fig.add_subplot(2, num_cols, plot_idx)
+        for idx, (day_name, data) in enumerate(results.items()):
+            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+            
+            if condition1 in data and wl in data[condition1]['dff']:
+                ax_dff.plot(time_array, data[condition1]['dff'][wl]['mean'],
+                          color=day_color, linewidth=2, linestyle='-', alpha=1,
+                          label=f'{day_name} {label1}')
+                ax_dff.fill_between(time_array,
+                                   data[condition1]['dff'][wl]['mean'] - data[condition1]['dff'][wl]['sem'],
+                                   data[condition1]['dff'][wl]['mean'] + data[condition1]['dff'][wl]['sem'],
+                                   color=day_color, alpha=0.5)
+            
+            if condition2 in data and wl in data[condition2]['dff']:
+                ax_dff.plot(time_array, data[condition2]['dff'][wl]['mean'],
+                          color=day_color, linewidth=2, linestyle='-', alpha=0.5,
+                          label=f'{day_name} {label2}')
+                ax_dff.fill_between(time_array,
+                                   data[condition2]['dff'][wl]['mean'] - data[condition2]['dff'][wl]['sem'],
+                                   data[condition2]['dff'][wl]['mean'] + data[condition2]['dff'][wl]['sem'],
+                                   color=day_color, alpha=0.3)
+        
+        ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
+        ax_dff.set_xlim(time_array[0], time_array[-1])
+        ax_dff.set_xlabel('Time (s)')
+        ax_dff.set_ylabel('ΔF/F')
+        ax_dff.set_title(f'Fiber ΔF/F {wl}nm')
+        ax_dff.legend(fontsize=7, ncol=2)
+        ax_dff.grid(False)
+        plot_idx += 1
+        
+        # Z-score trace
+        ax_zscore = fig.add_subplot(2, num_cols, plot_idx)
+        for idx, (day_name, data) in enumerate(results.items()):
+            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+            
+            if condition1 in data and wl in data[condition1]['zscore']:
+                ax_zscore.plot(time_array, data[condition1]['zscore'][wl]['mean'],
+                             color=day_color, linewidth=2, linestyle='-', alpha=1,
+                             label=f'{day_name} {label1}')
+                ax_zscore.fill_between(time_array,
+                                      data[condition1]['zscore'][wl]['mean'] - data[condition1]['zscore'][wl]['sem'],
+                                      data[condition1]['zscore'][wl]['mean'] + data[condition1]['zscore'][wl]['sem'],
+                                      color=day_color, alpha=0.5)
+            
+            if condition2 in data and wl in data[condition2]['zscore']:
+                ax_zscore.plot(time_array, data[condition2]['zscore'][wl]['mean'],
+                             color=day_color, linewidth=2, linestyle='-', alpha=0.5,
+                             label=f'{day_name} {label2}')
+                ax_zscore.fill_between(time_array,
+                                      data[condition2]['zscore'][wl]['mean'] - data[condition2]['zscore'][wl]['sem'],
+                                      data[condition2]['zscore'][wl]['mean'] + data[condition2]['zscore'][wl]['sem'],
+                                      color=day_color, alpha=0.3)
+        
+        ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
+        ax_zscore.set_xlim(time_array[0], time_array[-1])
+        ax_zscore.set_xlabel('Time (s)')
+        ax_zscore.set_ylabel('Z-score')
+        ax_zscore.set_title(f'Fiber Z-score {wl}nm')
+        ax_zscore.legend(fontsize=7, ncol=2)
+        ax_zscore.grid(False)
+        plot_idx += 1
+    
+    # Row 2: Heatmaps
+    # Running heatmap
+    ax_running_heat = fig.add_subplot(2, num_cols, plot_idx)
+    all_cond1 = []
+    all_cond2 = []
+    
+    for day_name, data in results.items():
+        if condition1 in data and len(data[condition1]['running']['episodes']) > 0:
+            all_cond1.extend(data[condition1]['running']['episodes'])
+        if condition2 in data and len(data[condition2]['running']['episodes']) > 0:
+            all_cond2.extend(data[condition2]['running']['episodes'])
+    
+    if all_cond1 and all_cond2:
+        combined = np.vstack([np.array(all_cond1), np.array(all_cond2)])
+        n_cond1 = len(all_cond1)
+        
+        if len(combined) == 1:
+            combined = np.vstack([combined[0], combined[0]])
+            im = ax_running_heat.imshow(combined, aspect='auto',
+                                        extent=[time_array[0], time_array[-1], 0, 1],
+                                        cmap='viridis', origin='lower')
+        else:
+            im = ax_running_heat.imshow(combined, aspect='auto',
+                                        extent=[time_array[0], time_array[-1], 0, len(combined)],
+                                        cmap='viridis', origin='lower')
+        
+        ax_running_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
+        ax_running_heat.axhline(y=n_cond1, color='k', linestyle='--', linewidth=1)
+        ax_running_heat.set_xlabel('Time (s)')
+        ax_running_heat.set_ylabel('Trials')
+        ax_running_heat.set_title('Running Speed Heatmap')
+        plt.colorbar(im, ax=ax_running_heat, label='Speed (cm/s)', orientation='horizontal')
+    plot_idx += 1
+    
+    # Fiber heatmaps
+    for wl_idx, wl in enumerate(target_wavelengths):
+        # dFF heatmap
+        ax_dff_heat = fig.add_subplot(2, num_cols, plot_idx)
+        all_cond1_dff = []
+        all_cond2_dff = []
+        
+        for day_name, data in results.items():
+            if condition1 in data and wl in data[condition1]['dff']:
+                all_cond1_dff.extend(data[condition1]['dff'][wl]['episodes'])
+            if condition2 in data and wl in data[condition2]['dff']:
+                all_cond2_dff.extend(data[condition2]['dff'][wl]['episodes'])
+        
+        if all_cond1_dff and all_cond2_dff:
+            combined_dff = np.vstack([np.array(all_cond1_dff), np.array(all_cond2_dff)])
+            n_cond1 = len(all_cond1_dff)
+            
+            if len(combined_dff) == 1:
+                combined_dff = np.vstack([combined_dff[0], combined_dff[0]])
+                im = ax_dff_heat.imshow(combined_dff, aspect='auto',
+                                    extent=[time_array[0], time_array[-1], 0, 1],
+                                    cmap='coolwarm', origin='lower')
+            else:
+                im = ax_dff_heat.imshow(combined_dff, aspect='auto',
+                                    extent=[time_array[0], time_array[-1], 0, len(combined_dff)],
+                                    cmap='coolwarm', origin='lower')
+            
+            ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
+            ax_dff_heat.axhline(y=n_cond1, color='k', linestyle='--', linewidth=1)
+            ax_dff_heat.set_xlabel('Time (s)')
+            ax_dff_heat.set_ylabel('Trials')
+            ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
+            plt.colorbar(im, ax=ax_dff_heat, label='ΔF/F', orientation='horizontal')
+        plot_idx += 1
+        
+        # Z-score heatmap
+        ax_zscore_heat = fig.add_subplot(2, num_cols, plot_idx)
+        all_cond1_zscore = []
+        all_cond2_zscore = []
+        
+        for day_name, data in results.items():
+            if condition1 in data and wl in data[condition1]['zscore']:
+                all_cond1_zscore.extend(data[condition1]['zscore'][wl]['episodes'])
+            if condition2 in data and wl in data[condition2]['zscore']:
+                all_cond2_zscore.extend(data[condition2]['zscore'][wl]['episodes'])
+        
+        if all_cond1_zscore and all_cond2_zscore:
+            combined_zscore = np.vstack([np.array(all_cond1_zscore), np.array(all_cond2_zscore)])
+            n_cond1 = len(all_cond1_zscore)
+            
+            if len(combined_zscore) == 1:
+                combined_zscore = np.vstack([combined_zscore[0], combined_zscore[0]])
+                im = ax_zscore_heat.imshow(combined_zscore, aspect='auto',
+                                        extent=[time_array[0], time_array[-1], 0, 1],
+                                        cmap='coolwarm', origin='lower')
+            else:
+                im = ax_zscore_heat.imshow(combined_zscore, aspect='auto',
+                                        extent=[time_array[0], time_array[-1], 0, len(combined_zscore)],
+                                        cmap='coolwarm', origin='lower')
+            
+            ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
+            ax_zscore_heat.axhline(y=n_cond1, color='k', linestyle='--', linewidth=1)
+            ax_zscore_heat.set_xlabel('Time (s)')
+            ax_zscore_heat.set_ylabel('Trials')
+            ax_zscore_heat.set_title(f'Fiber Z-score Heatmap {wl}nm')
+            plt.colorbar(im, ax=ax_zscore_heat, label='Z-score', orientation='horizontal')
+        plot_idx += 1
+    
+    fig.tight_layout()
+    
+    canvas_frame = tk.Frame(result_window, bg='#f8f8f8')
+    canvas_frame.pack(fill=tk.BOTH, expand=True)
+    
+    canvas = FigureCanvasTkAgg(fig, canvas_frame)
+    canvas.draw()
+    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+    
+    toolbar_frame = tk.Frame(canvas_frame, bg="#f5f5f5")
+    toolbar_frame.pack(fill=tk.X, padx=2, pady=(0,2))
+    toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
+
+def create_individual_day_windows_running_optogenetics_drug(results, params):
+    """Create individual windows for each day - running+optogenetics+drug"""
+    for day_name, data in results.items():
+        create_single_day_window_running_optogenetics_drug(day_name, data, params)
+
+def create_individual_day_windows_running_optogenetics_drug(results, params):
+    """Create individual windows for each day - running+optogenetics+drug"""
+    for day_name, data in results.items():
+        conditions = [
+            {
+                'condition1': 'pre_drug_with_opto',
+                'condition2': 'pre_drug_without_opto',
+                'title': f'Running+Optogenetics+Drug - {day_name} - Pre Drug: With vs Without Opto',
+                'label1': 'With Opto',
+                'label2': 'Without Opto'
+            },
+            {
+                'condition1': 'post_drug_with_opto',
+                'condition2': 'post_drug_without_opto',
+                'title': f'Running+Optogenetics+Drug - {day_name} - Post Drug: With vs Without Opto',
+                'label1': 'With Opto',
+                'label2': 'Without Opto'
+            },
+            {
+                'condition1': 'pre_drug_with_opto',
+                'condition2': 'post_drug_with_opto',
+                'title': f'Running+Optogenetics+Drug - {day_name} - With Opto: Pre vs Post Drug',
+                'label1': 'Pre Drug',
+                'label2': 'Post Drug'
+            },
+            {
+                'condition1': 'pre_drug_without_opto',
+                'condition2': 'post_drug_without_opto',
+                'title': f'Running+Optogenetics+Drug - {day_name} - Without Opto: Pre vs Post Drug',
+                'label1': 'Pre Drug',
+                'label2': 'Post Drug'
+            }
+        ]
+        
+        for condition_info in conditions:
+            create_single_day_comparison_window(
+                day_name, data, params,
+                condition_info['condition1'], condition_info['condition2'],
+                condition_info['title'],
+                condition_info['label1'], condition_info['label2']
+            )
+
+def create_single_day_comparison_window(day_name, data, params, condition1, condition2,
+                                        window_title, label1, label2):
+    """Create a single window for one comparison condition on one day"""
+    target_wavelengths = data.get('target_wavelengths', ['470'])
+    
+    if not target_wavelengths:
+        target_wavelengths = ['470']
+    
+    result_window = tk.Toplevel()
+    result_window.title(window_title)
+    result_window.state('zoomed')
+    result_window.configure(bg='#f8f8f8')
+    
+    num_wavelengths = len(target_wavelengths)
+    num_cols = 1 + 2 * num_wavelengths
+    
+    fig = Figure(figsize=(4 * num_cols, 8), dpi=100)
+    
+    plot_idx = 1
+    time_array = data['time']
+    
+    # Row 1: Traces
+    # Running trace
+    ax_running = fig.add_subplot(2, num_cols, plot_idx)
+    
+    # Plot condition 1
+    if condition1 in data and data[condition1]['running']['mean'] is not None:
+        ax_running.plot(time_array, data[condition1]['running']['mean'],
+                      color="#000000", linewidth=2, label=label1, alpha=0.5)
+        ax_running.fill_between(time_array,
+                               data[condition1]['running']['mean'] - data[condition1]['running']['sem'],
+                               data[condition1]['running']['mean'] + data[condition1]['running']['sem'],
+                               color="#000000", alpha=0.3)
+    
+    # Plot condition 2
+    if condition2 in data and data[condition2]['running']['mean'] is not None:
+        ax_running.plot(time_array, data[condition2]['running']['mean'],
+                      color="#000000", linewidth=2, label=label2, alpha=1)
+        ax_running.fill_between(time_array,
+                               data[condition2]['running']['mean'] - data[condition2]['running']['sem'],
+                               data[condition2]['running']['mean'] + data[condition2]['running']['sem'],
+                               color="#000000", alpha=0.5)
+    
+    ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
+    ax_running.set_xlim(time_array[0], time_array[-1])
+    ax_running.set_xlabel('Time (s)')
+    ax_running.set_ylabel('Speed (cm/s)')
+    ax_running.set_title(f'Running Speed - {label1} vs {label2}')
+    ax_running.legend()
+    ax_running.grid(False)
+    plot_idx += 1
+    
+    # Fiber traces
+    for wl_idx, wl in enumerate(target_wavelengths):
+        fiber_color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
+        
+        # dFF trace
+        ax_dff = fig.add_subplot(2, num_cols, plot_idx)
+        
+        if condition1 in data and wl in data[condition1]['dff']:
+            ax_dff.plot(time_array, data[condition1]['dff'][wl]['mean'],
+                      color=fiber_color, linewidth=2, linestyle='-', alpha=0.5, label=f'{label1}')
+            ax_dff.fill_between(time_array,
+                               data[condition1]['dff'][wl]['mean'] - data[condition1]['dff'][wl]['sem'],
+                               data[condition1]['dff'][wl]['mean'] + data[condition1]['dff'][wl]['sem'],
+                               color=fiber_color, alpha=0.3)
+        
+        if condition2 in data and wl in data[condition2]['dff']:
+            ax_dff.plot(time_array, data[condition2]['dff'][wl]['mean'],
+                      color=fiber_color, linewidth=2, linestyle='-', alpha=1, label=f'{label2}')
+            ax_dff.fill_between(time_array,
+                               data[condition2]['dff'][wl]['mean'] - data[condition2]['dff'][wl]['sem'],
+                               data[condition2]['dff'][wl]['mean'] + data[condition2]['dff'][wl]['sem'],
+                               color=fiber_color, alpha=0.5)
+        
+        ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
+        ax_dff.set_xlim(time_array[0], time_array[-1])
+        ax_dff.set_xlabel('Time (s)')
+        ax_dff.set_ylabel('ΔF/F')
+        ax_dff.set_title(f'Fiber ΔF/F {wl}nm')
+        ax_dff.legend()
+        ax_dff.grid(False)
+        plot_idx += 1
+        
+        # Z-score trace
+        ax_zscore = fig.add_subplot(2, num_cols, plot_idx)
+        
+        if condition1 in data and wl in data[condition1]['zscore']:
+            ax_zscore.plot(time_array, data[condition1]['zscore'][wl]['mean'],
+                         color=fiber_color, linewidth=2, linestyle='-', alpha=0.5, label=f'{label1}')
+            ax_zscore.fill_between(time_array,
+                                  data[condition1]['zscore'][wl]['mean'] - data[condition1]['zscore'][wl]['sem'],
+                                  data[condition1]['zscore'][wl]['mean'] + data[condition1]['zscore'][wl]['sem'],
+                                  color=fiber_color, alpha=0.3)
+        
+        if condition2 in data and wl in data[condition2]['zscore']:
+            ax_zscore.plot(time_array, data[condition2]['zscore'][wl]['mean'],
+                         color=fiber_color, linewidth=2, linestyle='-', alpha=1, label=f'{label2}')
+            ax_zscore.fill_between(time_array,
+                                  data[condition2]['zscore'][wl]['mean'] - data[condition2]['zscore'][wl]['sem'],
+                                  data[condition2]['zscore'][wl]['mean'] + data[condition2]['zscore'][wl]['sem'],
+                                  color=fiber_color, alpha=0.5)
+        
+        ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
+        ax_zscore.set_xlim(time_array[0], time_array[-1])
+        ax_zscore.set_xlabel('Time (s)')
+        ax_zscore.set_ylabel('Z-score')
+        ax_zscore.set_title(f'Fiber Z-score {wl}nm')
+        ax_zscore.legend()
+        ax_zscore.grid(False)
+        plot_idx += 1
+    
+    # Row 2: Heatmaps
+    # Running heatmap
+    ax_running_heat = fig.add_subplot(2, num_cols, plot_idx)
+    
+    cond1_running = []
+    cond2_running = []
+    
+    if condition1 in data and len(data[condition1]['running']['episodes']) > 0:
+        cond1_running = data[condition1]['running']['episodes']
+    
+    if condition2 in data and len(data[condition2]['running']['episodes']) > 0:
+        cond2_running = data[condition2]['running']['episodes']
+    
+    if cond1_running is not None or cond2_running is not None:
+        # Combine episodes from both conditions
+        all_episodes = []
+        if cond1_running is not None:
+            all_episodes.extend(cond1_running)
+        if cond2_running is not None:
+            all_episodes.extend(cond2_running)
+        
+        all_episodes = np.array(all_episodes)
+        n_cond1 = len(cond1_running)
+        
+        if len(all_episodes) > 0:
+            im = ax_running_heat.imshow(all_episodes, aspect='auto',
+                                      extent=[time_array[0], time_array[-1], 0, len(all_episodes)],
+                                      cmap='viridis', origin='lower')
+            
+            ax_running_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
+            if n_cond1 > 0 and len(all_episodes) > n_cond1:
+                ax_running_heat.axhline(y=n_cond1, color='k', linestyle='--', linewidth=1, 
+                                      label=f'{label1}/{label2} boundary')
+            
+            ax_running_heat.set_xlabel('Time (s)')
+            ax_running_heat.set_ylabel('Trials')
+            ax_running_heat.set_title('Running Speed Heatmap')
+            ax_running_heat.legend(loc='upper right', fontsize=8)
+            plt.colorbar(im, ax=ax_running_heat, label='Speed (cm/s)', orientation='horizontal')
+    else:
+        ax_running_heat.text(0.5, 0.5, 'No running data available',
+                           ha='center', va='center', transform=ax_running_heat.transAxes,
+                           fontsize=12, color='#666666')
+        ax_running_heat.set_title('Running Speed Heatmap')
+        ax_running_heat.axis('off')
+    
+    plot_idx += 1
+    
+    # Fiber heatmaps
+    for wl_idx, wl in enumerate(target_wavelengths):
+        # dFF heatmap
+        ax_dff_heat = fig.add_subplot(2, num_cols, plot_idx)
+        
+        cond1_dff = []
+        cond2_dff = []
+        
+        if condition1 in data and wl in data[condition1]['dff']:
+            cond1_dff = data[condition1]['dff'][wl]['episodes']
+        
+        if condition2 in data and wl in data[condition2]['dff']:
+            cond2_dff = data[condition2]['dff'][wl]['episodes']
+        
+        if cond1_dff is not None or cond2_dff is not None:
+            # Combine episodes from both conditions
+            all_dff = []
+            if cond1_dff is not None:
+                all_dff.extend(cond1_dff)
+            if cond2_dff is not None:
+                all_dff.extend(cond2_dff)
+            
+            all_dff = np.array(all_dff)
+            n_cond1 = len(cond1_dff)
+            
+            if len(all_dff) > 0:
+                im = ax_dff_heat.imshow(all_dff, aspect='auto',
+                                      extent=[time_array[0], time_array[-1], 0, len(all_dff)],
+                                      cmap='coolwarm', origin='lower')
+                
+                ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
+                if n_cond1 > 0 and len(all_dff) > n_cond1:
+                    ax_dff_heat.axhline(y=n_cond1, color='k', linestyle='--', linewidth=1,
+                                      label=f'{label1}/{label2} boundary')
+                
+                ax_dff_heat.set_xlabel('Time (s)')
+                ax_dff_heat.set_ylabel('Trials')
+                ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
+                ax_dff_heat.legend(loc='upper right', fontsize=8)
+                plt.colorbar(im, ax=ax_dff_heat, label='ΔF/F', orientation='horizontal')
+        else:
+            ax_dff_heat.text(0.5, 0.5, f'No dFF data for {wl}nm',
+                           ha='center', va='center', transform=ax_dff_heat.transAxes,
+                           fontsize=12, color='#666666')
+            ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
+            ax_dff_heat.axis('off')
+        
+        plot_idx += 1
+        
+        # Z-score heatmap
+        ax_zscore_heat = fig.add_subplot(2, num_cols, plot_idx)
+        
+        cond1_zscore = []
+        cond2_zscore = []
+        
+        if condition1 in data and wl in data[condition1]['zscore']:
+            cond1_zscore = data[condition1]['zscore'][wl]['episodes']
+        
+        if condition2 in data and wl in data[condition2]['zscore']:
+            cond2_zscore = data[condition2]['zscore'][wl]['episodes']
+        
+        if cond1_zscore is not None or cond2_zscore is not None:
+            # Combine episodes from both conditions
+            all_zscore = []
+            if cond1_zscore is not None:
+                all_zscore.extend(cond1_zscore)
+            if cond2_zscore is not None:
+                all_zscore.extend(cond2_zscore)
+            
+            all_zscore = np.array(all_zscore)
+            n_cond1 = len(cond1_zscore)
+            
+            if len(all_zscore) > 0:
+                im = ax_zscore_heat.imshow(all_zscore, aspect='auto',
+                                         extent=[time_array[0], time_array[-1], 0, len(all_zscore)],
+                                         cmap='coolwarm', origin='lower')
+                
+                ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
+                if n_cond1 > 0 and len(all_zscore) > n_cond1:
+                    ax_zscore_heat.axhline(y=n_cond1, color='k', linestyle='--', linewidth=1,
+                                         label=f'{label1}/{label2} boundary')
+                
+                ax_zscore_heat.set_xlabel('Time (s)')
+                ax_zscore_heat.set_ylabel('Trials')
+                ax_zscore_heat.set_title(f'Fiber Z-score Heatmap {wl}nm')
+                ax_zscore_heat.legend(loc='upper right', fontsize=8)
+                plt.colorbar(im, ax=ax_zscore_heat, label='Z-score', orientation='horizontal')
+        else:
+            ax_zscore_heat.text(0.5, 0.5, f'No Z-score data for {wl}nm',
+                              ha='center', va='center', transform=ax_zscore_heat.transAxes,
+                              fontsize=12, color='#666666')
+            ax_zscore_heat.set_title(f'Fiber Z-score Heatmap {wl}nm')
+            ax_zscore_heat.axis('off')
+        
+        plot_idx += 1
+    
+    fig.tight_layout()
+    
+    canvas_frame = tk.Frame(result_window, bg='#f8f8f8')
+    canvas_frame.pack(fill=tk.BOTH, expand=True)
+    
+    canvas = FigureCanvasTkAgg(fig, canvas_frame)
+    canvas.draw()
+    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+    
+    toolbar_frame = tk.Frame(canvas_frame, bg="#f5f5f5")
+    toolbar_frame.pack(fill=tk.X, padx=2, pady=(0,2))
+    toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
+    
+    log_message(f"Comparison plot created: {window_title}")

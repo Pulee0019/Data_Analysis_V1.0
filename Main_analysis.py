@@ -4546,7 +4546,7 @@ root.protocol("WM_DELETE_WINDOW", on_closing)
 # Experiment mode settings
 EXPERIMENT_MODE_FIBER_AST2 = "fiber+ast2"
 EXPERIMENT_MODE_FIBER_AST2_DLC = "fiber+ast2+dlc"
-current_experiment_mode = EXPERIMENT_MODE_FIBER_AST2_DLC  # Default mode
+current_experiment_mode = EXPERIMENT_MODE_FIBER_AST2  # Default mode
 
 target_signal_var = tk.StringVar(value="470")
 reference_signal_var = tk.StringVar(value="410")
