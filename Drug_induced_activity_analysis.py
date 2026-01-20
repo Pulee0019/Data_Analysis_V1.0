@@ -2,6 +2,8 @@
 Drug-induced activity analysis with table configuration
 Supports multi-animal drug event analysis
 """
+import os
+import json
 import tkinter as tk
 import numpy as np
 import pandas as pd
@@ -438,9 +440,14 @@ def analyze_day_drug_induced(day_name, animals, params):
             if not events_col or events_col not in fiber_data.columns:
                 log_message(f"Events column not found for {animal_id}", "WARNING")
                 continue
+            
+            config_path = os.path.join(os.path.dirname(__file__), 'event_config.json')
+            with open(config_path, 'r', encoding='utf-8') as f:
+                event_config = json.load(f)
 
-            # Find Drug events (Event1)
-            drug_events = fiber_data[fiber_data[events_col].str.contains('Event1', na=False)]
+            # Find Drug events
+            drug_event_name = event_config.get('drug_event', 'Event1')
+            drug_events = fiber_data[fiber_data[events_col].str.contains(drug_event_name, na=False)]
             
             if len(drug_events) == 0:
                 log_message(f"No drug events found for {animal_id}", "WARNING")
@@ -645,27 +652,35 @@ def plot_drug_induced_results(results, params):
         # dFF heatmap
         ax_dff_heat = fig.add_subplot(2, num_cols, plot_idx)
         all_episodes = []
+        episodes_counts = []
         for day_name, data in results.items():
             episodes = data['dff'].get(wavelength, [])
             if episodes:
                 all_episodes.extend(episodes)
+                episodes_counts.append(len(episodes))
 
         if all_episodes:
             episodes_array = np.array(all_episodes)
 
             if len(episodes_array) == 1:
                 episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto',
+                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest', 
                                 extent=[time_array[0], time_array[-1], 0, 1],
                                 cmap='coolwarm', origin='lower')
                 ax_dff_heat.set_yticks(np.arange(0, 2, 1))
             else:
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto',
+                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
                                     cmap='coolwarm', origin='lower')
                 if len(episodes_array) <= 10:
                     ax_dff_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
 
+            y_pos = 0
+            for count in episodes_counts[:-1]:
+                if count > 0:
+                    y_pos += count
+                    ax_dff_heat.axhline(y=y_pos, color='k', linestyle='--', linewidth=1)
+                    
             ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
             ax_dff_heat.set_xlabel('Time (s)')
             ax_dff_heat.set_ylabel('Trials')
@@ -676,26 +691,33 @@ def plot_drug_induced_results(results, params):
         # Z-score heatmap
         ax_zscore_heat = fig.add_subplot(2, num_cols, plot_idx)
         all_episodes = []
+        episodes_counts = []
         for day_name, data in results.items():
             episodes = data['zscore'].get(wavelength, [])
             if episodes:
                 all_episodes.extend(episodes)
+                episodes_counts.append(len(episodes))
         
         if all_episodes:
             episodes_array = np.array(all_episodes)
             if len(episodes_array) == 1:
                 episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto',
+                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest', 
                                         extent=[time_array[0], time_array[-1], 0, 1],
                                         cmap='coolwarm', origin='lower')
                 ax_zscore_heat.set_yticks(np.arange(0, 2, 1))
             else:
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto',
+                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest', 
                                         extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
                                         cmap='coolwarm', origin='lower')
                 if len(episodes_array) <= 10:
                     ax_zscore_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
-
+            y_pos = 0
+            for count in episodes_counts[:-1]:
+                if count > 0:
+                    y_pos += count
+                    ax_zscore_heat.axhline(y=y_pos, color='k', linestyle='--', linewidth=1)
+                    
             ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
             ax_zscore_heat.set_xlabel('Time (s)')
             ax_zscore_heat.set_ylabel('Trials')
@@ -806,13 +828,13 @@ def create_single_day_window(day_name, data, params):
             episodes_array = np.array(episodes)
             if len(episodes_array) == 1:
                 episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto',
+                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, 1],
                                     cmap='coolwarm', origin='lower')
                 ax_dff_heat.set_yticks(np.arange(0, 2, 1))
                 ax_dff_heat.set_ylabel('Trials')
             else:
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto',
+                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, len(episodes)],
                                     cmap='coolwarm', origin='lower')
                 if len(episodes_array) <= 10:
@@ -847,13 +869,13 @@ def create_single_day_window(day_name, data, params):
             
             if len(episodes_array) == 1:
                 episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto',
+                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, 1],
                                         cmap='coolwarm', origin='lower')
                 ax_zscore_heat.set_yticks(np.arange(0, 2, 1))
                 ax_zscore_heat.set_ylabel('Trials')
             else:
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto',
+                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, len(episodes)],
                                         cmap='coolwarm', origin='lower')
                 if len(episodes) <= 10:

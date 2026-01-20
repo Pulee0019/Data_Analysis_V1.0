@@ -2,6 +2,8 @@
 Running-induced activity analysis with table configuration
 Supports both running-only and running+drug analysis
 """
+import os
+import json
 import tkinter as tk
 from tkinter import ttk
 import numpy as np
@@ -12,7 +14,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from logger import log_message
 from Multimodal_analysis import (
     get_events_from_bouts, calculate_running_episodes, export_statistics,
-    create_table_window, initialize_table, create_control_panel, identify_optogenetic_events, identify_drug_events,     calculate_optogenetic_pulse_info, get_events_within_optogenetic, create_opto_parameter_string
+    create_table_window, initialize_table, create_control_panel, identify_optogenetic_events, identify_drug_events,     calculate_optogenetic_pulse_info, get_events_within_optogenetic, create_opto_parameter_string, group_optogenetic_sessions
 )
 
 # Colors for different days
@@ -54,7 +56,7 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
             
             if events:
                 # Group events into stimulation sessions
-                sessions = group_optogenetic_sessions_running(events, animal_id)
+                sessions = group_optogenetic_sessions(events)
                 all_optogenetic_events[animal_id] = sessions
                 log_message(f"Found {len(sessions)} optogenetic sessions for {animal_id}")
 
@@ -127,17 +129,13 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
 
     # Initialize table manager
     if analysis_mode == "running+optogenetics" or analysis_mode == "running+optogenetics+drug":
-        # Show power input dialog for optogenetic events
-        power_dialog = OptoPowerInputDialog(root, all_optogenetic_events)
-        root.wait_window(power_dialog.dialog)
-        
-        if not power_dialog.power_values:
-            log_message("Power input cancelled", "INFO")
-            return
-        
+        config_path = os.path.join(os.path.dirname(__file__), 'opto_power_config.json')
+        with open(config_path, 'r', encoding='utf-8') as f:
+            opto_config = json.load(f)
+            
         table_manager = OptogeneticTableManager(root, table_frame, btn_frame, 
                                               multi_animal_data, analysis_mode,
-                                              all_optogenetic_events,power_dialog.power_values, all_drug_events)
+                                              all_optogenetic_events, opto_config, all_drug_events)
     else:
         table_manager = TableManager(root, table_frame, btn_frame, multi_animal_data, analysis_mode)
 
@@ -316,41 +314,6 @@ def get_parameters_from_ui(param_frame, analysis_mode):
     except ValueError:
         log_message("Please enter valid parameter values", "WARNING")
         return None
-
-def group_optogenetic_sessions_running(events, animal_id):
-    """
-    Group optogenetic events into sessions for running+optogenetics analysis
-    """
-    if not events:
-        return []
-    
-    # Sort events by time
-    events.sort(key=lambda x: x[0])
-    
-    sessions = []
-    current_session = []
-    
-    for time, event_type in events:
-        if not current_session:
-            current_session.append((time, event_type))
-        else:
-            # Calculate time difference from last event
-            last_time = current_session[-1][0]
-            time_diff = time - last_time
-            
-            # If time difference > 10 seconds, start new session
-            if time_diff > 10.0:
-                if len(current_session) >= 2:  # Need at least one complete pulse
-                    sessions.append(current_session)
-                current_session = [(time, event_type)]
-            else:
-                current_session.append((time, event_type))
-    
-    # Add the last session
-    if len(current_session) >= 2:
-        sessions.append(current_session)
-    
-    return sessions
 
 class TableManager:
     """Manage table for multi-animal configuration"""
@@ -563,118 +526,6 @@ class TableManager:
             run_running_drug_analysis(day_data, params)
         elif analysis_mode == "running+optogenetics":
             run_running_optogenetics_analysis(day_data, params)
-
-class OptoPowerInputDialog:
-    """Dialog for entering power values for optogenetic events in running analysis"""
-    def __init__(self, root, all_optogenetic_events):
-        self.root = root
-        self.all_optogenetic_events = all_optogenetic_events
-        self.power_values = {}
-        
-        self.dialog = tk.Toplevel(root)
-        self.dialog.title("Optogenetic Power Input (Running+Optogenetics)")
-        self.dialog.geometry("800x600")
-        self.dialog.transient(root)
-        self.dialog.grab_set()
-        
-        self.create_widgets()
-    
-    def create_widgets(self):
-        """Create power input widgets"""
-        container = tk.Frame(self.dialog, bg="#f8f8f8")
-        container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # Title
-        tk.Label(container, text="Enter Power (mW) for Optogenetic Sessions", 
-                font=("Microsoft YaHei", 12, "bold"), bg="#f8f8f8").pack(pady=10)
-        
-        # Create scrollable frame
-        canvas = tk.Canvas(container, bg="#f8f8f8", highlightthickness=0)
-        scrollbar = tk.Scrollbar(container, orient=tk.VERTICAL, command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas, bg="#f8f8f8")
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        # Add inputs
-        row = 0
-        self.power_vars = {}
-        
-        for animal_id, sessions in self.all_optogenetic_events.items():
-            tk.Label(scrollable_frame, text=f"Animal: {animal_id}", 
-                    font=("Microsoft YaHei", 10, "bold"), bg="#f8f8f8",
-                    anchor="w").grid(row=row, column=0, columnspan=4, sticky="w", pady=(10, 5))
-            row += 1
-            
-            # Headers
-            headers = ["Session", "Frequency (Hz)", "Pulse Width (s)", "Duration (s)", "Power (mW)"]
-            for col, header in enumerate(headers):
-                tk.Label(scrollable_frame, text=header, font=("Microsoft YaHei", 9, "bold"),
-                        bg="#f8f8f8").grid(row=row, column=col, sticky="w", padx=5, pady=2)
-            row += 1
-            
-            # Session rows
-            for session_idx, session in enumerate(sessions):
-                freq, pulse_width, duration = calculate_optogenetic_pulse_info(session, animal_id)
-                
-                # Session labels
-                tk.Label(scrollable_frame, text=f"Session{session_idx+1}", 
-                        bg="#f8f8f8").grid(row=row, column=0, sticky="w", padx=5)
-                tk.Label(scrollable_frame, text=f"{freq:.1f}", 
-                        bg="#f8f8f8").grid(row=row, column=1, sticky="w", padx=5)
-                tk.Label(scrollable_frame, text=f"{pulse_width:.3f}", 
-                        bg="#f8f8f8").grid(row=row, column=2, sticky="w", padx=5)
-                tk.Label(scrollable_frame, text=f"{duration:.1f}", 
-                        bg="#f8f8f8").grid(row=row, column=3, sticky="w", padx=5)
-                
-                # Power entry
-                power_var = tk.StringVar(value="5.0")
-                power_entry = tk.Entry(scrollable_frame, textvariable=power_var, 
-                                      width=10, font=("Microsoft YaHei", 9))
-                power_entry.grid(row=row, column=4, sticky="w", padx=5, pady=2)
-                
-                # Store with base ID
-                base_id = f"{animal_id}_Session{session_idx+1}_{freq:.1f}Hz_{pulse_width*1000:.0f}ms_{duration:.1f}s"
-                self.power_vars[base_id] = power_var
-                row += 1
-        
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # Buttons
-        btn_frame = tk.Frame(self.dialog, bg="#f8f8f8")
-        btn_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        tk.Button(btn_frame, text="Apply", command=self.apply_power,
-                 bg="#4CAF50", fg="white", font=("Microsoft YaHei", 9, "bold"),
-                 relief=tk.FLAT, padx=20, pady=5).pack(side=tk.RIGHT, padx=5)
-        
-        tk.Button(btn_frame, text="Cancel", command=self.dialog.destroy,
-                 bg="#f44336", fg="white", font=("Microsoft YaHei", 9, "bold"),
-                 relief=tk.FLAT, padx=20, pady=5).pack(side=tk.RIGHT, padx=5)
-    
-    def apply_power(self):
-        """Apply power values"""
-        try:
-            for base_id, power_var in self.power_vars.items():
-                power = float(power_var.get())
-                if power <= 0:
-                    raise ValueError(f"Power must be positive for {base_id}")
-                
-                # Create final ID
-                final_id = f"{base_id}_{power:.1f}mW"
-                self.power_values[final_id] = power
-            
-            self.dialog.destroy()
-            log_message(f"Power values applied for {len(self.power_values)} sessions")
-            
-        except ValueError as e:
-            log_message(f"Invalid power value: {str(e)}", "ERROR")
 
 class OptogeneticTableManager:
     """Manage table for running+optogenetics configuration"""
@@ -975,7 +826,7 @@ def analyze_day_running(day_name, animals, params):
             animal_id = animal_data.get('animal_single_channel_id', 'Unknown')
 
             # Get events
-            events = get_events_from_bouts(animal_data, params['full_event_type'], duation = False)
+            events = get_events_from_bouts(animal_data, params['full_event_type'], duration = False)
             if not events:
                 log_message(f"No events for {animal_id}", "WARNING")
                 continue
@@ -1107,7 +958,12 @@ def analyze_day_running_drug(day_name, animals, params):
             if not events_col or events_col not in fiber_data.columns:
                 continue
             
-            drug_events = fiber_data[fiber_data[events_col].str.contains('Event2', na=False)]
+            config_path = os.path.join(os.path.dirname(__file__), 'event_config.json')
+            with open(config_path, 'r', encoding='utf-8') as f:
+                event_config = json.load(f)
+                
+            drug_event_name = event_config.get('drug_event', 'Event1')
+            drug_events = fiber_data[fiber_data[events_col].str.contains(drug_event_name, na=False)]
             if len(drug_events) == 0:
                 log_message(f"No drug events for {animal_id}", "WARNING")
                 continue
@@ -1692,12 +1548,12 @@ def plot_running_results(results, params):
 
         if len(all_running) == 1:
             all_running = np.vstack([all_running[0], all_running[0]])
-            im = ax_running_heat.imshow(all_running, aspect='auto',
+            im = ax_running_heat.imshow(all_running, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, 1],
                                         cmap='viridis', origin='lower')
             ax_running_heat.set_yticks(np.arange(0, 2, 1))
         else:
-            im = ax_running_heat.imshow(all_running, aspect='auto',
+            im = ax_running_heat.imshow(all_running, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, len(all_running)],
                                         cmap='viridis', origin='lower')
             if len(all_running) <= 10:
@@ -1724,12 +1580,12 @@ def plot_running_results(results, params):
             all_dff = np.array(all_dff)
             if len(all_dff) == 1:
                 all_dff = np.vstack([all_dff[0], all_dff[0]])
-                im = ax_dff_heat.imshow(all_dff, aspect='auto',
+                im = ax_dff_heat.imshow(all_dff, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, 1],
                                     cmap='coolwarm', origin='lower')
                 ax_dff_heat.set_yticks(np.arange(0, 2, 1))
             else:
-                im = ax_dff_heat.imshow(all_dff, aspect='auto',
+                im = ax_dff_heat.imshow(all_dff, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, len(all_dff)],
                                     cmap='coolwarm', origin='lower')
                 if len(all_dff) <= 10:
@@ -1755,12 +1611,12 @@ def plot_running_results(results, params):
 
             if len(all_zscore) == 1:
                 all_zscore = np.vstack([all_zscore[0], all_zscore[0]])
-                im = ax_zscore_heat.imshow(all_zscore, aspect='auto',
+                im = ax_zscore_heat.imshow(all_zscore, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, 1],
                                         cmap='coolwarm', origin='lower')
                 ax_zscore_heat.set_yticks(np.arange(0, 2, 1))
             else:
-                im = ax_zscore_heat.imshow(all_zscore, aspect='auto',
+                im = ax_zscore_heat.imshow(all_zscore, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, len(all_zscore)],
                                         cmap='coolwarm', origin='lower')
                 if len(all_zscore) <= 10:
@@ -1879,12 +1735,12 @@ def create_single_day_window_running(day_name, data, params):
 
         if len(episodes_array) == 1:
             episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-            im = ax_running_heat.imshow(episodes_array, aspect='auto',
+            im = ax_running_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, 1],
                                         cmap='viridis', origin='lower')
             ax_running_heat.set_yticks(np.arange(0, 2, 1))
         else:
-            im = ax_running_heat.imshow(episodes_array, aspect='auto',
+            im = ax_running_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
                                         cmap='viridis', origin='lower')
             if len(episodes_array) <= 10:
@@ -1906,12 +1762,12 @@ def create_single_day_window_running(day_name, data, params):
 
             if len(episodes_array) == 1:
                 episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto',
+                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
                                        extent=[time_array[0], time_array[-1], 0, 1],
                                        cmap='coolwarm', origin='lower')
                 ax_dff_heat.set_yticks(np.arange(0, 2, 1))
             else:
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto',
+                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
                                     cmap='coolwarm', origin='lower')
                 if len(episodes_array) <= 10:
@@ -1931,12 +1787,12 @@ def create_single_day_window_running(day_name, data, params):
 
             if len(episodes_array) == 1:
                 episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto',
+                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
                                        extent=[time_array[0], time_array[-1], 0, 1],
                                        cmap='coolwarm', origin='lower')
                 ax_zscore_heat.set_yticks(np.arange(0, 2, 1))
             else:
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto',
+                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
                                         cmap='coolwarm', origin='lower')
                 if len(episodes_array) <= 10:
@@ -2087,12 +1943,12 @@ def create_single_day_window_running_drug(day_name, data, params):
         
         if len(combined) == 1:
             combined = np.vstack([combined[0], combined[0]])
-            im = ax_running_heat.imshow(combined, aspect='auto',
+            im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                        extent=[time_array[0], time_array[-1], 0, 1],
                                        cmap='viridis', origin='lower')
             ax_running_heat.set_yticks(np.arange(0, 2, 1))
         else:
-            im = ax_running_heat.imshow(combined, aspect='auto',
+            im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, len(combined)],
                                     cmap='viridis', origin='lower')
             if len(combined) <= 10:
@@ -2118,12 +1974,12 @@ def create_single_day_window_running_drug(day_name, data, params):
             
             if len(combined) == 1:
                 combined = np.vstack([combined[0], combined[0]])
-                im = ax_dff_heat.imshow(combined, aspect='auto',
+                im = ax_dff_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, 1],
                                     cmap='coolwarm', origin='lower')
                 ax_dff_heat.set_yticks(np.arange(0, 2, 1))
             else:
-                im = ax_dff_heat.imshow(combined, aspect='auto',
+                im = ax_dff_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, len(combined)],
                                     cmap='coolwarm', origin='lower')
                 if len(combined) <= 10:
@@ -2147,12 +2003,12 @@ def create_single_day_window_running_drug(day_name, data, params):
             
             if len(combined) == 1:
                 combined = np.vstack([combined[0], combined[0]])
-                im = ax_zscore_heat.imshow(combined, aspect='auto',
+                im = ax_zscore_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                        extent=[time_array[0], time_array[-1], 0, 1],
                                        cmap='coolwarm', origin='lower')
                 ax_zscore_heat.set_yticks(np.arange(0, 2, 1))
             else:
-                im = ax_zscore_heat.imshow(combined, aspect='auto',
+                im = ax_zscore_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, len(combined)],
                                         cmap='coolwarm', origin='lower')
                 if len(combined) <= 10:
@@ -2323,12 +2179,12 @@ def plot_running_drug_results(results, params):
         
         if len(combined) == 1:
             combined = np.vstack([combined[0], combined[0]])
-            im = ax_running_heat.imshow(combined, aspect='auto',
+            im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, 1],
                                         cmap='viridis', origin='lower')
             ax_running_heat.set_yticks(np.arange(0, 2, 1))
         else:
-            im = ax_running_heat.imshow(combined, aspect='auto',
+            im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, len(combined)],
                                         cmap='viridis', origin='lower')
             if len(combined) <= 10:
@@ -2359,12 +2215,12 @@ def plot_running_drug_results(results, params):
             n_pre = len(all_pre_dff)
             if len(combined_dff) == 1:
                 combined_dff = np.vstack([combined_dff[0], combined_dff[0]])
-                im = ax_dff_heat.imshow(combined_dff, aspect='auto',
+                im = ax_dff_heat.imshow(combined_dff, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, 1],
                                     cmap='coolwarm', origin='lower')
                 ax_dff_heat.set_yticks(np.arange(0, 2, 1))
             else:
-                im = ax_dff_heat.imshow(combined_dff, aspect='auto',
+                im = ax_dff_heat.imshow(combined_dff, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, len(combined_dff)],
                                     cmap='coolwarm', origin='lower')
                 if len(combined_dff) <= 10:
@@ -2393,12 +2249,12 @@ def plot_running_drug_results(results, params):
             n_pre = len(all_pre_zscore)
             if len(combined_zscore) == 1:
                 combined_zscore = np.vstack([combined_zscore[0], combined_zscore[0]])
-                im = ax_zscore_heat.imshow(combined_zscore, aspect='auto',
+                im = ax_zscore_heat.imshow(combined_zscore, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, 1],
                                         cmap='coolwarm', origin='lower')
                 ax_zscore_heat.set_yticks(np.arange(0, 2, 1))
             else:
-                im = ax_zscore_heat.imshow(combined_zscore, aspect='auto',
+                im = ax_zscore_heat.imshow(combined_zscore, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, len(combined_zscore)],
                                         cmap='coolwarm', origin='lower')
                 if len(combined_zscore) <= 10:
@@ -2551,12 +2407,12 @@ def create_single_day_window_running_drug(day_name, data, params):
         
         if len(combined) == 1:
             combined = np.vstack([combined[0], combined[0]])
-            im = ax_running_heat.imshow(combined, aspect='auto',
+            im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, 1],
                                     cmap='viridis', origin='lower')
             ax_running_heat.set_yticks(np.arange(0, 2, 1))
         else:
-            im = ax_running_heat.imshow(combined, aspect='auto',
+            im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, len(combined)],
                                     cmap='viridis', origin='lower')
             if len(combined) <= 10:
@@ -2581,12 +2437,12 @@ def create_single_day_window_running_drug(day_name, data, params):
             n_pre = len(data['pre_drug']['dff'][wl]['episodes'])
             if len(combined) == 1:
                 combined = np.vstack([combined[0], combined[0]])
-                im = ax_dff_heat.imshow(combined, aspect='auto',
+                im = ax_dff_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, 1],
                                     cmap='coolwarm', origin='lower')
                 ax_dff_heat.set_yticks(np.arange(0, 2, 1))
             else:
-                im = ax_dff_heat.imshow(combined, aspect='auto',
+                im = ax_dff_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, len(combined)],
                                     cmap='coolwarm', origin='lower')
                 if len(combined) <= 10:
@@ -2610,12 +2466,12 @@ def create_single_day_window_running_drug(day_name, data, params):
             
             if len(combined) == 1:
                 combined = np.vstack([combined[0], combined[0]])
-                im = ax_zscore_heat.imshow(combined, aspect='auto',
+                im = ax_zscore_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, 1],
                                         cmap='coolwarm', origin='lower')
                 ax_zscore_heat.set_yticks(np.arange(0, 2, 1))
             else:
-                im = ax_zscore_heat.imshow(combined, aspect='auto',
+                im = ax_zscore_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, len(combined)],
                                         cmap='coolwarm', origin='lower')
                 if len(combined) <= 10:
@@ -2794,12 +2650,12 @@ def plot_running_optogenetics_results(results, params):
         
         if len(combined) == 1:
             combined = np.vstack([combined[0], combined[0]])
-            im = ax_running_heat.imshow(combined, aspect='auto',
+            im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, 1],
                                         cmap='viridis', origin='lower')
             ax_running_heat.set_yticks(np.arange(0, 2, 1))
         else:
-            im = ax_running_heat.imshow(combined, aspect='auto',
+            im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, len(combined)],
                                         cmap='viridis', origin='lower')
             if len(combined) <= 10:
@@ -2830,12 +2686,12 @@ def plot_running_optogenetics_results(results, params):
             n_with = len(all_with_opto_dff)
             if len(combined_dff) == 1:
                 combined_dff = np.vstack([combined_dff[0], combined_dff[0]])
-                im = ax_dff_heat.imshow(combined_dff, aspect='auto',
+                im = ax_dff_heat.imshow(combined_dff, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, 1],
                                     cmap='coolwarm', origin='lower')
                 ax_dff_heat.set_yticks(np.arange(0, 2, 1))
             else:
-                im = ax_dff_heat.imshow(combined_dff, aspect='auto',
+                im = ax_dff_heat.imshow(combined_dff, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, len(combined_dff)],
                                     cmap='coolwarm', origin='lower')
                 if len(combined_dff) <= 10:
@@ -2863,12 +2719,12 @@ def plot_running_optogenetics_results(results, params):
             n_with = len(all_with_opto_zscore)
             if len(combined_zscore) == 1:
                 combined_zscore = np.vstack([combined_zscore[0], combined_zscore[0]])
-                im = ax_zscore_heat.imshow(combined_zscore, aspect='auto',
+                im = ax_zscore_heat.imshow(combined_zscore, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, 1],
                                         cmap='coolwarm', origin='lower')
                 ax_zscore_heat.set_yticks(np.arange(0, 2, 1))
             else:
-                im = ax_zscore_heat.imshow(combined_zscore, aspect='auto',
+                im = ax_zscore_heat.imshow(combined_zscore, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, len(combined_zscore)],
                                         cmap='coolwarm', origin='lower')
                 if len(combined_zscore) <= 10:
@@ -3032,12 +2888,12 @@ def create_single_day_window_running_optogenetics(day_name, data, params):
         
         if len(combined) == 1:
             combined = np.vstack([combined[0], combined[0]])
-            im = ax_running_heat.imshow(combined, aspect='auto',
+            im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, 1],
                                     cmap='viridis', origin='lower')
             ax_running_heat.set_yticks(np.arange(0, 2, 1))
         else:
-            im = ax_running_heat.imshow(combined, aspect='auto',
+            im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, len(combined)],
                                     cmap='viridis', origin='lower')
             if len(combined) <= 10:
@@ -3079,12 +2935,12 @@ def create_single_day_window_running_optogenetics(day_name, data, params):
             
             if len(combined) == 1:
                 combined = np.vstack([combined[0], combined[0]])
-                im = ax_dff_heat.imshow(combined, aspect='auto',
+                im = ax_dff_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, 1],
                                     cmap='coolwarm', origin='lower')
                 ax_dff_heat.set_yticks(np.arange(0, 2, 1))
             else:
-                im = ax_dff_heat.imshow(combined, aspect='auto',
+                im = ax_dff_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, len(combined)],
                                     cmap='coolwarm', origin='lower')
                 if len(combined) <= 10:
@@ -3122,12 +2978,12 @@ def create_single_day_window_running_optogenetics(day_name, data, params):
             
             if len(combined) == 1:
                 combined = np.vstack([combined[0], combined[0]])
-                im = ax_zscore_heat.imshow(combined, aspect='auto',
+                im = ax_zscore_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, 1],
                                         cmap='coolwarm', origin='lower')
                 ax_zscore_heat.set_yticks(np.arange(0, 2, 1))
             else:
-                im = ax_zscore_heat.imshow(combined, aspect='auto',
+                im = ax_zscore_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, len(combined)],
                                         cmap='coolwarm', origin='lower')
                 if len(combined) <= 10:
@@ -3278,7 +3134,12 @@ def analyze_day_running_optogenetics_drug(day_name, animals, params,
             if not events_col or events_col not in fiber_data.columns:
                 continue
             
-            drug_events = fiber_data[fiber_data[events_col].str.contains('Event2', na=False)]
+            config_path = os.path.join(os.path.dirname(__file__), 'event_config.json')
+            with open(config_path, 'r', encoding='utf-8') as f:
+                event_config = json.load(f)
+                
+            drug_event_name = event_config.get('drug_event', 'Event1')
+            drug_events = fiber_data[fiber_data[events_col].str.contains(drug_event_name, na=False)]
             if len(drug_events) == 0:
                 log_message(f"No drug events for {animal_id}", "WARNING")
                 continue
@@ -3622,13 +3483,15 @@ def plot_comparison_window(results, params, condition1, condition2,
         
         if len(combined) == 1:
             combined = np.vstack([combined[0], combined[0]])
-            im = ax_running_heat.imshow(combined, aspect='auto',
+            im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, 1],
                                         cmap='viridis', origin='lower')
         else:
-            im = ax_running_heat.imshow(combined, aspect='auto',
+            im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, len(combined)],
                                         cmap='viridis', origin='lower')
+            if len(combined) <= 10:
+                ax_running_heat.set_yticks(np.arange(0, len(combined)+1, 1))
         
         ax_running_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
         ax_running_heat.axhline(y=n_cond1, color='k', linestyle='--', linewidth=1)
@@ -3657,13 +3520,15 @@ def plot_comparison_window(results, params, condition1, condition2,
             
             if len(combined_dff) == 1:
                 combined_dff = np.vstack([combined_dff[0], combined_dff[0]])
-                im = ax_dff_heat.imshow(combined_dff, aspect='auto',
+                im = ax_dff_heat.imshow(combined_dff, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, 1],
                                     cmap='coolwarm', origin='lower')
             else:
-                im = ax_dff_heat.imshow(combined_dff, aspect='auto',
+                im = ax_dff_heat.imshow(combined_dff, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, len(combined_dff)],
                                     cmap='coolwarm', origin='lower')
+                if len(combined_dff) <= 10:
+                    ax_dff_heat.set_yticks(np.arange(0, len(combined_dff)+1, 1))
             
             ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
             ax_dff_heat.axhline(y=n_cond1, color='k', linestyle='--', linewidth=1)
@@ -3690,13 +3555,15 @@ def plot_comparison_window(results, params, condition1, condition2,
             
             if len(combined_zscore) == 1:
                 combined_zscore = np.vstack([combined_zscore[0], combined_zscore[0]])
-                im = ax_zscore_heat.imshow(combined_zscore, aspect='auto',
+                im = ax_zscore_heat.imshow(combined_zscore, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, 1],
                                         cmap='coolwarm', origin='lower')
             else:
-                im = ax_zscore_heat.imshow(combined_zscore, aspect='auto',
+                im = ax_zscore_heat.imshow(combined_zscore, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, len(combined_zscore)],
                                         cmap='coolwarm', origin='lower')
+                if len(combined_zscore) <= 10:
+                    ax_zscore_heat.set_yticks(np.arange(0, len(combined_zscore)+1, 1))
             
             ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
             ax_zscore_heat.axhline(y=n_cond1, color='k', linestyle='--', linewidth=1)
@@ -3897,21 +3764,28 @@ def create_single_day_comparison_window(day_name, data, params, condition1, cond
         all_episodes = np.array(all_episodes)
         n_cond1 = len(cond1_running)
         
-        if len(all_episodes) > 0:
-            im = ax_running_heat.imshow(all_episodes, aspect='auto',
+        if len(all_episodes) == 1:
+            all_episodes = np.vstack([all_episodes[0], all_episodes[0]])
+            im = ax_running_heat.imshow(all_episodes, aspect='auto', interpolation='nearest',
+                                      extent=[time_array[0], time_array[-1], 0, 1],
+                                      cmap='viridis', origin='lower')
+        else:
+            im = ax_running_heat.imshow(all_episodes, aspect='auto', interpolation='nearest',
                                       extent=[time_array[0], time_array[-1], 0, len(all_episodes)],
                                       cmap='viridis', origin='lower')
+            if len(all_episodes) <= 10:
+                ax_running_heat.set_yticks(np.arange(0, len(all_episodes)+1, 1))
             
-            ax_running_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            if n_cond1 > 0 and len(all_episodes) > n_cond1:
-                ax_running_heat.axhline(y=n_cond1, color='k', linestyle='--', linewidth=1, 
-                                      label=f'{label1}/{label2} boundary')
-            
-            ax_running_heat.set_xlabel('Time (s)')
-            ax_running_heat.set_ylabel('Trials')
-            ax_running_heat.set_title('Running Speed Heatmap')
-            ax_running_heat.legend(loc='upper right', fontsize=8)
-            plt.colorbar(im, ax=ax_running_heat, label='Speed (cm/s)', orientation='horizontal')
+        ax_running_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
+        if n_cond1 > 0 and len(all_episodes) > n_cond1:
+            ax_running_heat.axhline(y=n_cond1, color='k', linestyle='--', linewidth=1, 
+                                    label=f'{label1}/{label2} boundary')
+        
+        ax_running_heat.set_xlabel('Time (s)')
+        ax_running_heat.set_ylabel('Trials')
+        ax_running_heat.set_title('Running Speed Heatmap')
+        ax_running_heat.legend(loc='upper right', fontsize=8)
+        plt.colorbar(im, ax=ax_running_heat, label='Speed (cm/s)', orientation='horizontal')
     else:
         ax_running_heat.text(0.5, 0.5, 'No running data available',
                            ha='center', va='center', transform=ax_running_heat.transAxes,
@@ -3946,21 +3820,28 @@ def create_single_day_comparison_window(day_name, data, params, condition1, cond
             all_dff = np.array(all_dff)
             n_cond1 = len(cond1_dff)
             
-            if len(all_dff) > 0:
-                im = ax_dff_heat.imshow(all_dff, aspect='auto',
+            if len(all_dff) == 1:
+                all_dff = np.vstack([all_dff[0], all_dff[0]])
+                im = ax_dff_heat.imshow(all_dff, aspect='auto', interpolation='nearest',
+                                      extent=[time_array[0], time_array[-1], 0, 1],
+                                      cmap='coolwarm', origin='lower')
+            else:
+                im = ax_dff_heat.imshow(all_dff, aspect='auto', interpolation='nearest',
                                       extent=[time_array[0], time_array[-1], 0, len(all_dff)],
                                       cmap='coolwarm', origin='lower')
+                if len(all_dff) <= 10:
+                    ax_dff_heat.set_yticks(np.arange(0, len(all_dff)+1, 1))
                 
-                ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-                if n_cond1 > 0 and len(all_dff) > n_cond1:
-                    ax_dff_heat.axhline(y=n_cond1, color='k', linestyle='--', linewidth=1,
-                                      label=f'{label1}/{label2} boundary')
-                
-                ax_dff_heat.set_xlabel('Time (s)')
-                ax_dff_heat.set_ylabel('Trials')
-                ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
-                ax_dff_heat.legend(loc='upper right', fontsize=8)
-                plt.colorbar(im, ax=ax_dff_heat, label='ΔF/F', orientation='horizontal')
+            ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
+            if n_cond1 > 0 and len(all_dff) > n_cond1:
+                ax_dff_heat.axhline(y=n_cond1, color='k', linestyle='--', linewidth=1,
+                                    label=f'{label1}/{label2} boundary')
+            
+            ax_dff_heat.set_xlabel('Time (s)')
+            ax_dff_heat.set_ylabel('Trials')
+            ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
+            ax_dff_heat.legend(loc='upper right', fontsize=8)
+            plt.colorbar(im, ax=ax_dff_heat, label='ΔF/F', orientation='horizontal')
         else:
             ax_dff_heat.text(0.5, 0.5, f'No dFF data for {wl}nm',
                            ha='center', va='center', transform=ax_dff_heat.transAxes,
@@ -3993,21 +3874,28 @@ def create_single_day_comparison_window(day_name, data, params, condition1, cond
             all_zscore = np.array(all_zscore)
             n_cond1 = len(cond1_zscore)
             
-            if len(all_zscore) > 0:
-                im = ax_zscore_heat.imshow(all_zscore, aspect='auto',
+            if len(all_zscore) == 1:
+                all_zscore = np.vstack([all_zscore[0], all_zscore[0]])
+                im = ax_zscore_heat.imshow(all_zscore, aspect='auto', interpolation='nearest',
+                                         extent=[time_array[0], time_array[-1], 0, 1],
+                                         cmap='coolwarm', origin='lower')
+            else:
+                im = ax_zscore_heat.imshow(all_zscore, aspect='auto', interpolation='nearest',
                                          extent=[time_array[0], time_array[-1], 0, len(all_zscore)],
                                          cmap='coolwarm', origin='lower')
+                if len(all_zscore) <= 10:
+                    ax_zscore_heat.set_yticks(np.arange(0, len(all_zscore)+1, 1))
                 
-                ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-                if n_cond1 > 0 and len(all_zscore) > n_cond1:
-                    ax_zscore_heat.axhline(y=n_cond1, color='k', linestyle='--', linewidth=1,
-                                         label=f'{label1}/{label2} boundary')
-                
-                ax_zscore_heat.set_xlabel('Time (s)')
-                ax_zscore_heat.set_ylabel('Trials')
-                ax_zscore_heat.set_title(f'Fiber Z-score Heatmap {wl}nm')
-                ax_zscore_heat.legend(loc='upper right', fontsize=8)
-                plt.colorbar(im, ax=ax_zscore_heat, label='Z-score', orientation='horizontal')
+            ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
+            if n_cond1 > 0 and len(all_zscore) > n_cond1:
+                ax_zscore_heat.axhline(y=n_cond1, color='k', linestyle='--', linewidth=1,
+                                        label=f'{label1}/{label2} boundary')
+            
+            ax_zscore_heat.set_xlabel('Time (s)')
+            ax_zscore_heat.set_ylabel('Trials')
+            ax_zscore_heat.set_title(f'Fiber Z-score Heatmap {wl}nm')
+            ax_zscore_heat.legend(loc='upper right', fontsize=8)
+            plt.colorbar(im, ax=ax_zscore_heat, label='Z-score', orientation='horizontal')
         else:
             ax_zscore_heat.text(0.5, 0.5, f'No Z-score data for {wl}nm',
                               ha='center', va='center', transform=ax_zscore_heat.transAxes,

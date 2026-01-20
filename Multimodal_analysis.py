@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 import os
+import json
 
 from logger import log_message
 
@@ -250,18 +251,23 @@ def create_control_panel(btn_frame, add_row_callback, remove_row_callback, add_c
 def identify_optogenetic_events(fiber_events):
     """
     Identify optogenetic events from fiber data
-    Input3: Laser events
-    0: Laser start
-    1: Laser end
-    Returns list of (time, event_type) tuples
     """
+    config_path = os.path.join(os.path.dirname(__file__), 'event_config.json')
+    with open(config_path, 'r', encoding='utf-8') as f:
+        event_config = json.load(f)
+        
+    opto_event_name = event_config.get('opto_event', 'Input3')
+    running_start_name = event_config.get('running_start', 'Input2')
     events = []
 
-    # Find optogenetic events
-    opto_start_mask = (fiber_events['Name'] == 'Input3') & (fiber_events['State'] == 0)
-    opto_end_mask = (fiber_events['Name'] == 'Input3') & (fiber_events['State'] == 1)
+    # Find optogenetic events using configured name
+    opto_start_mask = (fiber_events['Name'] == opto_event_name) & (fiber_events['State'] == 0)
+    opto_end_mask = (fiber_events['Name'] == opto_event_name) & (fiber_events['State'] == 1)
     
-    running_start_time = fiber_events.loc[(fiber_events['Name'] == 'Input2') & (fiber_events['State'] == 0), 'TimeStamp'].values
+    running_start_time = fiber_events.loc[
+        (fiber_events['Name'] == running_start_name) & (fiber_events['State'] == 0), 
+        'TimeStamp'
+    ].values
 
     # Extract start events
     start_times = (fiber_events.loc[opto_start_mask, 'TimeStamp'].values - running_start_time) / 1000
@@ -277,21 +283,62 @@ def identify_optogenetic_events(fiber_events):
     events.sort(key=lambda x: x[0])
     return events
 
+def group_optogenetic_sessions(events):
+    """
+    Group optogenetic events into sessions based on frequency threshold
+    Returns list of sessions, each session is a list of (time, event_type) tuples
+    """
+    if not events:
+        return []
+    
+    # Sort events by time
+    events.sort(key=lambda x: x[0])
+    
+    sessions = []
+    current_session = []
+    
+    for time, event_type in events:
+        if not current_session:
+            current_session.append((time, event_type))
+        else:
+            # Calculate time difference from last event
+            last_time = current_session[-1][0]
+            time_diff = time - last_time
+            
+            # If time difference > 2 seconds, start new session (frequency < 0.5 Hz)
+            if time_diff > 2.0:
+                if len(current_session) >= 2:  # Need at least one complete pulse
+                    sessions.append(current_session)
+                current_session = [(time, event_type)]
+            else:
+                current_session.append((time, event_type))
+    
+    # Add the last session
+    if len(current_session) >= 2:
+        sessions.append(current_session)
+    
+    return sessions
+
 def identify_drug_events(fiber_events):
     """
     Identify drug administration events from fiber data
-    Event2: Drug administration
-    State 0: Drug administered
-    State 1: Drug administration ended
-    Returns list of (time, event_type) tuples
-    """
+    """ 
+    config_path = os.path.join(os.path.dirname(__file__), 'event_config.json')
+    with open(config_path, 'r', encoding='utf-8') as f:
+        event_config = json.load(f)
+        
+    drug_event_name = event_config.get('drug_event', 'Event1')
+    running_start_name = event_config.get('running_start', 'Input2')
     events = []
 
-    # Find drug administration events
-    drug_start_mask = (fiber_events['Name'] == 'Event2') & (fiber_events['State'] == 0)
-    drug_end_mask = (fiber_events['Name'] == 'Event2') & (fiber_events['State'] == 1)
+    # Find drug events using configured name  
+    drug_start_mask = (fiber_events['Name'] == drug_event_name) & (fiber_events['State'] == 0)
+    drug_end_mask = (fiber_events['Name'] == drug_event_name) & (fiber_events['State'] == 1)
     
-    running_start_time = fiber_events.loc[(fiber_events['Name'] == 'Input2') & (fiber_events['State'] == 0), 'TimeStamp'].values
+    running_start_time = fiber_events.loc[
+        (fiber_events['Name'] == running_start_name) & (fiber_events['State'] == 0),
+        'TimeStamp'
+    ].values
 
     # Extract start events
     start_times = (fiber_events.loc[drug_start_mask, 'TimeStamp'].values - running_start_time) / 1000

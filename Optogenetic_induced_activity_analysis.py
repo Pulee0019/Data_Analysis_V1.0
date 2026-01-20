@@ -2,6 +2,8 @@
 Optogenetic-induced activity analysis with table configuration
 Supports multi-animal optogenetic event analysis
 """
+import os
+import json
 import tkinter as tk
 import numpy as np
 import pandas as pd
@@ -15,7 +17,7 @@ from Multimodal_analysis import (
     export_statistics,
     create_table_window, initialize_table, create_control_panel,
     identify_optogenetic_events, calculate_optogenetic_pulse_info,
-    identify_drug_events
+    identify_drug_events, group_optogenetic_sessions
 )
 
 # Colors for different days
@@ -53,7 +55,7 @@ def show_optogenetic_induced_analysis(root, multi_animal_data, analysis_mode="op
             all_optogenetic_events[animal_id] = sessions
             log_message(f"Found {len(sessions)} optogenetic sessions for {animal_id}")
         
-        # ADD THIS: Identify drug events if in drug mode
+        # Identify drug events if in drug mode
         if analysis_mode == "optogenetics+drug":
             drug_events = identify_drug_events(events_data)
             if drug_events:
@@ -64,18 +66,14 @@ def show_optogenetic_induced_analysis(root, multi_animal_data, analysis_mode="op
         log_message("No optogenetic events found in any animal", "ERROR")
         return
     
-    # ADD THIS: Check drug events in drug mode
+    # Check drug events in drug mode
     if analysis_mode == "optogenetics+drug" and not all_drug_events:
         log_message("No drug events found in any animal for optogenetics+drug mode", "ERROR")
         return
     
-    # Show power input dialog for each animal
-    power_dialog = PowerInputDialog(root, all_optogenetic_events)
-    root.wait_window(power_dialog.dialog)
-    
-    if not power_dialog.power_values:
-        log_message("Power input cancelled", "INFO")
-        return
+    config_path = os.path.join(os.path.dirname(__file__), 'opto_power_config.json')
+    with open(config_path, 'r', encoding='utf-8') as f:
+        opto_config = json.load(f)
     
     # Create main window with parameter panel and table
     main_window = tk.Toplevel(root)
@@ -102,7 +100,7 @@ def show_optogenetic_induced_analysis(root, multi_animal_data, analysis_mode="op
 
     # Initialize table manager (MODIFIED to pass drug events and mode)
     table_manager = TableManager(root, table_frame, btn_frame, multi_animal_data, 
-                                all_optogenetic_events, power_dialog.power_values,
+                                all_optogenetic_events, opto_config,
                                 all_drug_events, analysis_mode)
 
     def run_analysis():
@@ -113,158 +111,6 @@ def show_optogenetic_induced_analysis(root, multi_animal_data, analysis_mode="op
     tk.Button(btn_frame, text="Run Analysis", command=run_analysis,
              bg="#ffffff", fg="#000000", font=("Microsoft YaHei", 9, "bold"),
              relief=tk.FLAT, padx=10, pady=5).pack(side=tk.LEFT, padx=5)
-
-class PowerInputDialog:
-    """Dialog for entering power values for optogenetic events"""
-    def __init__(self, root, all_optogenetic_events):
-        self.root = root
-        self.all_optogenetic_events = all_optogenetic_events
-        self.power_values = {}
-        
-        self.dialog = tk.Toplevel(root)
-        self.dialog.title("Optogenetic Power Input")
-        self.dialog.geometry("800x600")
-        self.dialog.transient(root)
-        self.dialog.grab_set()
-        
-        self.create_widgets()
-    
-    def create_widgets(self):
-        """Create power input widgets"""
-        container = tk.Frame(self.dialog, bg="#f8f8f8")
-        container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # Title
-        tk.Label(container, text="Enter Power (mW) for Each Optogenetic Session", 
-                font=("Microsoft YaHei", 12, "bold"), bg="#f8f8f8").pack(pady=10)
-        
-        # Create scrollable frame for inputs
-        canvas = tk.Canvas(container, bg="#f8f8f8", highlightthickness=0)
-        scrollbar = tk.Scrollbar(container, orient=tk.VERTICAL, command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas, bg="#f8f8f8")
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        # Add inputs for each animal and session
-        row = 0
-        self.power_vars = {}
-        
-        for animal_id, sessions in self.all_optogenetic_events.items():
-            # Animal header
-            tk.Label(scrollable_frame, text=f"Animal: {animal_id}", 
-                    font=("Microsoft YaHei", 10, "bold"), bg="#f8f8f8",
-                    anchor="w").grid(row=row, column=0, columnspan=4, 
-                                    sticky="w", pady=(10, 5), padx=5)
-            row += 1
-            
-            # Session headers
-            headers = ["Session", "Frequency (Hz)", "Pulse Width (s)", "Duration (s)", "Power (mW)"]
-            for col, header in enumerate(headers):
-                tk.Label(scrollable_frame, text=header, font=("Microsoft YaHei", 9, "bold"),
-                        bg="#f8f8f8").grid(row=row, column=col, sticky="w", padx=5, pady=2)
-            row += 1
-            
-            # Session rows
-            for session_idx, session in enumerate(sessions):
-                # Calculate session info
-                freq, pulse_width, duration = calculate_optogenetic_pulse_info(session, animal_id)
-                
-                # Create unique ID (without power)
-                base_id = f"{animal_id}_Session{session_idx+1}_{freq:.1f}Hz_{pulse_width*1000:.0f}ms_{duration:.1f}s"
-                
-                # Session info labels
-                tk.Label(scrollable_frame, text=f"Session{session_idx+1}", 
-                        bg="#f8f8f8").grid(row=row, column=0, sticky="w", padx=5)
-                tk.Label(scrollable_frame, text=f"{freq:.1f}", 
-                        bg="#f8f8f8").grid(row=row, column=1, sticky="w", padx=5)
-                tk.Label(scrollable_frame, text=f"{pulse_width:.3f}", 
-                        bg="#f8f8f8").grid(row=row, column=2, sticky="w", padx=5)
-                tk.Label(scrollable_frame, text=f"{duration:.1f}", 
-                        bg="#f8f8f8").grid(row=row, column=3, sticky="w", padx=5)
-                
-                # Power entry
-                power_var = tk.StringVar(value="5.0")  # Default power
-                power_entry = tk.Entry(scrollable_frame, textvariable=power_var, 
-                                      width=10, font=("Microsoft YaHei", 9))
-                power_entry.grid(row=row, column=4, sticky="w", padx=5, pady=2)
-                
-                self.power_vars[base_id] = power_var
-                row += 1
-        
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # Buttons
-        btn_frame = tk.Frame(self.dialog, bg="#f8f8f8")
-        btn_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        tk.Button(btn_frame, text="Apply", command=self.apply_power,
-                 bg="#4CAF50", fg="white", font=("Microsoft YaHei", 9, "bold"),
-                 relief=tk.FLAT, padx=20, pady=5).pack(side=tk.RIGHT, padx=5)
-        
-        tk.Button(btn_frame, text="Cancel", command=self.dialog.destroy,
-                 bg="#f44336", fg="white", font=("Microsoft YaHei", 9, "bold"),
-                 relief=tk.FLAT, padx=20, pady=5).pack(side=tk.RIGHT, padx=5)
-    
-    def apply_power(self):
-        """Apply power values and create final IDs"""
-        try:
-            for base_id, power_var in self.power_vars.items():
-                power = float(power_var.get())
-                if power <= 0:
-                    raise ValueError(f"Power must be positive for {base_id}")
-                
-                # Create final ID with power
-                final_id = f"{base_id}_{power:.1f}mW"
-                self.power_values[final_id] = power
-            
-            self.dialog.destroy()
-            log_message(f"Power values applied for {len(self.power_values)} sessions")
-            
-        except ValueError as e:
-            log_message(f"Invalid power value: {str(e)}", "ERROR")
-
-def group_optogenetic_sessions(events):
-    """
-    Group optogenetic events into sessions based on frequency threshold
-    Returns list of sessions, each session is a list of (time, event_type) tuples
-    """
-    if not events:
-        return []
-    
-    # Sort events by time
-    events.sort(key=lambda x: x[0])
-    
-    sessions = []
-    current_session = []
-    
-    for time, event_type in events:
-        if not current_session:
-            current_session.append((time, event_type))
-        else:
-            # Calculate time difference from last event
-            last_time = current_session[-1][0]
-            time_diff = time - last_time
-            
-            # If time difference > 2 seconds, start new session (frequency < 0.5 Hz)
-            if time_diff > 2.0:
-                if len(current_session) >= 2:  # Need at least one complete pulse
-                    sessions.append(current_session)
-                current_session = [(time, event_type)]
-            else:
-                current_session.append((time, event_type))
-    
-    # Add the last session
-    if len(current_session) >= 2:
-        sessions.append(current_session)
-    
-    return sessions
 
 def create_parameter_panel(parent):
     """Create parameter configuration panel"""
@@ -963,7 +809,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                 
                 color_idx += 1
         else:
-            # Original optogenetics-only mode
+            # optogenetics-only mode
             for idx, (param_name, param_data) in enumerate(results.items()):
                 data = param_data.get('optogenetics', {})
                 episodes = data.get('dff', {}).get(wavelength, [])
@@ -1049,6 +895,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
         # dFF heatmap
         ax_dff_heat = fig.add_subplot(2, num_cols, plot_idx)
         all_episodes = []
+        episodes_counts = []
         
         if analysis_mode == "optogenetics+drug":
             for param_data in results.values():
@@ -1064,22 +911,29 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                 episodes = data.get('dff', {}).get(wavelength, [])
                 if episodes:
                     all_episodes.extend(episodes)
+                    episodes_counts.append(len(episodes))
         
         if all_episodes:
             episodes_array = np.array(all_episodes)
             if len(episodes_array) == 1:
                 episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto',
+                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, 1],
                                     cmap='coolwarm', origin='lower')
                 ax_dff_heat.set_yticks(np.arange(0, 2, 1))
             else:
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto',
+                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
                                     cmap='coolwarm', origin='lower')
                 if len(episodes_array) <= 10:
                     ax_dff_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
             
+            if analysis_mode == "optogenetics":
+                y_pos = 0
+                for count in episodes_counts[:-1]:
+                    y_pos += count
+                    ax_dff_heat.axhline(y=y_pos, color='k', linestyle='--', linewidth=1)    
+
             ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
             ax_dff_heat.set_xlabel('Time (s)')
             ax_dff_heat.set_ylabel('Trials')
@@ -1100,27 +954,34 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                         if episodes:
                             all_episodes.extend(episodes)
         else:
+            episodes_counts = []
             for param_data in results.values():
                 data = param_data.get('optogenetics', {})
                 episodes = data.get('zscore', {}).get(wavelength, [])
                 if episodes:
                     all_episodes.extend(episodes)
+                    episodes_counts.append(len(episodes))
         
         if all_episodes:
             episodes_array = np.array(all_episodes)
             if len(episodes_array) == 1:
                 episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto',
+                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, 1],
                                         cmap='coolwarm', origin='lower')
                 ax_zscore_heat.set_yticks(np.arange(0, 2, 1))
             else:
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto',
+                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
                                         cmap='coolwarm', origin='lower')
                 if len(episodes_array) <= 10:
                     ax_zscore_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
-            
+            if analysis_mode == "optogenetics":
+                y_pos = 0
+                for count in episodes_counts[:-1]:
+                    y_pos += count
+                    ax_zscore_heat.axhline(y=y_pos, color='k', linestyle='--', linewidth=1)
+
             ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
             ax_zscore_heat.set_xlabel('Time (s)')
             ax_zscore_heat.set_ylabel('Trials')
@@ -1348,13 +1209,13 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
             episodes_array = np.array(all_episodes)
             if len(episodes_array) == 1:
                 episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto',
+                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, 1],
                                     cmap='coolwarm', origin='lower')
                 ax_dff_heat.set_yticks(np.arange(0, 2, 1))
                 ax_dff_heat.set_ylabel('Trials')
             else:
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto',
+                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
                                     extent=[time_array[0], time_array[-1], 0, len(all_episodes)],
                                     cmap='coolwarm', origin='lower')
                 if len(episodes_array) <= 10:
@@ -1405,13 +1266,13 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
             
             if len(episodes_array) == 1:
                 episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto',
+                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, 1],
                                         cmap='coolwarm', origin='lower')
                 ax_zscore_heat.set_yticks(np.arange(0, 2, 1))
                 ax_zscore_heat.set_ylabel('Trials')
             else:
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto',
+                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
                                         extent=[time_array[0], time_array[-1], 0, len(all_episodes)],
                                         cmap='coolwarm', origin='lower')
                 if len(all_episodes) <= 10:
