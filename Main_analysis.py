@@ -23,7 +23,7 @@ from Running_analysis import running_bout_analysis_classify, preprocess_running_
 from Running_induced_activity_analysis import show_running_induced_analysis
 from Drug_induced_activity_analysis import show_drug_induced_analysis
 from Optogenetic_induced_activity_analysis import show_optogenetic_induced_analysis
-from Multimodal_analysis import identify_optogenetic_events, identify_drug_events, calculate_optogenetic_pulse_info, group_optogenetic_sessions
+from Multimodal_analysis import identify_optogenetic_events, identify_drug_sessions, calculate_optogenetic_pulse_info, group_optogenetic_sessions
 
 from logger import log_message, set_log_widget
 
@@ -38,10 +38,12 @@ except ImportError:
 CHANNEL_MEMORY_FILE = "channel_memory.json"
 EVENT_CONFIG_FILE = "event_config.json"
 OPTO_POWER_CONFIG_FILE = "opto_power_config.json"
+DRUG_NAME_CONFIG_FILE = "drug_name_config.json"
 
 channel_memory = {}
 event_config = {}
 opto_power_config = {}
+drug_name_config = {}
 
 def load_channel_memory():
     """Load channel memory from file"""
@@ -101,9 +103,28 @@ def save_opto_power_config():
     except:
         pass
 
+def load_drug_name_config():
+    """Load drug name configuration from file"""
+    global drug_name_config
+    if os.path.exists(DRUG_NAME_CONFIG_FILE):
+        try:
+            with open(DRUG_NAME_CONFIG_FILE, 'r') as f:
+                drug_name_config = json.load(f)
+        except:
+            drug_name_config = {}
+
+def save_drug_name_config():
+    """Save drug name configuration to file"""
+    try:
+        with open(DRUG_NAME_CONFIG_FILE, 'w') as f:
+            json.dump(drug_name_config, f)
+    except:
+        pass
+
 load_channel_memory()
 load_event_config()
 load_opto_power_config()
+load_drug_name_config()
 
 class BodypartVisualizationWindow:
     def __init__(self, parent_frame, data):
@@ -1460,11 +1481,11 @@ class FiberVisualizationWindow:
         """Plot drug administration events"""
         if "fiber_events" in self.animal_data:
             fiber_events = self.animal_data['fiber_events']
-            drug_events = identify_drug_events(fiber_events)
-            for idx in range(0, len(drug_events), 2):
-                (start, _), (end, _) = drug_events[idx], drug_events[idx+1]
+            drug_sessions = identify_drug_sessions(fiber_events)
+            for idx in range(0, len(drug_sessions)):
+                start_time = drug_sessions[idx]['time']
                 lbl = "Drug Administration" if idx == 0 else '_nolegend_'
-                self.ax.axvspan(int(start), int(end),
+                self.ax.axvline(int(start_time),
                                 color='red',
                                 alpha=0.1,
                                 label=lbl)
@@ -2495,7 +2516,12 @@ def align_data(animal_data=None):
         
         opto_event_name = event_config.get('opto_event', 'Input3')
         running_start_name = event_config.get('running_start', 'Input2')
-        drug_event_name = event_config.get('drug_event', 'Event1')
+        drug_event_names = event_config.get('drug_event', 'Event1')
+        # Support multiple drug events separated by comma
+        if isinstance(drug_event_names, str):
+            drug_event_names = [name.strip() for name in drug_event_names.split(',')]
+        elif not isinstance(drug_event_names, list):
+            drug_event_names = [str(drug_event_names)]
 
         # Find Input2 events (running markers) - running start time
         input2_events = fiber_data[fiber_data[events_col].str.contains(running_start_name, na=False)]
@@ -2510,20 +2536,22 @@ def align_data(animal_data=None):
             multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="disabled")
             log_message("Could not find Input3 events for optogenetic analysis", "INFO")
             running_induced_menu.entryconfig("Running + Optogenetics", state="disabled")
-            setting_menu.entryconfig("Optogenetic Power Configuration", state="disabled")
+            setting_menu.entryconfig("Optogenetic Configuration", state="disabled")
         else:
             multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="normal")
             running_induced_menu.entryconfig("Running + Optogenetics", state="normal")
-            setting_menu.entryconfig("Optogenetic Power Configuration", state="normal")
+            setting_menu.entryconfig("Optogenetic Configuration", state="normal")
         
-        drug_events = fiber_data[fiber_data[events_col].str.contains(drug_event_name, na=False)]
+        drug_events = fiber_data[fiber_data[events_col].str.contains('|'.join(drug_event_names), na=False)]
         if len(drug_events) < 1:
             multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="disabled")
             running_induced_menu.entryconfig("Running + Drug", state="disabled")
+            setting_menu.entryconfig("Drug Configuration", state="disabled")
             log_message("Could not find Event2 events for drug analysis", "INFO")
         else:
             multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="normal")
             running_induced_menu.entryconfig("Running + Drug", state="normal")
+            setting_menu.entryconfig("Drug Configuration", state="normal")
 
         if len(input3_events) < 1 or len(drug_events) < 1:
             optogenetics_induced_menu.entryconfig("Optogenetics + Drug", state="disabled")
@@ -4626,7 +4654,7 @@ def show_event_config_dialog():
     tk.Entry(running_frame, textvariable=running_var, 
             font=("Microsoft YaHei", 10), width=15).pack(side=tk.LEFT, padx=10)
     
-    def save_config():
+    def apply_config():
         event_config['drug_event'] = drug_var.get().strip()
         event_config['opto_event'] = opto_var.get().strip()
         event_config['running_start'] = running_var.get().strip()
@@ -4638,7 +4666,7 @@ def show_event_config_dialog():
     btn_frame = tk.Frame(main_frame, bg="#f8f8f8")
     btn_frame.pack(pady=(20, 0))
     
-    tk.Button(btn_frame, text="Save", command=save_config,
+    tk.Button(btn_frame, text="Apply", command=apply_config,
              bg="#27ae60", fg="white", font=("Microsoft YaHei", 10, "bold"),
              relief=tk.FLAT, padx=20, pady=5).pack(side=tk.LEFT, padx=5)
     
@@ -4744,24 +4772,6 @@ def show_opto_power_config_dialog():
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-    # def apply_power():
-    #     """Apply power values and create final IDs"""
-    #     try:
-    #         for base_id, power_var in power_vars.items():
-    #             power = float(power_var.get())
-    #             if power <= 0:
-    #                 raise ValueError(f"Power must be positive for {base_id}")
-                
-    #             # Create final ID with power
-    #             final_id = f"{base_id}_{power:.1f}mW"
-    #             opto_power_config[final_id] = power
-            
-    #         save_opto_power_config()
-    #         log_message(f"Power values applied for {len(opto_power_config)} sessions")
-    #         dialog.destroy()
-            
-    #     except ValueError as e:
-    #         log_message(f"Invalid power value: {str(e)}", "ERROR")
     def apply_power():
         """Apply power values and create final IDs"""
         try:
@@ -4810,6 +4820,128 @@ def show_opto_power_config_dialog():
                 bg="#f44336", fg="white", font=("Microsoft YaHei", 9, "bold"),
                 relief=tk.FLAT, padx=20, pady=5).pack(side=tk.RIGHT, padx=5)
 
+def show_drug_name_config_dialog():
+    """Show drug name configuration dialog - Modified for multiple drug events"""
+    global drug_name_config, multi_animal_data
+    
+    if not multi_animal_data:
+        log_message("Please import animal data first", "WARNING")
+        return
+    
+    all_drug_sessions = {}
+    
+    for animal_data in multi_animal_data:
+        animal_id = animal_data.get('animal_single_channel_id', 'Unknown')
+        events_data = animal_data.get('fiber_events')
+        
+        # Identify drug sessions with event names
+        drug_sessions = identify_drug_sessions(events_data)
+        
+        if drug_sessions:
+            all_drug_sessions[animal_id] = drug_sessions
+            log_message(f"Found {len(drug_sessions)} drug sessions for {animal_id}")
+    
+    if not all_drug_sessions:
+        log_message("No drug events found in loaded data", "WARNING")
+        return
+    
+    dialog = tk.Toplevel(root)
+    dialog.title("Drug Name Configuration")
+    dialog.geometry("700x500")
+    dialog.transient(root)
+    dialog.grab_set()
+    
+    container = tk.Frame(dialog, bg="#f8f8f8")
+    container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+    
+    tk.Label(container, text="Configure Drug Names for Each Session", 
+            font=("Microsoft YaHei", 12, "bold"), bg="#f8f8f8").pack(pady=10)
+    
+    # Scrollable frame
+    canvas = tk.Canvas(container, bg="#f8f8f8", highlightthickness=0)
+    scrollbar = tk.Scrollbar(container, orient=tk.VERTICAL, command=canvas.yview)
+    scrollable_frame = tk.Frame(canvas, bg="#f8f8f8")
+    
+    scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
+    
+    drug_name_vars = {}
+    row = 0
+    
+    for animal_id, sessions in all_drug_sessions.items():
+        # Animal header
+        tk.Label(scrollable_frame, text=f"Animal: {animal_id}", 
+                font=("Microsoft YaHei", 10, "bold"), bg="#f8f8f8",
+                anchor="w").grid(row=row, column=0, columnspan=4, 
+                                sticky="w", pady=(10, 5), padx=5)
+        row += 1
+        
+        # Session headers
+        tk.Label(scrollable_frame, text="Session", font=("Microsoft YaHei", 9, "bold"),
+                bg="#f8f8f8").grid(row=row, column=0, sticky="w", padx=5, pady=2)
+        tk.Label(scrollable_frame, text="Event Name", font=("Microsoft YaHei", 9, "bold"),
+                bg="#f8f8f8").grid(row=row, column=1, sticky="w", padx=5, pady=2)
+        tk.Label(scrollable_frame, text="Time (s)", font=("Microsoft YaHei", 9, "bold"),
+                bg="#f8f8f8").grid(row=row, column=2, sticky="w", padx=5, pady=2)
+        tk.Label(scrollable_frame, text="Drug Name", font=("Microsoft YaHei", 9, "bold"),
+                bg="#f8f8f8").grid(row=row, column=3, sticky="w", padx=5, pady=2)
+        row += 1
+        
+        # Session rows
+        for session_idx, session_info in enumerate(sessions):
+            # Create unique ID
+            session_id = f"{animal_id}_Session{session_idx+1}"
+            
+            # Session info labels
+            tk.Label(scrollable_frame, text=f"Session{session_idx+1}", 
+                    bg="#f8f8f8").grid(row=row, column=0, sticky="w", padx=5)
+            tk.Label(scrollable_frame, text=session_info['event_name'], 
+                    bg="#f8f8f8", fg="blue").grid(row=row, column=1, sticky="w", padx=5)
+            tk.Label(scrollable_frame, text=f"{session_info['time']:.1f}", 
+                    bg="#f8f8f8").grid(row=row, column=2, sticky="w", padx=5)
+            
+            # Drug name entry
+            saved_name = drug_name_config.get(session_id, "Drug")
+            drug_name_var = tk.StringVar(value=saved_name)
+            drug_name_entry = tk.Entry(scrollable_frame, textvariable=drug_name_var, 
+                                      width=20, font=("Microsoft YaHei", 9))
+            drug_name_entry.grid(row=row, column=3, sticky="w", padx=5, pady=2)
+            
+            drug_name_vars[session_id] = drug_name_var
+            row += 1
+    
+    canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+    def apply_names():
+        """Apply drug names"""
+        try:
+            for session_id, name_var in drug_name_vars.items():
+                drug_name = name_var.get().strip()
+                if not drug_name:
+                    drug_name = "Drug"
+                drug_name_config[session_id] = drug_name
+            
+            save_drug_name_config()
+            log_message(f"Drug names configured for {len(drug_name_vars)} sessions", "INFO")
+            dialog.destroy()
+            
+        except Exception as e:
+            log_message(f"Error configuring drug names: {str(e)}", "ERROR")
+
+    # Buttons
+    btn_frame = tk.Frame(dialog, bg="#f8f8f8")
+    btn_frame.pack(fill=tk.X, padx=10, pady=10)
+    
+    tk.Button(btn_frame, text="Apply", command=apply_names,
+                bg="#4CAF50", fg="white", font=("Microsoft YaHei", 9, "bold"),
+                relief=tk.FLAT, padx=20, pady=5).pack(side=tk.RIGHT, padx=5)
+    
+    tk.Button(btn_frame, text="Cancel", command=dialog.destroy,
+                bg="#f44336", fg="white", font=("Microsoft YaHei", 9, "bold"),
+                relief=tk.FLAT, padx=20, pady=5).pack(side=tk.RIGHT, padx=5)
+    
 def save_path_setting():
     print(1)
 
@@ -4981,12 +5113,8 @@ setting_menu = tk.Menu(menubar, tearoff=0)
 menubar.add_cascade(label="Settings", menu=setting_menu)
 setting_menu.add_command(label="Experiment Type", command=select_experiment_mode)
 setting_menu.add_command(label="Event Configuration", command=show_event_config_dialog)
-global opto_config_menu_item
-opto_config_menu_item = setting_menu.add_command(
-    label="Optogenetic Power Configuration", 
-    command=show_opto_power_config_dialog,
-    state="disabled"
-)
+setting_menu.add_command(label="Drug Configuration", command=show_drug_name_config_dialog, state="disabled")
+setting_menu.add_command(label="Optogenetic Configuration", command=show_opto_power_config_dialog, state="disabled")
 
 if __name__ == "__main__":
     selected_files = []

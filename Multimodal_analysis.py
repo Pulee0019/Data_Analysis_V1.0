@@ -319,40 +319,125 @@ def group_optogenetic_sessions(events):
     
     return sessions
 
-def identify_drug_events(fiber_events):
+def identify_drug_sessions(fiber_events):
     """
-    Identify drug administration events from fiber data
-    """ 
+    Identify multiple drug administration sessions from fiber data
+    Returns list of dict with {time, event_name}
+    """
     config_path = os.path.join(os.path.dirname(__file__), 'event_config.json')
     with open(config_path, 'r', encoding='utf-8') as f:
         event_config = json.load(f)
-        
-    drug_event_name = event_config.get('drug_event', 'Event1')
+    
+    drug_event_names = event_config.get('drug_event', 'Event1')
+    # Support multiple drug events separated by comma
+    if isinstance(drug_event_names, str):
+        drug_event_names = [name.strip() for name in drug_event_names.split(',')]
+    elif not isinstance(drug_event_names, list):
+        drug_event_names = [str(drug_event_names)]
+    
     running_start_name = event_config.get('running_start', 'Input2')
-    events = []
-
-    # Find drug events using configured name  
-    drug_start_mask = (fiber_events['Name'] == drug_event_name) & (fiber_events['State'] == 0)
-    drug_end_mask = (fiber_events['Name'] == drug_event_name) & (fiber_events['State'] == 1)
+    
+    drug_sessions = []
     
     running_start_time = fiber_events.loc[
-        (fiber_events['Name'] == running_start_name) & (fiber_events['State'] == 0),
+        (fiber_events['Name'] == running_start_name) & (fiber_events['State'] == 0), 
         'TimeStamp'
     ].values
-
-    # Extract start events
-    start_times = (fiber_events.loc[drug_start_mask, 'TimeStamp'].values - running_start_time) / 1000
-    for time in start_times:
-        events.append((float(time), 'start'))
     
-    # Extract end events
-    end_times = (fiber_events.loc[drug_end_mask, 'TimeStamp'].values - running_start_time) / 1000
-    for time in end_times:
-        events.append((float(time), 'end'))
+    if len(running_start_time) == 0:
+        return drug_sessions
+    
+    running_start_time = running_start_time[0]
+    
+    # Find all drug events with their event names
+    for drug_event_name in drug_event_names:
+        drug_start_mask = (fiber_events['Name'] == drug_event_name) & (fiber_events['State'] == 0)
+        start_times = (fiber_events.loc[drug_start_mask, 'TimeStamp'].values - running_start_time) / 1000
+        
+        for time in start_times:
+            drug_sessions.append({
+                'time': float(time),
+                'event_name': drug_event_name
+            })
     
     # Sort by time
-    events.sort(key=lambda x: x[0])
-    return events
+    drug_sessions.sort(key=lambda x: x['time'])
+    return drug_sessions
+
+def get_drug_session_info(animal_id):
+    """
+    Get drug session information for an animal from config
+    Returns list of {'session_id', 'drug_name', 'event_name'}
+    """
+    # Load drug name config
+    config_path = os.path.join(os.path.dirname(__file__), 'drug_name_config.json')
+    if os.path.exists(config_path):
+        with open(config_path, 'r') as f:
+            drug_name_config = json.load(f)
+    else:
+        drug_name_config = {}
+    
+    session_info = []
+    session_idx = 1
+    
+    # Find all sessions for this animal
+    while True:
+        session_id = f"{animal_id}_Session{session_idx}"
+        if session_id in drug_name_config:
+            session_info.append({
+                'session_id': session_id,
+                'drug_name': drug_name_config[session_id]
+            })
+            session_idx += 1
+        else:
+            break
+    
+    return session_info
+
+def classify_events_by_drug_sessions(events, drug_sessions, drug_name_config, animal_id):
+    """
+    Classify events based on drug sessions
+    Returns dict with keys: 'baseline', '{drug_name1}', '{drug_name2} after {drug_name1}', etc.
+    """
+    if not drug_sessions:
+        return {'baseline': events}
+    
+    classified = {}
+    
+    # Get drug names for sessions
+    drug_names = []
+    for idx, session in enumerate(drug_sessions):
+        session_id = f"{animal_id}_Session{idx+1}"
+        drug_name = drug_name_config.get(session_id, 'Drug')
+        drug_names.append(drug_name)
+    
+    # Classify events
+    for event in events:
+        # Find which period this event belongs to
+        event_time = event if isinstance(event, (int, float)) else event[0]
+        
+        classified_key = None
+        
+        # Check if before first drug
+        if event_time < drug_sessions[0]['time']:
+            classified_key = 'baseline'
+        else:
+            # Find the period
+            for idx in range(len(drug_sessions) - 1, -1, -1):
+                if event_time >= drug_sessions[idx]['time']:
+                    if idx == 0:
+                        classified_key = drug_names[0]
+                    else:
+                        # Build compound name
+                        classified_key = f"{drug_names[idx]} after {' + '.join(drug_names[:idx])}"
+                    break
+        
+        if classified_key:
+            if classified_key not in classified:
+                classified[classified_key] = []
+            classified[classified_key].append(event)
+    
+    return classified
 
 def calculate_optogenetic_pulse_info(session_events, animal_id):
     """

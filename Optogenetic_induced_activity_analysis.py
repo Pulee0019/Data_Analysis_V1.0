@@ -17,7 +17,7 @@ from Multimodal_analysis import (
     export_statistics,
     create_table_window, initialize_table, create_control_panel,
     identify_optogenetic_events, calculate_optogenetic_pulse_info,
-    identify_drug_events, group_optogenetic_sessions
+    identify_drug_sessions, group_optogenetic_sessions
 )
 
 # Colors for different days
@@ -57,10 +57,10 @@ def show_optogenetic_induced_analysis(root, multi_animal_data, analysis_mode="op
         
         # Identify drug events if in drug mode
         if analysis_mode == "optogenetics+drug":
-            drug_events = identify_drug_events(events_data)
-            if drug_events:
-                all_drug_events[animal_id] = drug_events
-                log_message(f"Found {len(drug_events)} drug events for {animal_id}")
+            drug_sessions = identify_drug_sessions(events_data)
+            if drug_sessions:
+                all_drug_events[animal_id] = drug_sessions
+                log_message(f"Found {len(drug_sessions)} drug sessions for {animal_id}")
     
     if not all_optogenetic_events:
         log_message("No optogenetic events found in any animal", "ERROR")
@@ -128,7 +128,7 @@ def create_parameter_panel(parent):
     start_frame.pack(fill=tk.X, pady=5)
     tk.Label(start_frame, text="Start:", bg="#f8f8f8", 
             font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
-    start_time_var = tk.StringVar(value="-5")
+    start_time_var = tk.StringVar(value="-30")
     tk.Entry(start_frame, textvariable=start_time_var, width=8, 
             font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
     
@@ -136,7 +136,7 @@ def create_parameter_panel(parent):
     end_frame.pack(fill=tk.X, pady=5)
     tk.Label(end_frame, text="End:", bg="#f8f8f8", 
             font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
-    end_time_var = tk.StringVar(value="10")
+    end_time_var = tk.StringVar(value="60")
     tk.Entry(end_frame, textvariable=end_time_var, width=8, 
             font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
     
@@ -152,7 +152,7 @@ def create_parameter_panel(parent):
     baseline_start_frame.pack(fill=tk.X, pady=5)
     tk.Label(baseline_start_frame, text="Start:", bg="#f8f8f8", 
             font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
-    baseline_start_var = tk.StringVar(value="-2")
+    baseline_start_var = tk.StringVar(value="-30")
     tk.Entry(baseline_start_frame, textvariable=baseline_start_var, width=8, 
             font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
     
@@ -469,7 +469,7 @@ class TableManager:
                                         
                                         # Classify as pre/post drug if in drug mode
                                         if self.analysis_mode == "optogenetics+drug":
-                                            drug_time_category = self._classify_session_drug_timing(
+                                            drug_time_category = self._classify_session_drug_timing_multi(
                                                 animal_id, session, animal_data
                                             )
                                             session_info['drug_timing'] = drug_time_category
@@ -487,36 +487,59 @@ class TableManager:
         
         run_optogenetic_induced_analysis(row_data, params, self.analysis_mode)
 
-    def _classify_session_drug_timing(self, animal_id, session, animal_data):
+    def _classify_session_drug_timing_multi(self, animal_id, session, animal_data):
         """
-        Classify optogenetic session as 'pre_drug' or 'post_drug'
-        based on drug administration timing
+        Classify optogenetic session based on multiple drug administration times
+        Returns: 'baseline', '{drug_nameA}', '{drug_nameB} after {drug_nameA}', etc.
         """
         if animal_id not in self.all_drug_events:
-            return 'no_drug'
+            return 'baseline'
         
-        drug_events = self.all_drug_events[animal_id]
+        drug_sessions = self.all_drug_events[animal_id]
         
-        # Get drug administration time (first start event)
-        drug_time = None
-        for time, event_type in drug_events:
-            if event_type == 'start':
-                drug_time = time
-                break
+        if not drug_sessions:
+            return 'baseline'
         
-        if drug_time is None:
-            return 'no_drug'
+        # Load drug name config
+        config_path = os.path.join(os.path.dirname(__file__), 'drug_name_config.json')
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                drug_name_config = json.load(f)
+        else:
+            drug_name_config = {}
+        
+        # Get drug names and times
+        drug_info = []
+        for idx, session_info in enumerate(drug_sessions):
+            session_id = f"{animal_id}_Session{idx+1}"
+            drug_name = drug_name_config.get(session_id, f"Drug{idx+1}")
+            drug_time = session_info['time']
+            drug_info.append({'name': drug_name, 'time': drug_time, 'idx': idx})
+        
+        # Sort by time
+        drug_info.sort(key=lambda x: x['time'])
         
         # Get optogenetic session time window
         session_start = min([time for time, _ in session])
         session_end = max([time for time, _ in session])
         session_mid = (session_start + session_end) / 2
         
-        # Classify based on session midpoint relative to drug time
-        if session_mid < drug_time:
-            return 'pre_drug'
-        else:
-            return 'post_drug'
+        # Classify based on session midpoint relative to drug times
+        if session_mid < drug_info[0]['time']:
+            return 'baseline'
+        
+        # Find which drug period this session belongs to
+        for i in range(len(drug_info) - 1, -1, -1):
+            if session_mid >= drug_info[i]['time']:
+                if i == 0:
+                    # After first drug only
+                    return drug_info[0]['name']
+                else:
+                    # After multiple drugs
+                    previous_drugs = ' + '.join([d['name'] for d in drug_info[:i]])
+                    return f"{drug_info[i]['name']} after {previous_drugs}"
+        
+        return 'baseline'
 
 def run_optogenetic_induced_analysis(row_data, params, analysis_mode="optogenetics"):
     """Run optogenetic-induced analysis for multiple parameters"""
@@ -527,35 +550,39 @@ def run_optogenetic_induced_analysis(row_data, params, analysis_mode="optogeneti
     
     # Handle drug mode differently
     if analysis_mode == "optogenetics+drug":
+        # Collect all unique drug timing categories
+        all_drug_timings = set()
+        for row_name, sessions in row_data.items():
+            for session in sessions:
+                drug_timing = session.get('drug_timing', 'baseline')
+                all_drug_timings.add(drug_timing)
+        
+        log_message(f"Found drug timing categories: {sorted(all_drug_timings)}")
+        
         # Separate sessions by drug timing
         for row_name, sessions in row_data.items():
             log_message(f"Analyzing {row_name} with {len(sessions)} session(s)...")
             
-            # Split sessions by drug timing
-            pre_drug_sessions = [s for s in sessions if s.get('drug_timing') == 'pre_drug']
-            post_drug_sessions = [s for s in sessions if s.get('drug_timing') == 'post_drug']
+            # Group sessions by drug timing
+            timing_groups = {}
+            for session in sessions:
+                timing = session.get('drug_timing', 'baseline')
+                if timing not in timing_groups:
+                    timing_groups[timing] = []
+                timing_groups[timing].append(session)
             
-            log_message(f"Pre-drug: {len(pre_drug_sessions)}, Post-drug: {len(post_drug_sessions)}")
+            log_message(f"Drug timing distribution: {[(k, len(v)) for k, v in timing_groups.items()]}")
             
             row_results = {}
             
-            if pre_drug_sessions:
-                pre_result, pre_stats = analyze_param_optogenetic(
-                    f"{row_name}_PreDrug", pre_drug_sessions, params
+            for timing_name, timing_sessions in timing_groups.items():
+                timing_result, timing_stats = analyze_param_optogenetic(
+                    f"{row_name}_{timing_name}", timing_sessions, params
                 )
-                if pre_result:
-                    row_results['pre_drug'] = pre_result
-                if pre_stats:
-                    all_statistics.extend(pre_stats)
-            
-            if post_drug_sessions:
-                post_result, post_stats = analyze_param_optogenetic(
-                    f"{row_name}_PostDrug", post_drug_sessions, params
-                )
-                if post_result:
-                    row_results['post_drug'] = post_result
-                if post_stats:
-                    all_statistics.extend(post_stats)
+                if timing_result:
+                    row_results[timing_name] = timing_result
+                if timing_stats:
+                    all_statistics.extend(timing_stats)
             
             if row_results:
                 results[row_name] = row_results
@@ -776,11 +803,11 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
         ax_dff = fig.add_subplot(2, num_cols, plot_idx)
         
         if analysis_mode == "optogenetics+drug":
-            # Plot pre-drug and post-drug separately
+            # Plot all drug timing categories with different styles
             color_idx = 0
             for param_name, param_data in results.items():
-                if 'pre_drug' in param_data:
-                    data = param_data['pre_drug']
+                for timing_name in sorted(param_data.keys()):
+                    data = param_data[timing_name]
                     episodes = data['dff'].get(wavelength, [])
                     if episodes:
                         episodes_array = np.array(episodes)
@@ -788,26 +815,22 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                         sem_response = np.nanstd(episodes_array, axis=0) / np.sqrt(len(episodes))
                         
                         day_color = DAY_COLORS[color_idx % len(DAY_COLORS)]
-                        ax_dff.plot(time_array, mean_response, color=day_color, 
-                                   linewidth=2, linestyle='-', label=f'{param_name} Pre', alpha=0.5)
-                        ax_dff.fill_between(time_array, mean_response - sem_response, 
-                                           mean_response + sem_response, color=day_color, alpha=0.2)
-                
-                if 'post_drug' in param_data:
-                    data = param_data['post_drug']
-                    episodes = data['dff'].get(wavelength, [])
-                    if episodes:
-                        episodes_array = np.array(episodes)
-                        mean_response = np.nanmean(episodes_array, axis=0)
-                        sem_response = np.nanstd(episodes_array, axis=0) / np.sqrt(len(episodes))
                         
-                        day_color = DAY_COLORS[color_idx % len(DAY_COLORS)]
+                        # Use different alpha for different timing
+                        if timing_name == 'baseline':
+                            alpha = 0.2
+                            linestyle = '-'
+                        else:
+                            alpha = 0.2 + (0.2 * (sorted(param_data.keys()).index(timing_name)))
+                            linestyle = '-'
+                        
                         ax_dff.plot(time_array, mean_response, color=day_color, 
-                                   linewidth=2, linestyle='-', label=f'{param_name} Post', alpha=1)
+                                   linewidth=2, linestyle=linestyle, 
+                                   label=f'{param_name} {timing_name}', alpha=alpha)
                         ax_dff.fill_between(time_array, mean_response - sem_response, 
-                                           mean_response + sem_response, color=day_color, alpha=0.5)
-                
-                color_idx += 1
+                                           mean_response + sem_response, color=day_color, alpha=alpha*0.3)
+                    
+                    color_idx += 1
         else:
             # optogenetics-only mode
             for idx, (param_name, param_data) in enumerate(results.items()):
@@ -828,18 +851,18 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
         ax_dff.set_xlabel('Time (s)')
         ax_dff.set_ylabel('ΔF/F')
         ax_dff.set_title(f'Fiber ΔF/F {wavelength}nm - All Parameters')
-        ax_dff.legend(fontsize=7)
+        ax_dff.legend(fontsize=6, ncol=2)
         ax_dff.grid(False)
         plot_idx += 1
         
-        # Z-score trace
+        # Z-score trace (similar structure)
         ax_zscore = fig.add_subplot(2, num_cols, plot_idx)
         
         if analysis_mode == "optogenetics+drug":
             color_idx = 0
             for param_name, param_data in results.items():
-                if 'pre_drug' in param_data:
-                    data = param_data['pre_drug']
+                for timing_name in sorted(param_data.keys()):
+                    data = param_data[timing_name]
                     episodes = data['zscore'].get(wavelength, [])
                     if episodes:
                         episodes_array = np.array(episodes)
@@ -847,26 +870,21 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                         sem_response = np.nanstd(episodes_array, axis=0) / np.sqrt(len(episodes))
                         
                         day_color = DAY_COLORS[color_idx % len(DAY_COLORS)]
-                        ax_zscore.plot(time_array, mean_response, color=day_color, 
-                                      linewidth=2, linestyle='-', label=f'{param_name} Pre', alpha=0.5)
-                        ax_zscore.fill_between(time_array, mean_response - sem_response, 
-                                              mean_response + sem_response, color=day_color, alpha=0.2)
-                
-                if 'post_drug' in param_data:
-                    data = param_data['post_drug']
-                    episodes = data['zscore'].get(wavelength, [])
-                    if episodes:
-                        episodes_array = np.array(episodes)
-                        mean_response = np.nanmean(episodes_array, axis=0)
-                        sem_response = np.nanstd(episodes_array, axis=0) / np.sqrt(len(episodes))
                         
-                        day_color = DAY_COLORS[color_idx % len(DAY_COLORS)]
+                        if timing_name == 'baseline':
+                            alpha = 0.2
+                            linestyle = '-'
+                        else:
+                            alpha = 0.2 + (0.2 * (sorted(param_data.keys()).index(timing_name)))
+                            linestyle = '-'
+                        
                         ax_zscore.plot(time_array, mean_response, color=day_color, 
-                                      linewidth=2, linestyle='-', label=f'{param_name} Post', alpha=1)
+                                      linewidth=2, linestyle=linestyle, 
+                                      label=f'{param_name} {timing_name}', alpha=alpha)
                         ax_zscore.fill_between(time_array, mean_response - sem_response, 
-                                              mean_response + sem_response, color=day_color, alpha=0.5)
-                
-                color_idx += 1
+                                              mean_response + sem_response, color=day_color, alpha=alpha*0.3)
+                    
+                    color_idx += 1
         else:
             for idx, (param_name, param_data) in enumerate(results.items()):
                 data = param_data.get('optogenetics', {})
@@ -886,32 +904,29 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
         ax_zscore.set_xlabel('Time (s)')
         ax_zscore.set_ylabel('Z-score')
         ax_zscore.set_title(f'Fiber Z-score {wavelength}nm - All Parameters')
-        ax_zscore.legend(fontsize=7)
+        ax_zscore.legend(fontsize=6, ncol=2)
         ax_zscore.grid(False)
         plot_idx += 1
     
-    # Row 2: Heatmaps (combine pre and post drug)
+    # Row 2: Heatmaps (combine all timing categories)
     for wl_idx, wavelength in enumerate(target_wavelengths):
         # dFF heatmap
         ax_dff_heat = fig.add_subplot(2, num_cols, plot_idx)
         all_episodes = []
-        episodes_counts = []
         
         if analysis_mode == "optogenetics+drug":
             for param_data in results.values():
-                for timing_key in ['pre_drug', 'post_drug']:
-                    if timing_key in param_data:
-                        data = param_data[timing_key]
-                        episodes = data['dff'].get(wavelength, [])
-                        if episodes:
-                            all_episodes.extend(episodes)
+                for timing_key in sorted(param_data.keys()):
+                    data = param_data[timing_key]
+                    episodes = data['dff'].get(wavelength, [])
+                    if episodes:
+                        all_episodes.extend(episodes)
         else:
             for param_data in results.values():
                 data = param_data.get('optogenetics', {})
                 episodes = data.get('dff', {}).get(wavelength, [])
                 if episodes:
                     all_episodes.extend(episodes)
-                    episodes_counts.append(len(episodes))
         
         if all_episodes:
             episodes_array = np.array(all_episodes)
@@ -927,12 +942,6 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                                     cmap='coolwarm', origin='lower')
                 if len(episodes_array) <= 10:
                     ax_dff_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
-            
-            if analysis_mode == "optogenetics":
-                y_pos = 0
-                for count in episodes_counts[:-1]:
-                    y_pos += count
-                    ax_dff_heat.axhline(y=y_pos, color='k', linestyle='--', linewidth=1)    
 
             ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
             ax_dff_heat.set_xlabel('Time (s)')
@@ -941,26 +950,23 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
             plt.colorbar(im, ax=ax_dff_heat, label='ΔF/F', orientation='horizontal')
         plot_idx += 1
         
-        # Z-score heatmap
+        # Z-score heatmap (similar structure)
         ax_zscore_heat = fig.add_subplot(2, num_cols, plot_idx)
         all_episodes = []
         
         if analysis_mode == "optogenetics+drug":
             for param_data in results.values():
-                for timing_key in ['pre_drug', 'post_drug']:
-                    if timing_key in param_data:
-                        data = param_data[timing_key]
-                        episodes = data['zscore'].get(wavelength, [])
-                        if episodes:
-                            all_episodes.extend(episodes)
+                for timing_key in sorted(param_data.keys()):
+                    data = param_data[timing_key]
+                    episodes = data['zscore'].get(wavelength, [])
+                    if episodes:
+                        all_episodes.extend(episodes)
         else:
-            episodes_counts = []
             for param_data in results.values():
                 data = param_data.get('optogenetics', {})
                 episodes = data.get('zscore', {}).get(wavelength, [])
                 if episodes:
                     all_episodes.extend(episodes)
-                    episodes_counts.append(len(episodes))
         
         if all_episodes:
             episodes_array = np.array(all_episodes)
@@ -976,11 +982,6 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                                         cmap='coolwarm', origin='lower')
                 if len(episodes_array) <= 10:
                     ax_zscore_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
-            if analysis_mode == "optogenetics":
-                y_pos = 0
-                for count in episodes_counts[:-1]:
-                    y_pos += count
-                    ax_zscore_heat.axhline(y=y_pos, color='k', linestyle='--', linewidth=1)
 
             ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
             ax_zscore_heat.set_xlabel('Time (s)')
@@ -1061,39 +1062,37 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
         ax_dff = fig.add_subplot(2, num_cols, plot_idx)
         
         if analysis_mode == "optogenetics+drug":
-            # Plot pre-drug (dashed line) and post-drug (solid line) overlaid
-            if 'pre_drug' in param_data:
-                data = param_data['pre_drug']
-                episodes = data['dff'].get(wavelength, [])
-                if episodes:
-                    episodes_array = np.array(episodes)
-                    mean_response = np.nanmean(episodes_array, axis=0)
-                    sem_response = np.nanstd(episodes_array, axis=0) / np.sqrt(episodes_array.shape[0])
-                    
-                    ax_dff.plot(time_array, mean_response, color=color, linewidth=2, 
-                               linestyle='-', label='Pre-Drug')
-                    ax_dff.fill_between(time_array, mean_response - sem_response,
-                                      mean_response + sem_response, color=color, alpha=0.3)
+            # Get all drug timing categories
+            drug_timings = sorted(param_data.keys())
             
-            if 'post_drug' in param_data:
-                data = param_data['post_drug']
+            for timing_idx, timing_name in enumerate(drug_timings):
+                data = param_data[timing_name]
                 episodes = data['dff'].get(wavelength, [])
+                
                 if episodes:
                     episodes_array = np.array(episodes)
                     mean_response = np.nanmean(episodes_array, axis=0)
                     sem_response = np.nanstd(episodes_array, axis=0) / np.sqrt(episodes_array.shape[0])
                     
+                    # Different styles for different timings
+                    if timing_name == 'baseline':
+                        alpha = 0.2
+                        linestyle = '-'
+                    else:
+                        alpha = 0.2 + (0.2 * timing_idx / len(drug_timings))
+                        linestyle = '-'
+                    
                     ax_dff.plot(time_array, mean_response, color=color, linewidth=2, 
-                               linestyle='-', label='Post-Drug', alpha=1)
+                               linestyle=linestyle, label=timing_name, alpha=alpha)
                     ax_dff.fill_between(time_array, mean_response - sem_response,
-                                      mean_response + sem_response, color=color, alpha=0.5)
+                                      mean_response + sem_response, color=color, alpha=alpha*0.5)
             
             ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Opto Stim')
             ax_dff.set_xlim(time_array[0], time_array[-1])
             ax_dff.set_xlabel('Time (s)')
             ax_dff.set_ylabel('ΔF/F')
-            ax_dff.set_title(f'{param_name} - Fiber ΔF/F {wavelength}nm (Pre vs Post Drug)')
-            ax_dff.legend()
+            ax_dff.set_title(f'{param_name} - Fiber ΔF/F {wavelength}nm (Multi-Drug)')
+            ax_dff.legend(fontsize=8)
             ax_dff.grid(False)
         else:
             # Original optogenetics-only mode
@@ -1126,38 +1125,35 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
         ax_zscore = fig.add_subplot(2, num_cols, plot_idx)
         
         if analysis_mode == "optogenetics+drug":
-            if 'pre_drug' in param_data:
-                data = param_data['pre_drug']
-                episodes = data['zscore'].get(wavelength, [])
-                if episodes:
-                    episodes_array = np.array(episodes)
-                    mean_response = np.nanmean(episodes_array, axis=0)
-                    sem_response = np.nanstd(episodes_array, axis=0) / np.sqrt(episodes_array.shape[0])
-                    
-                    ax_zscore.plot(time_array, mean_response, color=color, linewidth=2, 
-                                  linestyle='-', label='Pre-Drug', alpha=0.5)
-                    ax_zscore.fill_between(time_array, mean_response - sem_response,
-                                         mean_response + sem_response, color=color, alpha=0.3)
+            drug_timings = sorted(param_data.keys())
             
-            if 'post_drug' in param_data:
-                data = param_data['post_drug']
+            for timing_idx, timing_name in enumerate(drug_timings):
+                data = param_data[timing_name]
                 episodes = data['zscore'].get(wavelength, [])
+                
                 if episodes:
                     episodes_array = np.array(episodes)
                     mean_response = np.nanmean(episodes_array, axis=0)
                     sem_response = np.nanstd(episodes_array, axis=0) / np.sqrt(episodes_array.shape[0])
                     
+                    if timing_name == 'baseline':
+                        alpha = 0.2
+                        linestyle = '-'
+                    else:
+                        alpha = 0.2 + (0.2 * timing_idx / len(drug_timings))
+                        linestyle = '-'
+                    
                     ax_zscore.plot(time_array, mean_response, color=color, linewidth=2, 
-                                  linestyle='-', label='Post-Drug', alpha=1)
+                                  linestyle=linestyle, label=timing_name, alpha=alpha)
                     ax_zscore.fill_between(time_array, mean_response - sem_response,
-                                         mean_response + sem_response, color=color, alpha=0.5)
+                                         mean_response + sem_response, color=color, alpha=alpha*0.5)
             
             ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Opto Stim')
             ax_zscore.set_xlim(time_array[0], time_array[-1])
             ax_zscore.set_xlabel('Time (s)')
             ax_zscore.set_ylabel('Z-score')
-            ax_zscore.set_title(f'{param_name} - Fiber Z-score {wavelength}nm (Pre vs Post Drug)')
-            ax_zscore.legend()
+            ax_zscore.set_title(f'{param_name} - Fiber Z-score {wavelength}nm (Multi-Drug)')
+            ax_zscore.legend(fontsize=8)
             ax_zscore.grid(False)
         else:
             data = param_data.get('optogenetics', {})
@@ -1191,19 +1187,22 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
         ax_dff_heat = fig.add_subplot(2, num_cols, plot_idx)
         
         if analysis_mode == "optogenetics+drug":
-            # Combine pre and post drug episodes
+            # Combine all drug timing episodes
             all_episodes = []
-            for timing_key in ['pre_drug', 'post_drug']:
-                if timing_key in param_data:
-                    data = param_data[timing_key]
-                    episodes = data['dff'].get(wavelength, [])
-                    if timing_key == 'pre_drug':
-                        n_pre = len(episodes)
-                    if episodes:
-                        all_episodes.extend(episodes)
+            category_boundaries = []
+            drug_timings = sorted(param_data.keys())
+            
+            for timing_name in drug_timings:
+                data = param_data[timing_name]
+                episodes = data['dff'].get(wavelength, [])
+                if episodes:
+                    all_episodes.extend(episodes)
+                    if all_episodes:
+                        category_boundaries.append(len(all_episodes))
         else:
             data = param_data.get('optogenetics', {})
             all_episodes = data.get('dff', {}).get(wavelength, [])
+            category_boundaries = []
         
         if all_episodes:
             episodes_array = np.array(all_episodes)
@@ -1222,8 +1221,11 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
                     ax_dff_heat.set_yticks(np.arange(0, len(all_episodes)+1, 1))
                 ax_dff_heat.set_ylabel('Trials')
             
-            if analysis_mode == "optogenetics+drug":
-                ax_dff_heat.axhline(y=n_pre, color="#000000", linestyle='--', alpha=0.8)
+            # Draw category boundaries for multi-drug
+            if analysis_mode == "optogenetics+drug" and category_boundaries:
+                for boundary in category_boundaries[:-1]:
+                    ax_dff_heat.axhline(y=boundary, color="#000000", linestyle='--', alpha=0.5, linewidth=1)
+            
             ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
             ax_dff_heat.set_xlabel('Time (s)')
             ax_dff_heat.set_title(f'{param_name} - Fiber ΔF/F Heatmap {wavelength}nm')
@@ -1249,17 +1251,20 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
         
         if analysis_mode == "optogenetics+drug":
             all_episodes = []
-            for timing_key in ['pre_drug', 'post_drug']:
-                if timing_key in param_data:
-                    data = param_data[timing_key]
-                    episodes = data['zscore'].get(wavelength, [])
-                    if timing_key == 'pre_drug':
-                        n_pre = len(episodes)
-                    if episodes:
-                        all_episodes.extend(episodes)
+            category_boundaries = []
+            drug_timings = sorted(param_data.keys())
+            
+            for timing_name in drug_timings:
+                data = param_data[timing_name]
+                episodes = data['zscore'].get(wavelength, [])
+                if episodes:
+                    all_episodes.extend(episodes)
+                    if all_episodes:
+                        category_boundaries.append(len(all_episodes))
         else:
             data = param_data.get('optogenetics', {})
             all_episodes = data.get('zscore', {}).get(wavelength, [])
+            category_boundaries = []
         
         if all_episodes:
             episodes_array = np.array(all_episodes)
@@ -1279,8 +1284,11 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
                     ax_zscore_heat.set_yticks(np.arange(0, len(all_episodes)+1, 1))
                 ax_zscore_heat.set_ylabel('Trials')
             
-            if analysis_mode == "optogenetics+drug":
-                ax_zscore_heat.axhline(y=n_pre, color="#000000", linestyle='--', alpha=0.8)
+            # Draw category boundaries
+            if analysis_mode == "optogenetics+drug" and category_boundaries:
+                for boundary in category_boundaries[:-1]:
+                    ax_zscore_heat.axhline(y=boundary, color="#000000", linestyle='--', alpha=0.5, linewidth=1)
+            
             ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
             ax_zscore_heat.set_xlabel('Time (s)')
             ax_zscore_heat.set_title(f'{param_name} - Fiber Z-score Heatmap {wavelength}nm')

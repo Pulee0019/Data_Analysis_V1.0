@@ -14,7 +14,7 @@ from matplotlib import colors
 
 from logger import log_message
 from Multimodal_analysis import (
-    export_statistics,
+    export_statistics, identify_drug_sessions,
     create_table_window, initialize_table, create_control_panel
 )
 
@@ -82,7 +82,7 @@ def create_parameter_panel(parent):
     start_frame.pack(fill=tk.X, pady=5)
     tk.Label(start_frame, text="Start:", bg="#f8f8f8", 
             font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
-    start_time_var = tk.StringVar(value="-10")
+    start_time_var = tk.StringVar(value="-1000")
     tk.Entry(start_frame, textvariable=start_time_var, width=8, 
             font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
     
@@ -90,7 +90,7 @@ def create_parameter_panel(parent):
     end_frame.pack(fill=tk.X, pady=5)
     tk.Label(end_frame, text="End:", bg="#f8f8f8", 
             font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
-    end_time_var = tk.StringVar(value="20")
+    end_time_var = tk.StringVar(value="2000")
     tk.Entry(end_frame, textvariable=end_time_var, width=8, 
             font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
     
@@ -106,7 +106,7 @@ def create_parameter_panel(parent):
     baseline_start_frame.pack(fill=tk.X, pady=5)
     tk.Label(baseline_start_frame, text="Start:", bg="#f8f8f8", 
             font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
-    baseline_start_var = tk.StringVar(value="-2")
+    baseline_start_var = tk.StringVar(value="-1000")
     tk.Entry(baseline_start_frame, textvariable=baseline_start_var, width=8, 
             font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
     
@@ -308,23 +308,60 @@ class TableManager:
         entry.bind("<Return>", lambda e: save_name())
     
     def show_animal_selector(self, event, row, col):
-        """Show animal selection menu"""
+        """Show animal-session selection menu with drug names"""
         col_header = self.col_headers.get(col, f"Column{col+1}")
         is_custom_header = not col_header.startswith("Column")
         
-        available_animals = []
+        available_sessions = []
+        
+        # Load drug name config
+        config_path = os.path.join(os.path.dirname(__file__), 'drug_name_config.json')
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                drug_name_config = json.load(f)
+        else:
+            drug_name_config = {}
+        
         for animal_data in self.multi_animal_data:
             animal_id = animal_data.get('animal_single_channel_id', '')
             
-            if is_custom_header:
-                ear_tag = animal_id.split('-')[-1] if '-' in animal_id else ''
-                if ear_tag == col_header and animal_id not in self.used_animals:
-                    available_animals.append(animal_id)
-            else:
-                if animal_id not in self.used_animals:
-                    available_animals.append(animal_id)
+            # Get drug sessions for this animal
+            if 'fiber_events' not in animal_data:
+                continue
+            
+            drug_sessions = identify_drug_sessions(animal_data['fiber_events'])
+            
+            if not drug_sessions:
+                continue
+            
+            for session_idx, session_info in enumerate(drug_sessions):
+                # Create session ID
+                session_id = f"{animal_id}_Session{session_idx+1}"
+                
+                # Get drug name from config
+                drug_name = drug_name_config.get(session_id, "Drug")
+                
+                # Create display ID with drug name - MODIFIED FORMAT
+                display_id = f"{animal_id}_Session{session_idx+1}_{drug_name}"
+                
+                # Check if matches column header filter
+                if is_custom_header:
+                    ear_tag = animal_id.split('-')[-1] if '-' in animal_id else ''
+                    if ear_tag != col_header:
+                        continue
+                
+                # Check if not already used
+                if display_id not in self.used_animals:
+                    available_sessions.append({
+                        'display_id': display_id,
+                        'animal_id': animal_id,
+                        'session_idx': session_idx,
+                        'drug_name': drug_name,
+                        'time': session_info['time'],
+                        'event_name': session_info['event_name']
+                    })
         
-        if not available_animals:
+        if not available_sessions:
             return
         
         menu = tk.Menu(self.root, tearoff=0)
@@ -333,17 +370,21 @@ class TableManager:
             menu.add_command(label="Clear", command=lambda: self.clear_cell(row, col))
             menu.add_separator()
         
-        for animal_id in available_animals:
-            menu.add_command(label=animal_id,
-                           command=lambda aid=animal_id: self.select_animal(row, col, aid))
+        for session in available_sessions:
+            label = f"{session['display_id']} ({session['event_name']}, {session['time']:.1f}s)"
+            menu.add_command(
+                label=label,
+                command=lambda s=session: self.select_session(row, col, s)
+            )
         
         menu.post(event.x_root, event.y_root)
     
-    def select_animal(self, row, col, animal_id):
+    def select_session(self, row, col, session):
         if (row, col) in self.table_data:
             self.used_animals.discard(self.table_data[(row, col)])
-        self.table_data[(row, col)] = animal_id
-        self.used_animals.add(animal_id)
+        display_id = session['display_id']
+        self.table_data[(row, col)] = display_id
+        self.used_animals.add(display_id)
         self.rebuild_table()
     
     def clear_cell(self, row, col):
@@ -362,10 +403,33 @@ class TableManager:
             
             for j in range(self.num_cols):
                 if (i, j) in self.table_data:
-                    animal_id = self.table_data[(i, j)]
+                    display_id = self.table_data[(i, j)]
+                    
+                    # Parse display_id to get animal_id and drug_name
+                    # Format: {animal_id}_Session{N}_{drug_name}
+                    parts = display_id.rsplit('_', 1)
+                    if len(parts) == 2:
+                        session_part = parts[0]  # animal_id_SessionN
+                        drug_name = parts[1]
+                    else:
+                        session_part = display_id
+                        drug_name = "Drug"
+                    
+                    # Extract animal_id from session_part
+                    session_parts = session_part.split('_Session')
+                    if len(session_parts) == 2:
+                        animal_id = session_parts[0]
+                        session_idx = int(session_parts[1]) - 1
+                    else:
+                        continue
+                    
                     for animal_data in self.multi_animal_data:
                         if animal_data.get('animal_single_channel_id') == animal_id:
-                            day_animals.append(animal_data)
+                            # Add drug info to animal_data
+                            animal_data_with_drug = animal_data.copy()
+                            animal_data_with_drug['selected_session_idx'] = session_idx
+                            animal_data_with_drug['selected_drug_name'] = drug_name
+                            day_animals.append(animal_data_with_drug)
                             break
             
             if day_animals:
@@ -429,6 +493,8 @@ def analyze_day_drug_induced(day_name, animals, params):
     for animal_data in animals:
         try:
             animal_id = animal_data.get('animal_single_channel_id', 'Unknown')
+            session_idx = animal_data.get('selected_session_idx', 0)
+            drug_name = animal_data.get('selected_drug_name', 'Drug')
 
             fiber_data = animal_data.get('fiber_data_trimmed')
             if fiber_data is None or fiber_data.empty:
@@ -441,20 +507,15 @@ def analyze_day_drug_induced(day_name, animals, params):
                 log_message(f"Events column not found for {animal_id}", "WARNING")
                 continue
             
-            config_path = os.path.join(os.path.dirname(__file__), 'event_config.json')
-            with open(config_path, 'r', encoding='utf-8') as f:
-                event_config = json.load(f)
-
-            # Find Drug events
-            drug_event_name = event_config.get('drug_event', 'Event1')
-            drug_events = fiber_data[fiber_data[events_col].str.contains(drug_event_name, na=False)]
+            # Get drug sessions
+            drug_sessions = identify_drug_sessions(animal_data['fiber_events'])
             
-            if len(drug_events) == 0:
-                log_message(f"No drug events found for {animal_id}", "WARNING")
+            if session_idx >= len(drug_sessions):
+                log_message(f"Session {session_idx} not found for {animal_id}", "WARNING")
                 continue
             
             time_col = channels['time']
-            drug_start_time = drug_events[time_col].iloc[0]
+            drug_start_time = drug_sessions[session_idx]['time']
             
             preprocessed_data = animal_data.get('preprocessed_data')
             if preprocessed_data is None:
@@ -516,11 +577,12 @@ def analyze_day_drug_induced(day_name, animals, params):
                                         
                                         statistics_rows.append({
                                             'day': day_name,
-                                            'animal_single_channel_id': animal_id,
+                                            'animal_single_channel_id': f"{animal_id}_Session{session_idx+1}_{drug_name}",
                                             'analysis_type': 'drug_induced',
                                             'channel': channel,
                                             'wavelength': wavelength,
                                             'trial': 1,
+                                            'drug_name': drug_name,
                                             'pre_min': np.min(pre_data) if len(pre_data) > 0 else np.nan,
                                             'pre_max': np.max(pre_data) if len(pre_data) > 0 else np.nan,
                                             'pre_mean': np.mean(pre_data) if len(pre_data) > 0 else np.nan,
@@ -530,29 +592,6 @@ def analyze_day_drug_induced(day_name, animals, params):
                                             'post_mean': np.mean(post_data) if len(post_data) > 0 else np.nan,
                                             'post_area': np.trapz(post_data, time_array[post_mask]) if len(post_data) > 0 else np.nan,
                                             'signal_type': 'fiber_dff',
-                                            'baseline_start': params['baseline_start'],
-                                            'baseline_end': params['baseline_end']
-                                        })
-                                        
-                                        pre_zscore_data = interp_zscore[pre_mask]
-                                        post_zscore_data = interp_zscore[post_mask]
-                                        
-                                        statistics_rows.append({
-                                            'day': day_name,
-                                            'animal_single_channel_id': animal_id,
-                                            'analysis_type': 'drug_induced',
-                                            'channel': channel,
-                                            'wavelength': wavelength,
-                                            'trial': 1,
-                                            'pre_min': np.min(pre_zscore_data) if len(pre_zscore_data) > 0 else np.nan,
-                                            'pre_max': np.max(pre_zscore_data) if len(pre_zscore_data) > 0 else np.nan,
-                                            'pre_mean': np.mean(pre_zscore_data) if len(pre_zscore_data) > 0 else np.nan,
-                                            'pre_area': np.trapz(pre_zscore_data, time_array[pre_mask]) if len(pre_zscore_data) > 0 else np.nan,
-                                            'post_min': np.min(post_zscore_data) if len(post_zscore_data) > 0 else np.nan,
-                                            'post_max': np.max(post_zscore_data) if len(post_zscore_data) > 0 else np.nan,
-                                            'post_mean': np.mean(post_zscore_data) if len(post_zscore_data) > 0 else np.nan,
-                                            'post_area': np.trapz(post_zscore_data, time_array[post_mask]) if len(post_zscore_data) > 0 else np.nan,
-                                            'signal_type': 'fiber_zscore',
                                             'baseline_start': params['baseline_start'],
                                             'baseline_end': params['baseline_end']
                                         })

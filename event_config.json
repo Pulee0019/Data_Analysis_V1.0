@@ -1,1 +1,1 @@
-{"drug_event": "Event2", "opto_event": "Input3", "running_start": "Input2"}
+{"drug_event": "Event2,Event1", "opto_event": "Input3", "running_start": "Input2"}
