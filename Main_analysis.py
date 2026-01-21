@@ -1871,7 +1871,7 @@ def import_multi_animals():
     """Modified to create separate entries for each channel"""
     global selected_files, multi_animal_data, current_experiment_mode
 
-    base_dir = filedialog.askdirectory(title="Select Free Moving/Behavioural directory")
+    base_dir = filedialog.askdirectory(title="Select directory upper data folder")
     if not base_dir:
         return
 
@@ -4955,7 +4955,7 @@ def on_closing():
     os.kill(os.getpid(), signal.SIGTERM)
 
 root = tk.Tk()
-root.title("Behavior Syllable Analysis")
+root.title("Fiber Photometry with Running Analysis")
 root.state('zoomed')
 
 root.protocol("WM_DELETE_WINDOW", on_closing)
