@@ -818,10 +818,10 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                         
                         # Use different alpha for different timing
                         if timing_name == 'baseline':
-                            alpha = 0.2
+                            alpha = 1/len(param_data)
                             linestyle = '-'
                         else:
-                            alpha = 0.2 + (0.2 * (sorted(param_data.keys()).index(timing_name)))
+                            alpha = 1/len(param_data) + (1/len(param_data) * (sorted(param_data.keys()).index(timing_name) + 1))
                             linestyle = '-'
                         
                         ax_dff.plot(time_array, mean_response, color=day_color, 
@@ -872,10 +872,10 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                         day_color = DAY_COLORS[color_idx % len(DAY_COLORS)]
                         
                         if timing_name == 'baseline':
-                            alpha = 0.2
+                            alpha = 1/len(param_data)
                             linestyle = '-'
                         else:
-                            alpha = 0.2 + (0.2 * (sorted(param_data.keys()).index(timing_name)))
+                            alpha = 1/len(param_data) + (1/len(param_data) * (sorted(param_data.keys()).index(timing_name) + 1))
                             linestyle = '-'
                         
                         ax_zscore.plot(time_array, mean_response, color=day_color, 
@@ -1076,10 +1076,10 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
                     
                     # Different styles for different timings
                     if timing_name == 'baseline':
-                        alpha = 0.2
+                        alpha = 1/len(param_data)
                         linestyle = '-'
                     else:
-                        alpha = 0.2 + (0.2 * timing_idx / len(drug_timings))
+                        alpha = 1/len(param_data) + (1/len(param_data) * (sorted(param_data.keys()).index(timing_name) + 1))
                         linestyle = '-'
                     
                     ax_dff.plot(time_array, mean_response, color=color, linewidth=2, 
@@ -1137,10 +1137,10 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
                     sem_response = np.nanstd(episodes_array, axis=0) / np.sqrt(episodes_array.shape[0])
                     
                     if timing_name == 'baseline':
-                        alpha = 0.2
+                        alpha = 1/len(param_data)
                         linestyle = '-'
                     else:
-                        alpha = 0.2 + (0.2 * timing_idx / len(drug_timings))
+                        alpha = 1/len(param_data) + (1/len(param_data) * (sorted(param_data.keys()).index(timing_name) + 1))
                         linestyle = '-'
                     
                     ax_zscore.plot(time_array, mean_response, color=color, linewidth=2, 
