@@ -1753,7 +1753,7 @@ class RunningVisualizationWindow:
             timestamps = ast2_data['data']['timestamps']
             
             if processed_data:
-                speed = processed_data['bout_speed']
+                speed = processed_data['filtered_speed']
             else:
                 speed = ast2_data['data']['speed']
             
@@ -4068,7 +4068,6 @@ def running_data_analysis():
     bout_param_frame.grid(row=0, column=1, sticky='ew', padx=(5, 0), pady=(0, 10))
 
     bout_param_defs = [
-        ("Smooth window (frames)",     "smooth_window",       "float", 5,    1,  (2, 50)),
         ("General threshold (cm/s)",   "threshold",           "float", 0.5,  0.1, (0.1, 10)),
         ("General min duration (s)",   "gen_min_dur",         "float", 0.5,  0.1, (0.1, 20)),
         ("Min rest duration (s)",      "rest_dur",            "float", 4.0,  0.5, (0.5, 30)),
@@ -4115,7 +4114,6 @@ def running_data_analysis():
                 'params': params
             })
         
-        smooth_window       = bout_vars["smooth_window"].get()
         threshold           = bout_vars["threshold"].get()
         gen_min_dur         = bout_vars["gen_min_dur"].get()
         rest_dur            = bout_vars["rest_dur"].get()
@@ -4127,26 +4125,22 @@ def running_data_analysis():
             canvas.draw(); return
         
         fs = ast2_data['header']['inputRate'] / ast2_data['header']['saveEvery']
-        bouts, bout_speed = running_bout_analysis_classify(
+        bouts = running_bout_analysis_classify(
             processed_data,
-            smooth_window=smooth_window,
             general_threshold=threshold,
             general_min_duration=gen_min_dur,
             rest_min_duration=rest_dur,
             pre_locomotion_buffer=pre_buf,
             post_locomotion_buffer=post_buf,
             locomotion_duration=locomotion_duration)
-        processed_data['bout_speed'] = bout_speed
         
         if processed_data:
             timestamps = processed_data['timestamps']
             original_speed = processed_data['original_speed']
             filtered_speed = processed_data['filtered_speed']
-            bout_speed = processed_data['bout_speed']
             
             ax1.plot(timestamps, original_speed, 'k-', alpha=0.7, label='Original', linewidth=1)
             ax1.plot(timestamps, filtered_speed, 'r-', label='Filtered', linewidth=1)
-            ax1.plot(timestamps, bout_speed, 'g-', label='Bout Speed', linewidth=1)
             
             ax1.set_xlabel('Time (s)', fontsize=9)
             ax1.set_ylabel('Speed (cm/s)', fontsize=9)
@@ -4215,7 +4209,6 @@ def running_data_analysis():
                     'params': params
                 })
 
-            smooth_window       = bout_vars["smooth_window"].get()
             threshold           = bout_vars["threshold"].get()
             gen_min_dur         = bout_vars["gen_min_dur"].get()
             rest_dur            = bout_vars["rest_dur"].get()
@@ -4238,9 +4231,8 @@ def running_data_analysis():
                     if not processed_data:
                         failed += 1; continue
 
-                    bouts, bout_speed = running_bout_analysis_classify(
+                    bouts = running_bout_analysis_classify(
                         processed_data,
-                        smooth_window=smooth_window,
                         general_threshold=threshold,
                         general_min_duration=gen_min_dur,
                         rest_min_duration=rest_dur,
@@ -4248,7 +4240,7 @@ def running_data_analysis():
                         post_locomotion_buffer=post_buf,
                         locomotion_duration=locomotion_duration
                     )
-                    processed_data['bout_speed'] = bout_speed
+                    
                     animal_data['running_processed_data'] = processed_data
                     animal_data['running_bouts'] = bouts
                     successful += 1

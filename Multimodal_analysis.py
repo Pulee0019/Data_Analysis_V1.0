@@ -305,8 +305,8 @@ def group_optogenetic_sessions(events):
             last_time = current_session[-1][0]
             time_diff = time - last_time
             
-            # If time difference > 2 seconds, start new session (frequency < 0.5 Hz)
-            if time_diff > 2.0:
+            # If time difference > 20 seconds, start new session (frequency < 0.05 Hz)
+            if time_diff > 20.0:
                 if len(current_session) >= 2:  # Need at least one complete pulse
                     sessions.append(current_session)
                 current_session = [(time, event_type)]
