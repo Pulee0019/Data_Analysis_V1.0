@@ -1047,11 +1047,11 @@ def analyze_day_running_drug(day_name, animals, params):
     result = {
         'time': time_array,
         'target_wavelengths': target_wavelengths,
-        'drug_categories': sorted(all_drug_categories)
+        'drug_categories': list(all_drug_categories)
     }
     
     # Add data for each category
-    for category in sorted(all_drug_categories):
+    for category in list(all_drug_categories):
         if category in category_data:
             result[category] = {
                 'running': {
@@ -2025,7 +2025,7 @@ def plot_running_drug_results(results, params):
     for data in results.values():
         if 'drug_categories' in data:
             all_categories.update(data['drug_categories'])
-    all_categories = sorted(all_categories)
+    all_categories = list(all_categories)
     
     # Row 1: Traces
     # Running trace
@@ -2040,9 +2040,10 @@ def plot_running_drug_results(results, params):
                     alpha = 1/len(all_categories)
                     linestyle = '-'
                 else:
-                    alpha = 1/len(all_categories) + (1/len(all_categories) * (cat_idx + 1))
+                    alpha = 1/len(all_categories) + (1/len(all_categories) * cat_idx)
                     linestyle = '-'
                 
+                log_message(f"Plotting {day_name} - {category} running trace with alpha {alpha:.2f}")
                 ax_running.plot(time_array, data[category]['running']['mean'],
                               color=day_color, linestyle=linestyle, linewidth=2, alpha=alpha,
                               label=f"{day_name} {category}")
@@ -2073,9 +2074,10 @@ def plot_running_drug_results(results, params):
                         alpha = 1/len(all_categories)
                         linestyle = '-'
                     else:
-                        alpha = 1/len(all_categories) + (1/len(all_categories) * (cat_idx + 1))
+                        alpha = 1/len(all_categories) + (1/len(all_categories) * cat_idx)
                         linestyle = '-'
                     
+                    log_message(f"Plotting {day_name} - {category} dFF trace at {wl}nm with alpha {alpha:.2f}")
                     ax_dff.plot(time_array, data[category]['dff'][wl]['mean'],
                               color=day_color, linewidth=2, linestyle=linestyle, alpha=alpha,
                               label=f'{day_name} {category}')
@@ -2104,9 +2106,10 @@ def plot_running_drug_results(results, params):
                         alpha = 1/len(all_categories)
                         linestyle = '-'
                     else:
-                        alpha = 1/len(all_categories) + (1/len(all_categories) * (cat_idx + 1))
+                        alpha = 1/len(all_categories) + (1/len(all_categories) * cat_idx)
                         linestyle = '-'
                     
+                    log_message(f"Plotting {day_name} - {category} z-score trace at {wl}nm with alpha {alpha:.2f}")
                     ax_zscore.plot(time_array, data[category]['zscore'][wl]['mean'],
                                   color=day_color, linewidth=2, linestyle=linestyle, alpha=alpha,
                                   label=f'{day_name} {category}')
@@ -2302,9 +2305,10 @@ def create_single_day_window_running_drug(day_name, data, params):
                 alpha = 1/len(drug_categories)
                 linestyle = '-'
             else:
-                alpha = 1/len(drug_categories) + (1/len(drug_categories) * (cat_idx + 1))
+                alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
                 linestyle = '-'
             
+            log_message(f"Plotting {day_name} - {category} running trace with alpha {alpha:.2f}")
             ax_running.plot(time_array, data[category]['running']['mean'],
                           color="#000000", linewidth=2, linestyle=linestyle, 
                           alpha=alpha, label=category)
@@ -2335,9 +2339,10 @@ def create_single_day_window_running_drug(day_name, data, params):
                     alpha = 1/len(drug_categories)
                     linestyle = '-'
                 else:
-                    alpha = 1/len(drug_categories) + (1/len(drug_categories) * (cat_idx + 1))
+                    alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
                     linestyle = '-'
                 
+                log_message(f"Plotting {day_name} - {category} dFF trace at {wl}nm with alpha {alpha:.2f}")
                 ax_dff.plot(time_array, data[category]['dff'][wl]['mean'],
                           color=color, linewidth=2, linestyle=linestyle, 
                           alpha=alpha, label=category)
@@ -2364,9 +2369,10 @@ def create_single_day_window_running_drug(day_name, data, params):
                     alpha = 1/len(drug_categories)
                     linestyle = '-'
                 else:
-                    alpha = 1/len(drug_categories) + (1/len(drug_categories) * (cat_idx + 1))
+                    alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
                     linestyle = '-'
                 
+                log_message(f"Plotting {day_name} - {category} z-score trace at {wl}nm with alpha {alpha:.2f}")
                 ax_zscore.plot(time_array, data[category]['zscore'][wl]['mean'],
                              color=color, linewidth=2, linestyle=linestyle, 
                              alpha=alpha, label=category)
@@ -3289,11 +3295,11 @@ def analyze_day_running_optogenetics_drug(day_name, animals, params,
     result = {
         'time': time_array,
         'target_wavelengths': target_wavelengths,
-        'drug_categories': sorted(all_drug_categories)
+        'drug_categories': list(all_drug_categories)
     }
     
     # Process each category
-    for category in sorted(all_drug_categories):
+    for category in list(all_drug_categories):
         if category in conditions:
             result[category] = {}
             
@@ -3377,7 +3383,7 @@ def plot_running_optogenetics_drug_results(results, params):
     for day_name, data in results.items():
         if 'drug_categories' in data:
             all_categories.update(data['drug_categories'])
-    all_categories = sorted(all_categories)
+    all_categories = list(all_categories)
     
     # Create comparison windows for each meaningful comparison
     # 1. Within each category: with vs without opto
@@ -3777,8 +3783,9 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
             category_data = data[category]
             
             if condition_key in category_data and category_data[condition_key]['running']['mean'] is not None:
-                alpha = 1/len(categories) + (1/len(categories) * (cat_idx + 1))
+                alpha = 1/len(categories) + (1/len(categories) * cat_idx)
                 
+                log_message(f"Plotting {day_name} - {category} with alpha {alpha}")
                 ax_running.plot(time_array, category_data[condition_key]['running']['mean'],
                               color=day_color, linestyle='-', linewidth=2, 
                               alpha=alpha, label=f"{day_name} {category}")
@@ -3810,8 +3817,9 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
                 category_data = data[category]
                 
                 if condition_key in category_data and wl in category_data[condition_key]['dff']:
-                    alpha = 1/len(categories) + (1/len(categories) * (cat_idx + 1))
+                    alpha = 1/len(categories) + (1/len(categories) * cat_idx)
                     
+                    log_message(f"Plotting {day_name} - {category} with alpha {alpha}")
                     ax_dff.plot(time_array, category_data[condition_key]['dff'][wl]['mean'],
                               color=day_color, linewidth=2, linestyle='-', 
                               alpha=alpha, label=f'{day_name} {category}')
@@ -3842,8 +3850,9 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
                 category_data = data[category]
                 
                 if condition_key in category_data and wl in category_data[condition_key]['zscore']:
-                    alpha = 1/len(categories) + (1/len(categories) * (cat_idx + 1))
+                    alpha = 1/len(categories) + (1/len(categories) * cat_idx)
                     
+                    log_message(f"Plotting {day_name} - {category} with alpha {alpha}")
                     ax_zscore.plot(time_array, category_data[condition_key]['zscore'][wl]['mean'],
                                  color=day_color, linewidth=2, linestyle='-', 
                                  alpha=alpha, label=f'{day_name} {category}')
@@ -4197,7 +4206,7 @@ def create_single_day_category_window(day_name, data, params, category, window_t
             all_episodes.extend(without_episodes)
         
         all_episodes = np.array(all_episodes)
-        n_with = len(with_episodes) if with_episodes else 0
+        n_with = len(with_episodes) if with_episodes is not None else 0
         
         if len(all_episodes) == 1:
             all_episodes = np.vstack([all_episodes[0], all_episodes[0]])
@@ -4245,7 +4254,7 @@ def create_single_day_category_window(day_name, data, params, category, window_t
                 all_dff.extend(without_dff)
             
             all_dff = np.array(all_dff)
-            n_with = len(with_dff) if with_dff else 0
+            n_with = len(with_dff) if with_dff is not None else 0
             
             if len(all_dff) == 1:
                 all_dff = np.vstack([all_dff[0], all_dff[0]])
@@ -4291,7 +4300,7 @@ def create_single_day_category_window(day_name, data, params, category, window_t
                 all_zscore.extend(without_zscore)
             
             all_zscore = np.array(all_zscore)
-            n_with = len(with_zscore) if with_zscore else 0
+            n_with = len(with_zscore) if with_zscore is not None else 0
             
             if len(all_zscore) == 1:
                 all_zscore = np.vstack([all_zscore[0], all_zscore[0]])
@@ -4360,9 +4369,10 @@ def create_single_day_all_categories_window(day_name, data, params, window_title
         
         category_data = data[category]
         
-        # Plot with opto (solid lines)
+        # Plot with opto
         if 'with_opto' in category_data and category_data['with_opto']['running']['mean'] is not None:
-            alpha = 1/len(drug_categories) + (1/len(drug_categories) * (cat_idx + 1))
+            alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
+            log_message(f"Plotting {day_name} - {category} with alpha {alpha}")
             ax_running.plot(time_array, category_data['with_opto']['running']['mean'],
                           color=DAY_COLORS[cat_idx % len(DAY_COLORS)], 
                           linewidth=2, linestyle='-', alpha=alpha, 
@@ -4372,9 +4382,10 @@ def create_single_day_all_categories_window(day_name, data, params, window_title
                                    category_data['with_opto']['running']['mean'] + category_data['with_opto']['running']['sem'],
                                    color=DAY_COLORS[cat_idx % len(DAY_COLORS)], alpha=alpha*0.3)
         
-        # Plot without opto (dashed lines)
+        # Plot without opto
         if 'without_opto' in category_data and category_data['without_opto']['running']['mean'] is not None:
-            alpha = 1/len(drug_categories) + (1/len(drug_categories) * (cat_idx + 1))
+            alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
+            log_message(f"Plotting {day_name} - {category} with alpha {alpha}")
             ax_running.plot(time_array, category_data['without_opto']['running']['mean'],
                           color=DAY_COLORS[cat_idx % len(DAY_COLORS)], 
                           linewidth=2, linestyle='-', alpha=alpha, 
@@ -4407,7 +4418,8 @@ def create_single_day_all_categories_window(day_name, data, params, window_title
             
             # With opto
             if 'with_opto' in category_data and wl in category_data['with_opto']['dff']:
-                alpha = 1/len(drug_categories) + (1/len(drug_categories) * (cat_idx + 1))
+                alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
+                log_message(f"Plotting {day_name} - {category} with alpha {alpha}")
                 ax_dff.plot(time_array, category_data['with_opto']['dff'][wl]['mean'],
                           color=DAY_COLORS[cat_idx % len(DAY_COLORS)], 
                           linewidth=2, linestyle='-', alpha=alpha,
@@ -4419,7 +4431,8 @@ def create_single_day_all_categories_window(day_name, data, params, window_title
             
             # Without opto
             if 'without_opto' in category_data and wl in category_data['without_opto']['dff']:
-                alpha = 1/len(drug_categories) + (1/len(drug_categories) * (cat_idx + 1))
+                alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
+                log_message(f"Plotting {day_name} - {category} with alpha {alpha}")
                 ax_dff.plot(time_array, category_data['without_opto']['dff'][wl]['mean'],
                           color=DAY_COLORS[cat_idx % len(DAY_COLORS)], 
                           linewidth=2, linestyle='-', alpha=alpha,
@@ -4449,7 +4462,8 @@ def create_single_day_all_categories_window(day_name, data, params, window_title
             
             # With opto
             if 'with_opto' in category_data and wl in category_data['with_opto']['zscore']:
-                alpha = 1/len(drug_categories) + (1/len(drug_categories) * (cat_idx + 1))
+                alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
+                log_message(f"Plotting {day_name} - {category} with alpha {alpha}")
                 ax_zscore.plot(time_array, category_data['with_opto']['zscore'][wl]['mean'],
                              color=DAY_COLORS[cat_idx % len(DAY_COLORS)], 
                              linewidth=2, linestyle='-', alpha=alpha,
@@ -4461,7 +4475,8 @@ def create_single_day_all_categories_window(day_name, data, params, window_title
             
             # Without opto
             if 'without_opto' in category_data and wl in category_data['without_opto']['zscore']:
-                alpha = 1/len(drug_categories) + (1/len(drug_categories) * (cat_idx + 1))
+                alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
+                log_message(f"Plotting {day_name} - {category} with alpha {alpha}")
                 ax_zscore.plot(time_array, category_data['without_opto']['zscore'][wl]['mean'],
                              color=DAY_COLORS[cat_idx % len(DAY_COLORS)], 
                              linewidth=2, linestyle='-', alpha=alpha,

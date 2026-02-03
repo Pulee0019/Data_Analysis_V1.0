@@ -309,10 +309,13 @@ def combine_bouts(bouts, speed, general_threshold, max_gap=15, max_exceed_ratio=
             gap = gap_end - gap_start
 
             time_condition = gap <= max_gap
-            gap_speed = speed[gap_start:gap_end]
-            high_ratio = np.sum(gap_speed >= general_threshold) / len(gap_speed)
-            low_ratio = np.sum(gap_speed <= -general_threshold) / len(gap_speed)
-            signal_condition = high_ratio  + low_ratio > max_exceed_ratio
+            
+            signal_condition = False
+            if gap > 0:
+                gap_speed = speed[gap_start:gap_end]
+                high_ratio = np.sum(gap_speed >= general_threshold) / len(gap_speed)
+                low_ratio = np.sum(gap_speed <= -general_threshold) / len(gap_speed)
+                signal_condition = high_ratio  + low_ratio > max_exceed_ratio
 
             if time_condition or signal_condition:
                 bout = [bout[0], next_bout[1]]

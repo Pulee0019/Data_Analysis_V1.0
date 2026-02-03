@@ -557,7 +557,7 @@ def run_optogenetic_induced_analysis(row_data, params, analysis_mode="optogeneti
                 drug_timing = session.get('drug_timing', 'baseline')
                 all_drug_timings.add(drug_timing)
         
-        log_message(f"Found drug timing categories: {sorted(all_drug_timings)}")
+        log_message(f"Found drug timing categories: {list(all_drug_timings)}")
         
         # Separate sessions by drug timing
         for row_name, sessions in row_data.items():
@@ -806,7 +806,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
             # Plot all drug timing categories with different styles
             color_idx = 0
             for param_name, param_data in results.items():
-                for timing_name in sorted(param_data.keys()):
+                for timing_name in list(param_data.keys()):
                     data = param_data[timing_name]
                     episodes = data['dff'].get(wavelength, [])
                     if episodes:
@@ -821,12 +821,14 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                             alpha = 1/len(param_data)
                             linestyle = '-'
                         else:
-                            alpha = 1/len(param_data) + (1/len(param_data) * (sorted(param_data.keys()).index(timing_name) + 1))
+                            alpha = 1/len(param_data) + (1/len(param_data) * (list(param_data.keys()).index(timing_name)))
                             linestyle = '-'
                         
+                        log_message(f"Plotting {param_name} - {timing_name} with alpha {alpha:.2f}")
                         ax_dff.plot(time_array, mean_response, color=day_color, 
                                    linewidth=2, linestyle=linestyle, 
                                    label=f'{param_name} {timing_name}', alpha=alpha)
+                        log_message(f"Plotting {param_name} - {timing_name} with alpha {alpha:.2f}")
                         ax_dff.fill_between(time_array, mean_response - sem_response, 
                                            mean_response + sem_response, color=day_color, alpha=alpha*0.3)
                     
@@ -861,7 +863,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
         if analysis_mode == "optogenetics+drug":
             color_idx = 0
             for param_name, param_data in results.items():
-                for timing_name in sorted(param_data.keys()):
+                for timing_name in list(param_data.keys()):
                     data = param_data[timing_name]
                     episodes = data['zscore'].get(wavelength, [])
                     if episodes:
@@ -875,9 +877,10 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                             alpha = 1/len(param_data)
                             linestyle = '-'
                         else:
-                            alpha = 1/len(param_data) + (1/len(param_data) * (sorted(param_data.keys()).index(timing_name) + 1))
+                            alpha = 1/len(param_data) + (1/len(param_data) * (list(param_data.keys()).index(timing_name)))
                             linestyle = '-'
                         
+                        log_message(f"Plotting {param_name} - {timing_name} with alpha {alpha:.2f}")
                         ax_zscore.plot(time_array, mean_response, color=day_color, 
                                       linewidth=2, linestyle=linestyle, 
                                       label=f'{param_name} {timing_name}', alpha=alpha)
@@ -916,7 +919,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
         
         if analysis_mode == "optogenetics+drug":
             for param_data in results.values():
-                for timing_key in sorted(param_data.keys()):
+                for timing_key in list(param_data.keys()):
                     data = param_data[timing_key]
                     episodes = data['dff'].get(wavelength, [])
                     if episodes:
@@ -956,7 +959,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
         
         if analysis_mode == "optogenetics+drug":
             for param_data in results.values():
-                for timing_key in sorted(param_data.keys()):
+                for timing_key in list(param_data.keys()):
                     data = param_data[timing_key]
                     episodes = data['zscore'].get(wavelength, [])
                     if episodes:
@@ -1063,7 +1066,7 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
         
         if analysis_mode == "optogenetics+drug":
             # Get all drug timing categories
-            drug_timings = sorted(param_data.keys())
+            drug_timings = list(param_data.keys())
             
             for timing_idx, timing_name in enumerate(drug_timings):
                 data = param_data[timing_name]
@@ -1079,9 +1082,10 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
                         alpha = 1/len(param_data)
                         linestyle = '-'
                     else:
-                        alpha = 1/len(param_data) + (1/len(param_data) * (sorted(param_data.keys()).index(timing_name) + 1))
+                        alpha = 1/len(param_data) + (1/len(param_data) * (list(param_data.keys()).index(timing_name)))
                         linestyle = '-'
                     
+                    log_message(f"Plotting {param_name} - {timing_name} with alpha {alpha:.2f}")
                     ax_dff.plot(time_array, mean_response, color=color, linewidth=2, 
                                linestyle=linestyle, label=timing_name, alpha=alpha)
                     ax_dff.fill_between(time_array, mean_response - sem_response,
@@ -1125,7 +1129,7 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
         ax_zscore = fig.add_subplot(2, num_cols, plot_idx)
         
         if analysis_mode == "optogenetics+drug":
-            drug_timings = sorted(param_data.keys())
+            drug_timings = list(param_data.keys())
             
             for timing_idx, timing_name in enumerate(drug_timings):
                 data = param_data[timing_name]
@@ -1140,9 +1144,10 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
                         alpha = 1/len(param_data)
                         linestyle = '-'
                     else:
-                        alpha = 1/len(param_data) + (1/len(param_data) * (sorted(param_data.keys()).index(timing_name) + 1))
+                        alpha = 1/len(param_data) + (1/len(param_data) * (list(param_data.keys()).index(timing_name)))
                         linestyle = '-'
                     
+                    log_message(f"Plotting {param_name} - {timing_name} with alpha {alpha:.2f}")
                     ax_zscore.plot(time_array, mean_response, color=color, linewidth=2, 
                                   linestyle=linestyle, label=timing_name, alpha=alpha)
                     ax_zscore.fill_between(time_array, mean_response - sem_response,
@@ -1190,7 +1195,7 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
             # Combine all drug timing episodes
             all_episodes = []
             category_boundaries = []
-            drug_timings = sorted(param_data.keys())
+            drug_timings = list(param_data.keys())
             
             for timing_name in drug_timings:
                 data = param_data[timing_name]
@@ -1252,7 +1257,7 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
         if analysis_mode == "optogenetics+drug":
             all_episodes = []
             category_boundaries = []
-            drug_timings = sorted(param_data.keys())
+            drug_timings = list(param_data.keys())
             
             for timing_name in drug_timings:
                 data = param_data[timing_name]
