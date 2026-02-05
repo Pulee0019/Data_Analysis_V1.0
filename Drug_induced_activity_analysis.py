@@ -572,8 +572,10 @@ def analyze_day_drug_induced(day_name, animals, params):
                                         pre_mask = (time_array >= -params['pre_time']) & (time_array <= 0)
                                         post_mask = (time_array >= 0) & (time_array <= params['post_time'])
                                         
-                                        pre_data = interp_dff[pre_mask]
-                                        post_data = interp_dff[post_mask]
+                                        pre_dff_data = interp_dff[pre_mask]
+                                        post_dff_data = interp_dff[post_mask]
+                                        pre_zscore_data = interp_zscore[pre_mask]
+                                        post_zscore_data = interp_zscore[post_mask]
                                         
                                         statistics_rows.append({
                                             'day': day_name,
@@ -583,15 +585,36 @@ def analyze_day_drug_induced(day_name, animals, params):
                                             'wavelength': wavelength,
                                             'trial': 1,
                                             'drug_name': drug_name,
-                                            'pre_min': np.min(pre_data) if len(pre_data) > 0 else np.nan,
-                                            'pre_max': np.max(pre_data) if len(pre_data) > 0 else np.nan,
-                                            'pre_mean': np.mean(pre_data) if len(pre_data) > 0 else np.nan,
-                                            'pre_area': np.trapz(pre_data, time_array[pre_mask]) if len(pre_data) > 0 else np.nan,
-                                            'post_min': np.min(post_data) if len(post_data) > 0 else np.nan,
-                                            'post_max': np.max(post_data) if len(post_data) > 0 else np.nan,
-                                            'post_mean': np.mean(post_data) if len(post_data) > 0 else np.nan,
-                                            'post_area': np.trapz(post_data, time_array[post_mask]) if len(post_data) > 0 else np.nan,
+                                            'pre_min': np.min(pre_dff_data) if len(pre_dff_data) > 0 else np.nan,
+                                            'pre_max': np.max(pre_dff_data) if len(pre_dff_data) > 0 else np.nan,
+                                            'pre_mean': np.mean(pre_dff_data) if len(pre_dff_data) > 0 else np.nan,
+                                            'pre_area': np.trapz(pre_dff_data, time_array[pre_mask]) if len(pre_dff_data) > 0 else np.nan,
+                                            'post_min': np.min(post_dff_data) if len(post_dff_data) > 0 else np.nan,
+                                            'post_max': np.max(post_dff_data) if len(post_dff_data) > 0 else np.nan,
+                                            'post_mean': np.mean(post_dff_data) if len(post_dff_data) > 0 else np.nan,
+                                            'post_area': np.trapz(post_dff_data, time_array[post_mask]) if len(post_dff_data) > 0 else np.nan,
                                             'signal_type': 'fiber_dff',
+                                            'baseline_start': params['baseline_start'],
+                                            'baseline_end': params['baseline_end']
+                                        })
+                                        
+                                        statistics_rows.append({
+                                            'day': day_name,
+                                            'animal_single_channel_id': f"{animal_id}_Session{session_idx+1}_{drug_name}",
+                                            'analysis_type': 'drug_induced',
+                                            'channel': channel,
+                                            'wavelength': wavelength,
+                                            'trial': 1,
+                                            'drug_name': drug_name,
+                                            'pre_min': np.min(pre_zscore_data) if len(pre_zscore_data) > 0 else np.nan,
+                                            'pre_max': np.max(pre_zscore_data) if len(pre_zscore_data) > 0 else np.nan,
+                                            'pre_mean': np.mean(pre_zscore_data) if len(pre_zscore_data) > 0 else np.nan,
+                                            'pre_area': np.trapz(pre_zscore_data, time_array[pre_mask]) if len(pre_zscore_data) > 0 else np.nan,
+                                            'post_min': np.min(post_zscore_data) if len(post_zscore_data) > 0 else np.nan,
+                                            'post_max': np.max(post_zscore_data) if len(post_zscore_data) > 0 else np.nan,
+                                            'post_mean': np.mean(post_zscore_data) if len(post_zscore_data) > 0 else np.nan,
+                                            'post_area': np.trapz(post_zscore_data, time_array[post_mask]) if len(post_zscore_data) > 0 else np.nan,
+                                            'signal_type': 'fiber_zscore',
                                             'baseline_start': params['baseline_start'],
                                             'baseline_end': params['baseline_end']
                                         })

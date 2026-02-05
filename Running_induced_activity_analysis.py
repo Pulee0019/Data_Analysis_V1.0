@@ -3343,6 +3343,32 @@ def collect_statistics_with_condition(day_name, animal_id, event_type, result,
     pre_mask = (time_array >= -params['pre_time']) & (time_array <= 0)
     post_mask = (time_array >= 0) & (time_array <= params['post_time'])
     
+    # Running statistics
+    for trial_idx, episode_data in enumerate(result['running']):
+        pre_data = episode_data[pre_mask]
+        post_data = episode_data[post_mask]
+        
+        rows.append({
+            'day': day_name,
+            'animal_single_channel_id': animal_id,
+            'event_type': event_type,
+            'channel': 'running_speed',
+            'wavelength': 'N/A',
+            'trial': trial_idx + 1,
+            'condition': condition,
+            'pre_min': np.min(pre_data) if len(pre_data) > 0 else np.nan,
+            'pre_max': np.max(pre_data) if len(pre_data) > 0 else np.nan,
+            'pre_mean': np.mean(pre_data) if len(pre_data) > 0 else np.nan,
+            'pre_area': np.trapz(pre_data, time_array[pre_mask]) if len(pre_data) > 0 else np.nan,
+            'post_min': np.min(post_data) if len(post_data) > 0 else np.nan,
+            'post_max': np.max(post_data) if len(post_data) > 0 else np.nan,
+            'post_mean': np.mean(post_data) if len(post_data) > 0 else np.nan,
+            'post_area': np.trapz(post_data, time_array[post_mask]) if len(post_data) > 0 else np.nan,
+            'signal_type': 'running_speed',
+            'baseline_start': params['baseline_start'],
+            'baseline_end': params['baseline_end']
+        })
+    
     # Fiber statistics
     for channel in active_channels:
         for wl in target_wavelengths:
@@ -3372,7 +3398,33 @@ def collect_statistics_with_condition(day_name, animal_id, event_type, result,
                         'baseline_start': params['baseline_start'],
                         'baseline_end': params['baseline_end']
                     })
-    
+            # Z-score
+            if wl in result['zscore']:
+                for trial_idx, episode_data in enumerate(result['zscore'][wl]):
+                    pre_data = episode_data[pre_mask]
+                    post_data = episode_data[post_mask]
+                    
+                    rows.append({
+                        'day': day_name,
+                        'animal_single_channel_id': animal_id,
+                        'event_type': event_type,
+                        'channel': channel,
+                        'wavelength': wl,
+                        'trial': trial_idx + 1,
+                        'condition': condition,
+                        'pre_min': np.min(pre_data) if len(pre_data) > 0 else np.nan,
+                        'pre_max': np.max(pre_data) if len(pre_data) > 0 else np.nan,
+                        'pre_mean': np.mean(pre_data) if len(pre_data) > 0 else np.nan,
+                        'pre_area': np.trapz(pre_data, time_array[pre_mask]) if len(pre_data) > 0 else np.nan,
+                        'post_min': np.min(post_data) if len(post_data) > 0 else np.nan,
+                        'post_max': np.max(post_data) if len(post_data) > 0 else np.nan,
+                        'post_mean': np.mean(post_data) if len(post_data) > 0 else np.nan,
+                        'post_area': np.trapz(post_data, time_array[post_mask]) if len(post_data) > 0 else np.nan,
+                        'signal_type': 'fiber_zscore',
+                        'baseline_start': params['baseline_start'],
+                        'baseline_end': params['baseline_end']
+                    })
+                    
     return rows
 
 def plot_running_optogenetics_drug_results(results, params):
