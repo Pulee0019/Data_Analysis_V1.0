@@ -14,13 +14,11 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from logger import log_message
 from Multimodal_analysis import (
     get_events_from_bouts, calculate_running_episodes, export_statistics,
-    create_table_window, initialize_table, create_control_panel, identify_optogenetic_events, identify_drug_sessions, calculate_optogenetic_pulse_info, get_events_within_optogenetic, create_opto_parameter_string, group_optogenetic_sessions
+    create_table_window, initialize_table, create_control_panel, identify_optogenetic_events, 
+    identify_drug_sessions, calculate_optogenetic_pulse_info, get_events_within_optogenetic, 
+    create_opto_parameter_string, group_optogenetic_sessions, create_parameter_panel, 
+    get_parameters_from_ui, FIBER_COLORS, DAY_COLORS
 )
-
-# Colors for different days
-DAY_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', 
-              '#1abc9c', '#e67e22', '#34495e', '#f1c40f', '#95a5a6']
-FIBER_COLORS = ['#008000', "#FF0000", '#FFA500']
 
 def show_running_induced_analysis(root, multi_animal_data, analysis_mode="running"):
     """
@@ -117,7 +115,16 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
     container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
     
     # Left panel: Parameters
-    param_frame = create_parameter_panel(container, available_bout_types, analysis_mode)
+    param_config = {
+        'start_time': "-5",
+        'end_time': "15",
+        'baseline_start': "-5",
+        'baseline_end': "0",
+        'show_bout_type': True,
+        'bout_types': available_bout_types,
+        'show_event_type': True,
+    }
+    param_frame = create_parameter_panel(container, param_config)
     param_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=(0, 5))
     
     # Right panel: Table
@@ -140,159 +147,15 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
         table_manager = TableManager(root, table_frame, btn_frame, multi_animal_data, analysis_mode)
 
     def run_analysis():
-        params = get_parameters_from_ui(param_frame, analysis_mode)
+        params = get_parameters_from_ui(param_frame, require_bout_type=True, require_event_type=True)
         if params:
+            # Add full_event_type
+            params['full_event_type'] = f"{params['bout_type'].replace('_bouts', '')}_{params['event_type']}s"
             table_manager.run_analysis(params, analysis_mode)
 
     tk.Button(btn_frame, text="Run Analysis", command=run_analysis,
              bg="#ffffff", fg="#000000", font=("Microsoft YaHei", 9, "bold"),
              relief=tk.FLAT, padx=10, pady=5).pack(side=tk.LEFT, padx=5)
-
-def create_parameter_panel(parent, available_bout_types, analysis_mode):
-    """Create parameter configuration panel"""
-    param_frame = tk.LabelFrame(parent, text="Analysis Parameters", 
-                               font=("Microsoft YaHei", 11, "bold"), 
-                               bg="#f8f8f8", width=350)
-    param_frame.pack_propagate(False)
-    
-    # Bout type selection
-    bout_frame = tk.LabelFrame(param_frame, text="Bout Type", 
-                              font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
-    bout_frame.pack(fill=tk.X, padx=10, pady=10)
-    
-    tk.Label(bout_frame, text="Select Type:", bg="#f8f8f8", 
-            font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=10, pady=(5,2))
-    
-    bout_type_var = tk.StringVar()
-    bout_type_combo = ttk.Combobox(bout_frame, textvariable=bout_type_var,
-                                  values=available_bout_types, state="readonly",
-                                  font=("Microsoft YaHei", 8))
-    bout_type_combo.pack(padx=10, pady=5, fill=tk.X)
-    if available_bout_types:
-        bout_type_combo.set(available_bout_types[0])
-    
-    param_frame.bout_type_var = bout_type_var
-    
-    # Event type selection
-    event_frame = tk.LabelFrame(param_frame, text="Event Type", 
-                               font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
-    event_frame.pack(fill=tk.X, padx=10, pady=10)
-    
-    event_type_var = tk.StringVar(value="onset")
-    tk.Radiobutton(event_frame, text="Onset", variable=event_type_var, 
-                  value="onset", bg="#f8f8f8", font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=20)
-    tk.Radiobutton(event_frame, text="Offset", variable=event_type_var, 
-                  value="offset", bg="#f8f8f8", font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=20)
-    
-    param_frame.event_type_var = event_type_var
-    
-    # Time window settings
-    time_frame = tk.LabelFrame(param_frame, text="Plot Window (seconds)", 
-                              font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
-    time_frame.pack(fill=tk.X, padx=10, pady=10)
-    
-    start_frame = tk.Frame(time_frame, bg="#f8f8f8")
-    start_frame.pack(fill=tk.X, pady=5)
-    tk.Label(start_frame, text="Start:", bg="#f8f8f8", 
-            font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
-    start_time_var = tk.StringVar(value="-5")
-    tk.Entry(start_frame, textvariable=start_time_var, width=8, 
-            font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
-    
-    end_frame = tk.Frame(time_frame, bg="#f8f8f8")
-    end_frame.pack(fill=tk.X, pady=5)
-    tk.Label(end_frame, text="End:", bg="#f8f8f8", 
-            font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
-    end_time_var = tk.StringVar(value="20")
-    tk.Entry(end_frame, textvariable=end_time_var, width=8, 
-            font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
-    
-    param_frame.start_time_var = start_time_var
-    param_frame.end_time_var = end_time_var
-    
-    # Baseline window settings
-    baseline_frame = tk.LabelFrame(param_frame, text="Baseline Window (seconds)", 
-                                  font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
-    baseline_frame.pack(fill=tk.X, padx=10, pady=10)
-    
-    baseline_start_frame = tk.Frame(baseline_frame, bg="#f8f8f8")
-    baseline_start_frame.pack(fill=tk.X, pady=5)
-    tk.Label(baseline_start_frame, text="Start:", bg="#f8f8f8", 
-            font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
-    baseline_start_var = tk.StringVar(value="-5")
-    tk.Entry(baseline_start_frame, textvariable=baseline_start_var, width=8, 
-            font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
-    
-    baseline_end_frame = tk.Frame(baseline_frame, bg="#f8f8f8")
-    baseline_end_frame.pack(fill=tk.X, pady=5)
-    tk.Label(baseline_end_frame, text="End:", bg="#f8f8f8", 
-            font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
-    baseline_end_var = tk.StringVar(value="0")
-    tk.Entry(baseline_end_frame, textvariable=baseline_end_var, width=8, 
-            font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
-    
-    param_frame.baseline_start_var = baseline_start_var
-    param_frame.baseline_end_var = baseline_end_var
-
-    # Export option
-    export_frame = tk.LabelFrame(param_frame, text="Export Options", 
-                                font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
-    export_frame.pack(fill=tk.X, padx=10, pady=10)
-    
-    export_var = tk.BooleanVar(value=False)
-    tk.Checkbutton(export_frame, text="Export statistics to CSV", 
-                  variable=export_var, bg="#f8f8f8",
-                  font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=10, pady=5)
-    
-    param_frame.export_var = export_var
-    
-    return param_frame
-
-def get_parameters_from_ui(param_frame, analysis_mode):
-    """Extract parameters from UI"""
-    try:
-        bout_type = param_frame.bout_type_var.get()
-        event_type = param_frame.event_type_var.get()
-        start_time = float(param_frame.start_time_var.get())
-        end_time = float(param_frame.end_time_var.get())
-        baseline_start = float(param_frame.baseline_start_var.get())
-        baseline_end = float(param_frame.baseline_end_var.get())
-        export_stats = param_frame.export_var.get()
-        
-        if not bout_type:
-            log_message("Please select a bout type", "WARNING")
-            return None
-        
-        if start_time >= end_time:
-            log_message("Start time must be less than end time", "WARNING")
-            return None
-        
-        if baseline_start >= baseline_end:
-            log_message("Baseline start must be less than baseline end", "WARNING")
-            return None
-        
-        full_event_type = f"{bout_type.replace('_bouts', '')}_{event_type}s"
-        pre_time = abs(min(0, start_time))
-        post_time = max(0, end_time)
-        
-        params = {
-            'bout_type': bout_type,
-            'event_type': event_type,
-            'full_event_type': full_event_type,
-            'start_time': start_time,
-            'end_time': end_time,
-            'pre_time': pre_time,
-            'post_time': post_time,
-            'baseline_start': baseline_start,
-            'baseline_end': baseline_end,
-            'export_stats': export_stats
-        }
-        
-        return params
-        
-    except ValueError:
-        log_message("Please enter valid parameter values", "WARNING")
-        return None
 
 class TableManager:
     """Manage table for multi-animal configuration"""

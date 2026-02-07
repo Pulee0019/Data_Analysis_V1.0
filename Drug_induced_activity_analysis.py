@@ -14,14 +14,10 @@ from matplotlib import colors
 
 from logger import log_message
 from Multimodal_analysis import (
-    export_statistics, identify_drug_sessions,
-    create_table_window, initialize_table, create_control_panel
+    export_statistics, identify_drug_sessions,create_control_panel, 
+    create_table_window, initialize_table, create_parameter_panel,
+    get_parameters_from_ui, FIBER_COLORS, DAY_COLORS
 )
-
-# Colors for different days
-DAY_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', 
-              '#1abc9c', '#e67e22', '#34495e', '#f1c40f', '#95a5a6']
-FIBER_COLORS = ['#008000', "#FF0000", '#FFA500']
 
 def show_drug_induced_analysis(root, multi_animal_data):
     """
@@ -43,7 +39,13 @@ def show_drug_induced_analysis(root, multi_animal_data):
     container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
     
     # Left panel: Parameters
-    param_frame = create_parameter_panel(container)
+    param_config = {
+        'start_time': "-1000",
+        'end_time': "2000",
+        'baseline_start': "-1000",
+        'baseline_end': "0",
+    }
+    param_frame = create_parameter_panel(container, param_config)
     param_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=(0, 5))
     
     # Right panel: Table
@@ -65,111 +67,6 @@ def show_drug_induced_analysis(root, multi_animal_data):
     tk.Button(btn_frame, text="Run Analysis", command=run_analysis,
              bg="#ffffff", fg="#000000", font=("Microsoft YaHei", 9, "bold"),
              relief=tk.FLAT, padx=10, pady=5).pack(side=tk.LEFT, padx=5)
-
-def create_parameter_panel(parent):
-    """Create parameter configuration panel"""
-    param_frame = tk.LabelFrame(parent, text="Analysis Parameters", 
-                               font=("Microsoft YaHei", 11, "bold"), 
-                               bg="#f8f8f8", width=350)
-    param_frame.pack_propagate(False)
-    
-    # Plot window settings
-    time_frame = tk.LabelFrame(param_frame, text="Plot Window (seconds)", 
-                              font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
-    time_frame.pack(fill=tk.X, padx=10, pady=10)
-    
-    start_frame = tk.Frame(time_frame, bg="#f8f8f8")
-    start_frame.pack(fill=tk.X, pady=5)
-    tk.Label(start_frame, text="Start:", bg="#f8f8f8", 
-            font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
-    start_time_var = tk.StringVar(value="-1000")
-    tk.Entry(start_frame, textvariable=start_time_var, width=8, 
-            font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
-    
-    end_frame = tk.Frame(time_frame, bg="#f8f8f8")
-    end_frame.pack(fill=tk.X, pady=5)
-    tk.Label(end_frame, text="End:", bg="#f8f8f8", 
-            font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
-    end_time_var = tk.StringVar(value="2000")
-    tk.Entry(end_frame, textvariable=end_time_var, width=8, 
-            font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
-    
-    param_frame.start_time_var = start_time_var
-    param_frame.end_time_var = end_time_var
-    
-    # Baseline window settings
-    baseline_frame = tk.LabelFrame(param_frame, text="Baseline Window (seconds)", 
-                                  font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
-    baseline_frame.pack(fill=tk.X, padx=10, pady=10)
-    
-    baseline_start_frame = tk.Frame(baseline_frame, bg="#f8f8f8")
-    baseline_start_frame.pack(fill=tk.X, pady=5)
-    tk.Label(baseline_start_frame, text="Start:", bg="#f8f8f8", 
-            font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
-    baseline_start_var = tk.StringVar(value="-1000")
-    tk.Entry(baseline_start_frame, textvariable=baseline_start_var, width=8, 
-            font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
-    
-    baseline_end_frame = tk.Frame(baseline_frame, bg="#f8f8f8")
-    baseline_end_frame.pack(fill=tk.X, pady=5)
-    tk.Label(baseline_end_frame, text="End:", bg="#f8f8f8", 
-            font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
-    baseline_end_var = tk.StringVar(value="0")
-    tk.Entry(baseline_end_frame, textvariable=baseline_end_var, width=8, 
-            font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
-    
-    param_frame.baseline_start_var = baseline_start_var
-    param_frame.baseline_end_var = baseline_end_var
-    
-    # Export option
-    export_frame = tk.LabelFrame(param_frame, text="Export Options", 
-                                font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
-    export_frame.pack(fill=tk.X, padx=10, pady=10)
-    
-    export_var = tk.BooleanVar(value=False)
-    tk.Checkbutton(export_frame, text="Export statistics to CSV", 
-                  variable=export_var, bg="#f8f8f8",
-                  font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=10, pady=5)
-    
-    param_frame.export_var = export_var
-    
-    return param_frame
-
-def get_parameters_from_ui(param_frame):
-    """Extract parameters from UI"""
-    try:
-        start_time = float(param_frame.start_time_var.get())
-        end_time = float(param_frame.end_time_var.get())
-        baseline_start = float(param_frame.baseline_start_var.get())
-        baseline_end = float(param_frame.baseline_end_var.get())
-        export_stats = param_frame.export_var.get()
-        
-        if start_time >= end_time:
-            log_message("Start time must be less than end time", "WARNING")
-            return None
-        
-        if baseline_start >= baseline_end:
-            log_message("Baseline start must be less than baseline end", "WARNING")
-            return None
-        
-        pre_time = abs(min(0, start_time))
-        post_time = max(0, end_time)
-        
-        params = {
-            'start_time': start_time,
-            'end_time': end_time,
-            'pre_time': pre_time,
-            'post_time': post_time,
-            'baseline_start': baseline_start,
-            'baseline_end': baseline_end,
-            'export_stats': export_stats
-        }
-        
-        return params
-        
-    except ValueError:
-        log_message("Please enter valid parameter values", "WARNING")
-        return None
 
 class TableManager:
     """Manage table for multi-animal configuration"""
@@ -467,11 +364,140 @@ def run_drug_induced_analysis(day_data, params):
     else:
         log_message("No valid results", "ERROR")
 
+def calculate_episodes(events, fiber_timestamps, dff_data,
+                            active_channels, target_wavelengths,
+                            pre_time, post_time, baseline_start, baseline_end):
+    """Calculate fiber episodes for drug/optogenetic analysis"""
+    time_array = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
+    
+    dff_episodes = {}
+    zscore_episodes = {}
+    
+    for wavelength in target_wavelengths:
+        dff_episodes[wavelength] = []
+        zscore_episodes[wavelength] = []
+    
+    for channel in active_channels:
+        for wavelength in target_wavelengths:
+            dff_key = f"{channel}_{wavelength}"
+            if dff_key in dff_data:
+                data = dff_data[dff_key]
+                if isinstance(data, pd.Series):
+                    data = data.values
+                
+                for event in events:
+                    event_time = event if isinstance(event, (int, float)) else event[0]
+                    
+                    # Calculate baseline statistics
+                    baseline_start_time = event_time + baseline_start
+                    baseline_end_time = event_time + baseline_end
+                    
+                    baseline_start_idx = np.argmin(np.abs(fiber_timestamps - baseline_start_time))
+                    baseline_end_idx = np.argmin(np.abs(fiber_timestamps - baseline_end_time))
+                    
+                    if baseline_end_idx > baseline_start_idx:
+                        baseline_data = data[baseline_start_idx:baseline_end_idx]
+                        mean_dff = np.nanmean(baseline_data)
+                        std_dff = np.nanstd(baseline_data)
+                        
+                        if std_dff == 0:
+                            std_dff = 1e-10
+                        
+                        # Extract plotting window
+                        start_idx = np.argmin(np.abs(fiber_timestamps - (event_time - pre_time)))
+                        end_idx = np.argmin(np.abs(fiber_timestamps - (event_time + post_time)))
+                        
+                        if end_idx > start_idx:
+                            episode_data = data[start_idx:end_idx]
+                            episode_times = fiber_timestamps[start_idx:end_idx] - event_time
+                            
+                            if len(episode_times) > 1:
+                                # Store dFF data
+                                interp_dff = np.interp(time_array, episode_times, episode_data)
+                                dff_episodes[wavelength].append(interp_dff)
+                                
+                                # Calculate z-score
+                                zscore_episode = (episode_data - mean_dff) / std_dff
+                                interp_zscore = np.interp(time_array, episode_times, zscore_episode)
+                                zscore_episodes[wavelength].append(interp_zscore)
+    
+    return {
+        'time': time_array,
+        'dff': dff_episodes,
+        'zscore': zscore_episodes,
+        'target_wavelengths': target_wavelengths
+    }
+    
+def collect_statistics(day_name, animal_id, session_idx, drug_name, result,
+                           time_array, params, target_wavelengths, active_channels):
+    """Collect statistics for drug-induced fiber analysis"""
+    rows = []
+    pre_mask = (time_array >= -params['pre_time']) & (time_array <= 0)
+    post_mask = (time_array >= 0) & (time_array <= params['post_time'])
+
+    full_id = f"{animal_id}_Session{session_idx+1}_{drug_name}"
+
+    # Fiber statistics
+    for channel in active_channels:
+        for wl in target_wavelengths:
+            # dFF
+            if wl in result['dff']:
+                for trial_idx, episode_data in enumerate(result['dff'][wl]):
+                    pre_data = episode_data[pre_mask]
+                    post_data = episode_data[post_mask]
+
+                    rows.append({
+                        'day': day_name,
+                        'animal_single_channel_id': full_id,
+                        'analysis_type': 'drug_induced',
+                        'channel': channel,
+                        'wavelength': wl,
+                        'trial': trial_idx + 1,
+                        'drug_name': drug_name,
+                        'pre_min': np.min(pre_data) if len(pre_data) > 0 else np.nan,
+                        'pre_max': np.max(pre_data) if len(pre_data) > 0 else np.nan,
+                        'pre_mean': np.mean(pre_data) if len(pre_data) > 0 else np.nan,
+                        'pre_area': np.trapezoid(pre_data, time_array[pre_mask]) if len(pre_data) > 0 else np.nan,
+                        'post_min': np.min(post_data) if len(post_data) > 0 else np.nan,
+                        'post_max': np.max(post_data) if len(post_data) > 0 else np.nan,
+                        'post_mean': np.mean(post_data) if len(post_data) > 0 else np.nan,
+                        'post_area': np.trapezoid(post_data, time_array[post_mask]) if len(post_data) > 0 else np.nan,
+                        'signal_type': 'fiber_dff',
+                        'baseline_start': params['baseline_start'],
+                        'baseline_end': params['baseline_end']
+                    })
+
+            # Z-score
+            if wl in result['zscore']:
+                for trial_idx, episode_data in enumerate(result['zscore'][wl]):
+                    pre_data = episode_data[pre_mask]
+                    post_data = episode_data[post_mask]
+
+                    rows.append({
+                        'day': day_name,
+                        'animal_single_channel_id': full_id,
+                        'analysis_type': 'drug_induced',
+                        'channel': channel,
+                        'wavelength': wl,
+                        'trial': trial_idx + 1,
+                        'drug_name': drug_name,
+                        'pre_min': np.min(pre_data) if len(pre_data) > 0 else np.nan,
+                        'pre_max': np.max(pre_data) if len(pre_data) > 0 else np.nan,
+                        'pre_mean': np.mean(pre_data) if len(pre_data) > 0 else np.nan,
+                        'pre_area': np.trapezoid(pre_data, time_array[pre_mask]) if len(pre_data) > 0 else np.nan,
+                        'post_min': np.min(post_data) if len(post_data) > 0 else np.nan,
+                        'post_max': np.max(post_data) if len(post_data) > 0 else np.nan,
+                        'post_mean': np.mean(post_data) if len(post_data) > 0 else np.nan,
+                        'post_area': np.trapezoid(post_data, time_array[post_mask]) if len(post_data) > 0 else np.nan,
+                        'signal_type': 'fiber_zscore',
+                        'baseline_start': params['baseline_start'],
+                        'baseline_end': params['baseline_end']
+                    })
+
+    return rows
+
 def analyze_day_drug_induced(day_name, animals, params):
     """Analyze drug-induced effects for one day (multiple animals combined)"""
-    time_array = np.linspace(-params['pre_time'], params['post_time'], 
-                            int((params['pre_time'] + params['post_time']) * 10))
-    
     # Collect all wavelengths
     target_wavelengths = []
     for animal_data in animals:
@@ -480,15 +506,15 @@ def analyze_day_drug_induced(day_name, animals, params):
             wls = signal.split('+') if '+' in signal else [signal]
             target_wavelengths.extend(wls)
     target_wavelengths = sorted(list(set(target_wavelengths)))
-    
+
     if not target_wavelengths:
         target_wavelengths = ['470']
-    
+
     # Initialize storage
     all_dff_episodes = {wl: [] for wl in target_wavelengths}
     all_zscore_episodes = {wl: [] for wl in target_wavelengths}
     statistics_rows = []
-    
+
     # Process each animal
     for animal_data in animals:
         try:
@@ -496,141 +522,70 @@ def analyze_day_drug_induced(day_name, animals, params):
             session_idx = animal_data.get('selected_session_idx', 0)
             drug_name = animal_data.get('selected_drug_name', 'Drug')
 
-            fiber_data = animal_data.get('fiber_data_trimmed')
-            if fiber_data is None or fiber_data.empty:
-                fiber_data = animal_data.get('fiber_data')
-
             channels = animal_data.get('channels', {})
-            events_col = channels.get('events')
 
-            if not events_col or events_col not in fiber_data.columns:
-                log_message(f"Events column not found for {animal_id}", "WARNING")
-                continue
-            
             # Get drug sessions
             drug_sessions = identify_drug_sessions(animal_data['fiber_events'])
-            
+
             if session_idx >= len(drug_sessions):
                 log_message(f"Session {session_idx} not found for {animal_id}", "WARNING")
                 continue
-            
-            time_col = channels['time']
+
             drug_start_time = drug_sessions[session_idx]['time']
-            
+
             preprocessed_data = animal_data.get('preprocessed_data')
             if preprocessed_data is None:
                 continue
-            
+
+            time_col = channels['time']
             fiber_timestamps = preprocessed_data[time_col].values
             dff_data = animal_data.get('dff_data', {})
             active_channels = animal_data.get('active_channels', [])
 
-            # Extract episodes for each channel and wavelength
-            for channel in active_channels:
-                for wavelength in target_wavelengths:
-                    dff_key = f"{channel}_{wavelength}"
-                    if dff_key in dff_data:
-                        data = dff_data[dff_key]
-                        if isinstance(data, pd.Series):
-                            data = data.values
-                        
-                        # Calculate baseline statistics
-                        baseline_start_time = drug_start_time + params['baseline_start']
-                        baseline_end_time = drug_start_time + params['baseline_end']
-                        
-                        baseline_start_idx = np.argmin(np.abs(fiber_timestamps - baseline_start_time))
-                        baseline_end_idx = np.argmin(np.abs(fiber_timestamps - baseline_end_time))
-                        
-                        if baseline_end_idx > baseline_start_idx:
-                            baseline_data = data[baseline_start_idx:baseline_end_idx]
-                            mean_baseline = np.nanmean(baseline_data)
-                            std_baseline = np.nanstd(baseline_data)
-                            
-                            if std_baseline == 0:
-                                std_baseline = 1e-10
-                            
-                            # Extract plotting window
-                            start_idx = np.argmin(np.abs(fiber_timestamps - (drug_start_time - params['pre_time'])))
-                            end_idx = np.argmin(np.abs(fiber_timestamps - (drug_start_time + params['post_time'])))
-                            
-                            if end_idx > start_idx:
-                                episode_data = data[start_idx:end_idx]
-                                episode_times = fiber_timestamps[start_idx:end_idx] - drug_start_time
-                                
-                                if len(episode_times) > 1:
-                                    # Store dFF data
-                                    interp_dff = np.interp(time_array, episode_times, episode_data)
-                                    all_dff_episodes[wavelength].append(interp_dff)
-                                    
-                                    # Calculate z-score
-                                    zscore_episode = (episode_data - mean_baseline) / std_baseline
-                                    interp_zscore = np.interp(time_array, episode_times, zscore_episode)
-                                    all_zscore_episodes[wavelength].append(interp_zscore)
-                                    
-                                    # Collect statistics
-                                    if params['export_stats']:
-                                        pre_mask = (time_array >= -params['pre_time']) & (time_array <= 0)
-                                        post_mask = (time_array >= 0) & (time_array <= params['post_time'])
-                                        
-                                        pre_dff_data = interp_dff[pre_mask]
-                                        post_dff_data = interp_dff[post_mask]
-                                        pre_zscore_data = interp_zscore[pre_mask]
-                                        post_zscore_data = interp_zscore[post_mask]
-                                        
-                                        statistics_rows.append({
-                                            'day': day_name,
-                                            'animal_single_channel_id': f"{animal_id}_Session{session_idx+1}_{drug_name}",
-                                            'analysis_type': 'drug_induced',
-                                            'channel': channel,
-                                            'wavelength': wavelength,
-                                            'trial': 1,
-                                            'drug_name': drug_name,
-                                            'pre_min': np.min(pre_dff_data) if len(pre_dff_data) > 0 else np.nan,
-                                            'pre_max': np.max(pre_dff_data) if len(pre_dff_data) > 0 else np.nan,
-                                            'pre_mean': np.mean(pre_dff_data) if len(pre_dff_data) > 0 else np.nan,
-                                            'pre_area': np.trapz(pre_dff_data, time_array[pre_mask]) if len(pre_dff_data) > 0 else np.nan,
-                                            'post_min': np.min(post_dff_data) if len(post_dff_data) > 0 else np.nan,
-                                            'post_max': np.max(post_dff_data) if len(post_dff_data) > 0 else np.nan,
-                                            'post_mean': np.mean(post_dff_data) if len(post_dff_data) > 0 else np.nan,
-                                            'post_area': np.trapz(post_dff_data, time_array[post_mask]) if len(post_dff_data) > 0 else np.nan,
-                                            'signal_type': 'fiber_dff',
-                                            'baseline_start': params['baseline_start'],
-                                            'baseline_end': params['baseline_end']
-                                        })
-                                        
-                                        statistics_rows.append({
-                                            'day': day_name,
-                                            'animal_single_channel_id': f"{animal_id}_Session{session_idx+1}_{drug_name}",
-                                            'analysis_type': 'drug_induced',
-                                            'channel': channel,
-                                            'wavelength': wavelength,
-                                            'trial': 1,
-                                            'drug_name': drug_name,
-                                            'pre_min': np.min(pre_zscore_data) if len(pre_zscore_data) > 0 else np.nan,
-                                            'pre_max': np.max(pre_zscore_data) if len(pre_zscore_data) > 0 else np.nan,
-                                            'pre_mean': np.mean(pre_zscore_data) if len(pre_zscore_data) > 0 else np.nan,
-                                            'pre_area': np.trapz(pre_zscore_data, time_array[pre_mask]) if len(pre_zscore_data) > 0 else np.nan,
-                                            'post_min': np.min(post_zscore_data) if len(post_zscore_data) > 0 else np.nan,
-                                            'post_max': np.max(post_zscore_data) if len(post_zscore_data) > 0 else np.nan,
-                                            'post_mean': np.mean(post_zscore_data) if len(post_zscore_data) > 0 else np.nan,
-                                            'post_area': np.trapz(post_zscore_data, time_array[post_mask]) if len(post_zscore_data) > 0 else np.nan,
-                                            'signal_type': 'fiber_zscore',
-                                            'baseline_start': params['baseline_start'],
-                                            'baseline_end': params['baseline_end']
-                                        })
-        
+            # Use calculate_episodes for episode calculation
+            fiber_result = calculate_episodes(
+                [drug_start_time], fiber_timestamps, dff_data,
+                active_channels, target_wavelengths,
+                params['pre_time'], params['post_time'],
+                params['baseline_start'], params['baseline_end']
+            )
+
+            # Collect episodes
+            for wl in target_wavelengths:
+                if wl in fiber_result['dff']:
+                    all_dff_episodes[wl].extend(fiber_result['dff'][wl])
+                if wl in fiber_result['zscore']:
+                    all_zscore_episodes[wl].extend(fiber_result['zscore'][wl])
+
+            # Collect statistics if requested
+            if params['export_stats']:
+                statistics_rows.extend(collect_statistics(
+                    day_name, animal_id, session_idx, drug_name,
+                    fiber_result, fiber_result['time'], params,
+                    target_wavelengths, active_channels
+                ))
+
         except Exception as e:
             log_message(f"Error analyzing {animal_data.get('animal_single_channel_id', 'Unknown')}: {str(e)}", "ERROR")
             continue
-    
+
+    # Check if we have any data
+    has_data = any(len(all_dff_episodes[wl]) > 0 for wl in target_wavelengths)
+
+    if not has_data:
+        return None, None
+
     # Calculate results
+    time_array = np.linspace(-params['pre_time'], params['post_time'],
+                            int((params['pre_time'] + params['post_time']) * 10))
+
     result = {
         'time': time_array,
         'dff': all_dff_episodes,
         'zscore': all_zscore_episodes,
         'target_wavelengths': target_wavelengths
     }
-    
+
     return result, statistics_rows if params['export_stats'] else None
 
 def plot_drug_induced_results(results, params):
