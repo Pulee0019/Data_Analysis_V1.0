@@ -4842,7 +4842,7 @@ def show_drug_name_config_dialog():
     
     dialog = tk.Toplevel(root)
     dialog.title("Drug Configuration")
-    dialog.geometry("1000x500")
+    dialog.geometry("700x500")
     dialog.transient(root)
     dialog.grab_set()
     
