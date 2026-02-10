@@ -4813,7 +4813,7 @@ def show_opto_power_config_dialog():
                 relief=tk.FLAT, padx=20, pady=5).pack(side=tk.RIGHT, padx=5)
 
 def show_drug_name_config_dialog():
-    """Show drug name configuration dialog - Modified for multiple drug events"""
+    """Show drug name configuration dialog with onset and offset times"""
     global drug_name_config, multi_animal_data
     
     if not multi_animal_data:
@@ -4830,7 +4830,10 @@ def show_drug_name_config_dialog():
         drug_sessions = identify_drug_sessions(events_data)
         
         if drug_sessions:
-            all_drug_sessions[animal_id] = drug_sessions
+            all_drug_sessions[animal_id] = {
+                'sessions': drug_sessions,
+                'animal_data': animal_data
+            }
             log_message(f"Found {len(drug_sessions)} drug sessions for {animal_id}")
     
     if not all_drug_sessions:
@@ -4838,15 +4841,15 @@ def show_drug_name_config_dialog():
         return
     
     dialog = tk.Toplevel(root)
-    dialog.title("Drug Name Configuration")
-    dialog.geometry("700x500")
+    dialog.title("Drug Configuration")
+    dialog.geometry("1000x500")
     dialog.transient(root)
     dialog.grab_set()
     
     container = tk.Frame(dialog, bg="#f8f8f8")
     container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
     
-    tk.Label(container, text="Configure Drug Names for Each Session", 
+    tk.Label(container, text="Configure Drug Names and Timing for Each Session", 
             font=("Microsoft YaHei", 12, "bold"), bg="#f8f8f8").pack(pady=10)
     
     # Scrollable frame
@@ -4858,81 +4861,168 @@ def show_drug_name_config_dialog():
     canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
     canvas.configure(yscrollcommand=scrollbar.set)
     
-    drug_name_vars = {}
+    drug_config_vars = {}
     row = 0
     
-    for animal_id, sessions in all_drug_sessions.items():
+    for animal_id, animal_info in all_drug_sessions.items():
+        sessions = animal_info['sessions']
+        animal_data = animal_info['animal_data']
+        
+        # Get running end time if available
+        running_end_time = None
+        ast2_data = animal_data.get('ast2_data_adjusted')
+        if ast2_data and 'data' in ast2_data and 'timestamps' in ast2_data['data']:
+            running_end_time = ast2_data['data']['timestamps'][-1]
+        
         # Animal header
         tk.Label(scrollable_frame, text=f"Animal: {animal_id}", 
                 font=("Microsoft YaHei", 10, "bold"), bg="#f8f8f8",
-                anchor="w").grid(row=row, column=0, columnspan=4, 
+                anchor="w").grid(row=row, column=0, columnspan=7, 
                                 sticky="w", pady=(10, 5), padx=5)
         row += 1
         
         # Session headers
-        tk.Label(scrollable_frame, text="Session", font=("Microsoft YaHei", 9, "bold"),
-                bg="#f8f8f8").grid(row=row, column=0, sticky="w", padx=5, pady=2)
-        tk.Label(scrollable_frame, text="Event Name", font=("Microsoft YaHei", 9, "bold"),
-                bg="#f8f8f8").grid(row=row, column=1, sticky="w", padx=5, pady=2)
-        tk.Label(scrollable_frame, text="Time (s)", font=("Microsoft YaHei", 9, "bold"),
-                bg="#f8f8f8").grid(row=row, column=2, sticky="w", padx=5, pady=2)
-        tk.Label(scrollable_frame, text="Drug Name", font=("Microsoft YaHei", 9, "bold"),
-                bg="#f8f8f8").grid(row=row, column=3, sticky="w", padx=5, pady=2)
+        headers = ["Session", "Event Name", "Admin Time (s)", "Drug Name", 
+                  "Onset Time (s)", "Offset Time (s)", ""]
+        for col, header in enumerate(headers):
+            tk.Label(scrollable_frame, text=header, font=("Microsoft YaHei", 9, "bold"),
+                    bg="#f8f8f8").grid(row=row, column=col, sticky="w", padx=5, pady=2)
         row += 1
         
         # Session rows
         for session_idx, session_info in enumerate(sessions):
-            # Create unique ID
             session_id = f"{animal_id}_Session{session_idx+1}"
+            admin_time = session_info['time']
+            
+            # Get saved config or set defaults
+            saved_config = drug_name_config.get(session_id, {})
+            if isinstance(saved_config, str):  # Old format compatibility
+                saved_config = {
+                    'name': saved_config,
+                    'onset_time': admin_time,
+                    'offset_time': None
+                }
+            
+            default_name = saved_config.get('name', 'Drug')
+            default_onset = saved_config.get('onset_time', admin_time)
+            
+            # Calculate default offset time
+            if session_idx < len(sessions) - 1:
+                default_offset = saved_config.get('offset_time', sessions[session_idx + 1]['time'])
+            else:
+                default_offset = saved_config.get('offset_time', running_end_time if running_end_time else admin_time + 1000)
             
             # Session info labels
             tk.Label(scrollable_frame, text=f"Session{session_idx+1}", 
                     bg="#f8f8f8").grid(row=row, column=0, sticky="w", padx=5)
             tk.Label(scrollable_frame, text=session_info['event_name'], 
                     bg="#f8f8f8", fg="blue").grid(row=row, column=1, sticky="w", padx=5)
-            tk.Label(scrollable_frame, text=f"{session_info['time']:.1f}", 
+            tk.Label(scrollable_frame, text=f"{admin_time:.1f}", 
                     bg="#f8f8f8").grid(row=row, column=2, sticky="w", padx=5)
             
             # Drug name entry
-            saved_name = drug_name_config.get(session_id, "Drug")
-            drug_name_var = tk.StringVar(value=saved_name)
-            drug_name_entry = tk.Entry(scrollable_frame, textvariable=drug_name_var, 
-                                      width=20, font=("Microsoft YaHei", 9))
-            drug_name_entry.grid(row=row, column=3, sticky="w", padx=5, pady=2)
+            name_var = tk.StringVar(value=default_name)
+            name_entry = tk.Entry(scrollable_frame, textvariable=name_var, 
+                                 width=15, font=("Microsoft YaHei", 9))
+            name_entry.grid(row=row, column=3, sticky="w", padx=5, pady=2)
             
-            drug_name_vars[session_id] = drug_name_var
+            # Onset time entry
+            onset_var = tk.StringVar(value=f"{default_onset:.1f}")
+            onset_entry = tk.Entry(scrollable_frame, textvariable=onset_var, 
+                                  width=12, font=("Microsoft YaHei", 9))
+            onset_entry.grid(row=row, column=4, sticky="w", padx=5, pady=2)
+            
+            # Offset time entry
+            offset_var = tk.StringVar(value=f"{default_offset:.1f}" if default_offset else "")
+            offset_entry = tk.Entry(scrollable_frame, textvariable=offset_var, 
+                                   width=12, font=("Microsoft YaHei", 9))
+            offset_entry.grid(row=row, column=5, sticky="w", padx=5, pady=2)
+            
+            # Auto-fill button
+            def make_auto_fill(s_idx, sessions_list, r_end, o_var, off_var, a_time):
+                def auto_fill():
+                    o_var.set(f"{a_time:.1f}")
+                    if s_idx < len(sessions_list) - 1:
+                        off_var.set(f"{sessions_list[s_idx + 1]['time']:.1f}")
+                    else:
+                        if r_end:
+                            off_var.set(f"{r_end:.1f}")
+                        else:
+                            off_var.set(f"{a_time + 1000:.1f}")
+                return auto_fill
+            
+            auto_btn = tk.Button(scrollable_frame, text="Auto", 
+                               command=make_auto_fill(session_idx, sessions, running_end_time, 
+                                                     onset_var, offset_var, admin_time),
+                               bg="#e0e0e0", font=("Microsoft YaHei", 8))
+            auto_btn.grid(row=row, column=6, sticky="w", padx=5, pady=2)
+            
+            drug_config_vars[session_id] = {
+                'name': name_var,
+                'onset': onset_var,
+                'offset': offset_var,
+                'admin_time': admin_time
+            }
             row += 1
     
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-    def apply_names():
-        """Apply drug names"""
+    def apply_config():
+        """Apply drug configuration"""
         try:
-            for session_id, name_var in drug_name_vars.items():
-                drug_name = name_var.get().strip()
+            for session_id, vars_dict in drug_config_vars.items():
+                drug_name = vars_dict['name'].get().strip()
                 if not drug_name:
                     drug_name = "Drug"
-                drug_name_config[session_id] = drug_name
+                
+                try:
+                    onset_time = float(vars_dict['onset'].get())
+                except:
+                    onset_time = vars_dict['admin_time']
+                    log_message(f"Invalid onset time for {session_id}, using admin time", "WARNING")
+                
+                try:
+                    offset_str = vars_dict['offset'].get().strip()
+                    offset_time = float(offset_str) if offset_str else None
+                except:
+                    offset_time = None
+                    log_message(f"Invalid offset time for {session_id}, will use default", "WARNING")
+                
+                drug_name_config[session_id] = {
+                    'name': drug_name,
+                    'admin_time': vars_dict['admin_time'],
+                    'onset_time': onset_time,
+                    'offset_time': offset_time
+                }
             
             save_drug_name_config()
-            log_message(f"Drug names configured for {len(drug_name_vars)} sessions", "INFO")
+            log_message(f"Drug configuration saved for {len(drug_config_vars)} sessions", "INFO")
             dialog.destroy()
             
         except Exception as e:
-            log_message(f"Error configuring drug names: {str(e)}", "ERROR")
+            log_message(f"Error configuring drugs: {str(e)}", "ERROR")
+            import traceback
+            traceback.print_exc()
 
     # Buttons
     btn_frame = tk.Frame(dialog, bg="#f8f8f8")
     btn_frame.pack(fill=tk.X, padx=10, pady=10)
     
-    tk.Button(btn_frame, text="Apply", command=apply_names,
+    tk.Button(btn_frame, text="Apply", command=apply_config,
                 bg="#4CAF50", fg="white", font=("Microsoft YaHei", 9, "bold"),
-                relief=tk.FLAT, padx=20, pady=5).pack(side=tk.RIGHT, padx=5)
+                relief=tk.FLAT, padx=15, pady=5).pack(side=tk.LEFT, padx=5)
     
     tk.Button(btn_frame, text="Cancel", command=dialog.destroy,
                 bg="#f44336", fg="white", font=("Microsoft YaHei", 9, "bold"),
-                relief=tk.FLAT, padx=20, pady=5).pack(side=tk.RIGHT, padx=5)
+                relief=tk.FLAT, padx=15, pady=5).pack(side=tk.LEFT, padx=5)
+    
+    # Help text
+    help_text = ("Onset Time: When the drug starts to take effect (default: admin time)\n"
+                "Offset Time: When the drug effect ends (default: next drug admin or running end)\n"
+                "Click 'Auto' to auto-fill with defaults")
+    tk.Label(btn_frame, text=help_text, bg="#f8f8f8", fg="#666666",
+            font=("Microsoft YaHei", 8), justify=tk.LEFT).pack(side=tk.RIGHT, padx=10)
     
 def save_path_setting():
     print(1)

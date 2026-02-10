@@ -386,6 +386,7 @@ class TableManager:
     def _classify_session_drug_timing_multi(self, animal_id, session, animal_data):
         """
         Classify optogenetic session based on multiple drug administration times
+        Uses drug onset and offset times from configuration
         Returns: 'baseline', '{drug_nameA}', '{drug_nameB} after {drug_nameA}', etc.
         """
         if animal_id not in self.all_drug_events:
@@ -396,44 +397,85 @@ class TableManager:
         if not drug_sessions:
             return 'baseline'
         
-        # Load drug name config
+        # Load drug config
         config_path = os.path.join(os.path.dirname(__file__), 'drug_name_config.json')
         if os.path.exists(config_path):
             with open(config_path, 'r') as f:
-                drug_name_config = json.load(f)
+                drug_config = json.load(f)
         else:
-            drug_name_config = {}
+            drug_config = {}
         
-        # Get drug names and times
+        # Get drug information with timing
         drug_info = []
         for idx, session_info in enumerate(drug_sessions):
             session_id = f"{animal_id}_Session{idx+1}"
-            drug_name = drug_name_config.get(session_id, f"Drug{idx+1}")
-            drug_time = session_info['time']
-            drug_info.append({'name': drug_name, 'time': drug_time, 'idx': idx})
+            
+            # Get config for this session
+            if session_id in drug_config:
+                config = drug_config[session_id]
+                if isinstance(config, dict):
+                    drug_name = config.get('name', f"Drug{idx+1}")
+                    onset_time = config.get('onset_time', session_info['time'])
+                    offset_time = config.get('offset_time')
+                else:
+                    # Old format compatibility
+                    drug_name = config
+                    onset_time = session_info['time']
+                    offset_time = None
+            else:
+                drug_name = f"Drug{idx+1}"
+                onset_time = session_info['time']
+                offset_time = None
+            
+            # Calculate default offset if not specified
+            if offset_time is None:
+                if idx < len(drug_sessions) - 1:
+                    # Next drug's onset time
+                    next_session_id = f"{animal_id}_Session{idx+2}"
+                    if next_session_id in drug_config and isinstance(drug_config[next_session_id], dict):
+                        offset_time = drug_config[next_session_id].get('onset_time', drug_sessions[idx+1]['time'])
+                    else:
+                        offset_time = drug_sessions[idx+1]['time']
+                else:
+                    # Use running end time or very large number
+                    ast2_data = animal_data.get('ast2_data_adjusted')
+                    if ast2_data and 'data' in ast2_data and 'timestamps' in ast2_data['data']:
+                        offset_time = ast2_data['data']['timestamps'][-1]
+                    else:
+                        offset_time = onset_time + 10000  # Large number
+            
+            drug_info.append({
+                'name': drug_name, 
+                'onset': onset_time,
+                'offset': offset_time,
+                'idx': idx
+            })
         
-        # Sort by time
-        drug_info.sort(key=lambda x: x['time'])
+        # Sort by onset time
+        drug_info.sort(key=lambda x: x['onset'])
         
         # Get optogenetic session time window
         session_start = min([time for time, _ in session])
         session_end = max([time for time, _ in session])
         session_mid = (session_start + session_end) / 2
         
-        # Classify based on session midpoint relative to drug times
-        if session_mid < drug_info[0]['time']:
+        # Classify based on session midpoint relative to drug onset/offset times
+        if session_mid < drug_info[0]['onset']:
             return 'baseline'
         
         # Find which drug period this session belongs to
         for i in range(len(drug_info) - 1, -1, -1):
-            if session_mid >= drug_info[i]['time']:
-                if i == 0:
-                    # After first drug only
-                    return drug_info[0]['name']
-                else:
-                    # After multiple drugs
-                    previous_drugs = ' + '.join([d['name'] for d in drug_info[:i]])
-                    return f"{drug_info[i]['name']} after {previous_drugs}"
+            if session_mid >= drug_info[i]['onset']:
+                # Check if still within this drug's effect period
+                if session_mid < drug_info[i]['offset']:
+                    if i == 0:
+                        # Within first drug period
+                        return drug_info[0]['name']
+                    else:
+                        # Within later drug period
+                        previous_drugs = ' + '.join([d['name'] for d in drug_info[:i]])
+                        return f"{drug_info[i]['name']} after {previous_drugs}"
+                # If past offset, continue checking previous drugs
         
         return 'baseline'
 

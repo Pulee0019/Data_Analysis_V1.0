@@ -236,7 +236,12 @@ class TableManager:
                 session_id = f"{animal_id}_Session{session_idx+1}"
                 
                 # Get drug name from config
-                drug_name = drug_name_config.get(session_id, "Drug")
+                drug_info = drug_name_config.get(session_id, "Drug")
+                # Handle both old format (string) and new format (dict)
+                if isinstance(drug_info, dict):
+                    drug_name = drug_info.get('name', 'Drug')
+                else:
+                    drug_name = drug_info
                 
                 # Create display ID with drug name - MODIFIED FORMAT
                 display_id = f"{animal_id}_Session{session_idx+1}_{drug_name}"
@@ -326,6 +331,20 @@ class TableManager:
                             animal_data_with_drug = animal_data.copy()
                             animal_data_with_drug['selected_session_idx'] = session_idx
                             animal_data_with_drug['selected_drug_name'] = drug_name
+                            
+                            # Load drug timing from config
+                            session_id = f"{animal_id}_Session{session_idx+1}"
+                            config_path = os.path.join(os.path.dirname(__file__), 'drug_name_config.json')
+                            if os.path.exists(config_path):
+                                with open(config_path, 'r') as f:
+                                    drug_config = json.load(f)
+                                
+                                if session_id in drug_config:
+                                    drug_info = drug_config[session_id]
+                                    if isinstance(drug_info, dict):
+                                        animal_data_with_drug['drug_onset_time'] = drug_info.get('onset_time')
+                                        animal_data_with_drug['drug_offset_time'] = drug_info.get('offset_time')
+                            
                             day_animals.append(animal_data_with_drug)
                             break
             
@@ -498,7 +517,10 @@ def collect_statistics(day_name, animal_id, session_idx, drug_name, result,
 
 def analyze_day_drug_induced(day_name, animals, params):
     """Analyze drug-induced effects for one day (multiple animals combined)"""
-    # Collect all wavelengths
+    time_array = np.linspace(-params['pre_time'], params['post_time'], 
+                            int((params['pre_time'] + params['post_time']) * 10))
+    
+    # Collect wavelengths
     target_wavelengths = []
     for animal_data in animals:
         if 'target_signal' in animal_data:
@@ -506,87 +528,97 @@ def analyze_day_drug_induced(day_name, animals, params):
             wls = signal.split('+') if '+' in signal else [signal]
             target_wavelengths.extend(wls)
     target_wavelengths = sorted(list(set(target_wavelengths)))
-
+    
     if not target_wavelengths:
         target_wavelengths = ['470']
-
-    # Initialize storage
-    all_dff_episodes = {wl: [] for wl in target_wavelengths}
-    all_zscore_episodes = {wl: [] for wl in target_wavelengths}
+    
+    # Initialize combined storage
+    combined_dff = {wl: [] for wl in target_wavelengths}
+    combined_zscore = {wl: [] for wl in target_wavelengths}
     statistics_rows = []
-
-    # Process each animal
+    
     for animal_data in animals:
         try:
             animal_id = animal_data.get('animal_single_channel_id', 'Unknown')
             session_idx = animal_data.get('selected_session_idx', 0)
             drug_name = animal_data.get('selected_drug_name', 'Drug')
-
-            channels = animal_data.get('channels', {})
-
-            # Get drug sessions
-            drug_sessions = identify_drug_sessions(animal_data['fiber_events'])
-
-            if session_idx >= len(drug_sessions):
-                log_message(f"Session {session_idx} not found for {animal_id}", "WARNING")
-                continue
-
-            drug_start_time = drug_sessions[session_idx]['time']
-
+            
+            # Get drug timing
+            drug_onset_time = animal_data.get('drug_onset_time')
+            drug_offset_time = animal_data.get('drug_offset_time')
+            
+            log_message(f"Processing {animal_id} Session{session_idx+1} ({drug_name})")
+            log_message(f"  Drug onset: {drug_onset_time}, offset: {drug_offset_time}")
+            
+            # Get data
             preprocessed_data = animal_data.get('preprocessed_data')
-            if preprocessed_data is None:
+            if preprocessed_data is None or preprocessed_data.empty:
+                log_message(f"No preprocessed data for {animal_id}", "WARNING")
                 continue
-
-            time_col = channels['time']
+            
+            channels = animal_data.get('channels', {})
+            time_col = channels.get('time')
+            if not time_col or time_col not in preprocessed_data.columns:
+                continue
+            
             fiber_timestamps = preprocessed_data[time_col].values
             dff_data = animal_data.get('dff_data', {})
             active_channels = animal_data.get('active_channels', [])
-
-            # Use calculate_episodes for episode calculation
-            fiber_result = calculate_episodes(
-                [drug_start_time], fiber_timestamps, dff_data,
+            
+            # Get drug events
+            drug_sessions = identify_drug_sessions(animal_data['fiber_events'])
+            
+            if not drug_sessions or session_idx >= len(drug_sessions):
+                log_message(f"Invalid session index for {animal_id}", "WARNING")
+                continue
+            
+            selected_drug_session = drug_sessions[session_idx]
+            drug_admin_time = selected_drug_session['time']
+            
+            # Use onset_time if available, otherwise use admin_time
+            drug_event_time = drug_onset_time if drug_onset_time is not None else drug_admin_time
+            
+            # For drug-induced analysis, we only analyze one event per session
+            events = [drug_event_time]
+            
+            result = calculate_episodes(
+                events, fiber_timestamps, dff_data,
                 active_channels, target_wavelengths,
                 params['pre_time'], params['post_time'],
                 params['baseline_start'], params['baseline_end']
             )
-
-            # Collect episodes
+            
+            # Combine results
             for wl in target_wavelengths:
-                if wl in fiber_result['dff']:
-                    all_dff_episodes[wl].extend(fiber_result['dff'][wl])
-                if wl in fiber_result['zscore']:
-                    all_zscore_episodes[wl].extend(fiber_result['zscore'][wl])
-
-            # Collect statistics if requested
+                if wl in result['dff']:
+                    combined_dff[wl].extend(result['dff'][wl])
+                if wl in result['zscore']:
+                    combined_zscore[wl].extend(result['zscore'][wl])
+            
+            # Collect statistics
             if params['export_stats']:
                 statistics_rows.extend(collect_statistics(
-                    day_name, animal_id, session_idx, drug_name,
-                    fiber_result, fiber_result['time'], params,
-                    target_wavelengths, active_channels
+                    day_name, animal_id, session_idx, drug_name, result,
+                    time_array, params, target_wavelengths, active_channels
                 ))
-
+        
         except Exception as e:
-            log_message(f"Error analyzing {animal_data.get('animal_single_channel_id', 'Unknown')}: {str(e)}", "ERROR")
-            continue
-
-    # Check if we have any data
-    has_data = any(len(all_dff_episodes[wl]) > 0 for wl in target_wavelengths)
-
-    if not has_data:
-        return None, None
-
-    # Calculate results
-    time_array = np.linspace(-params['pre_time'], params['post_time'],
-                            int((params['pre_time'] + params['post_time']) * 10))
-
+            log_message(f"Error processing {animal_id}: {str(e)}", "ERROR")
+            import traceback
+            traceback.print_exc()
+    
+    if not any(combined_dff.values()):
+        log_message(f"No valid episodes for {day_name}", "WARNING")
+        return None, []
+    
     result = {
         'time': time_array,
-        'dff': all_dff_episodes,
-        'zscore': all_zscore_episodes,
+        'dff': combined_dff,
+        'zscore': combined_zscore,
         'target_wavelengths': target_wavelengths
     }
-
-    return result, statistics_rows if params['export_stats'] else None
+    
+    return result, statistics_rows
 
 def plot_drug_induced_results(results, params):
     """Plot multi-animal drug-induced results with all days overlaid"""

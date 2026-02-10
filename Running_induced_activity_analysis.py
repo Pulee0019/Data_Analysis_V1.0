@@ -758,7 +758,9 @@ def analyze_day_running(day_name, animals, params):
     return result, statistics_rows if params['export_stats'] else None
 
 def analyze_day_running_drug(day_name, animals, params):
-    """Analyze one day for running+drug mode with multiple drugs"""
+    """Analyze one day for running+drug mode with multiple drugs
+    Modified to use drug onset/offset times from configuration
+    """
     time_array = np.linspace(-params['pre_time'], params['post_time'], 
                             int((params['pre_time'] + params['post_time']) * 10))
     
@@ -774,13 +776,13 @@ def analyze_day_running_drug(day_name, animals, params):
     if not target_wavelengths:
         target_wavelengths = ['470']
     
-    # Load drug name config
+    # Load drug config
     config_path = os.path.join(os.path.dirname(__file__), 'drug_name_config.json')
     if os.path.exists(config_path):
         with open(config_path, 'r') as f:
-            drug_name_config = json.load(f)
+            drug_config = json.load(f)
     else:
-        drug_name_config = {}
+        drug_config = {}
     
     # Collect all unique drug timing categories across all animals
     all_drug_categories = set()
@@ -812,16 +814,60 @@ def analyze_day_running_drug(day_name, animals, params):
                 log_message(f"No drug events for {animal_id}", "WARNING")
                 continue
             
-            # Get drug names and times
+            # Get running end time
+            running_end_time = None
+            ast2_data = animal_data.get('ast2_data_adjusted')
+            if ast2_data and 'data' in ast2_data and 'timestamps' in ast2_data['data']:
+                running_end_time = ast2_data['data']['timestamps'][-1]
+            
+            # Get drug information with timing
             drug_info = []
             for idx, session_info in enumerate(drug_sessions):
                 session_id = f"{animal_id}_Session{idx+1}"
-                drug_name = drug_name_config.get(session_id, f"Drug{idx+1}")
-                drug_time = session_info['time']
-                drug_info.append({'name': drug_name, 'time': drug_time, 'idx': idx})
+                
+                # Get config for this session
+                if session_id in drug_config:
+                    config = drug_config[session_id]
+                    if isinstance(config, dict):
+                        drug_name = config.get('name', f"Drug{idx+1}")
+                        onset_time = config.get('onset_time', session_info['time'])
+                        offset_time = config.get('offset_time')
+                    else:
+                        # Old format compatibility
+                        drug_name = config
+                        onset_time = session_info['time']
+                        offset_time = None
+                else:
+                    drug_name = f"Drug{idx+1}"
+                    onset_time = session_info['time']
+                    offset_time = None
+                
+                # Calculate default offset if not specified
+                if offset_time is None:
+                    if idx < len(drug_sessions) - 1:
+                        # Next drug's onset time
+                        next_session_id = f"{animal_id}_Session{idx+2}"
+                        if next_session_id in drug_config and isinstance(drug_config[next_session_id], dict):
+                            offset_time = drug_config[next_session_id].get('onset_time', drug_sessions[idx+1]['time'])
+                        else:
+                            offset_time = drug_sessions[idx+1]['time']
+                    else:
+                        # Use running end time
+                        offset_time = running_end_time if running_end_time else onset_time + 10000
+                
+                drug_info.append({
+                    'name': drug_name,
+                    'onset': onset_time,
+                    'offset': offset_time,
+                    'idx': idx
+                })
             
-            # Sort by time
-            drug_info.sort(key=lambda x: x['time'])
+            # Sort by onset time
+            drug_info.sort(key=lambda x: x['onset'])
+            
+            log_message(f"Animal {animal_id} drug timing:")
+            for d in drug_info:
+                log_message(f"  {d['name']}: onset={d['onset']:.1f}s, offset={d['offset']:.1f}s")
             
             # Get running events
             events = get_events_from_bouts(animal_data, params['full_event_type'], duration=False)
@@ -829,19 +875,26 @@ def analyze_day_running_drug(day_name, animals, params):
                 continue
             
             # Classify running events into drug categories
+            # Now using onset/offset times instead of just onset
             event_categories = {}
             
             for event_time in events:
-                # Determine which drug category this event belongs to
-                if event_time < drug_info[0]['time']:
+                category = 'baseline'
+                
+                # Check if event is before first drug onset
+                if event_time < drug_info[0]['onset']:
                     category = 'baseline'
                 else:
-                    # Find which drug period
+                    # Find which drug period this event belongs to
+                    # Check from latest to earliest drug
                     for i in range(len(drug_info) - 1, -1, -1):
-                        if event_time >= drug_info[i]['time']:
+                        # Event must be after onset AND before offset
+                        if drug_info[i]['onset'] <= event_time < drug_info[i]['offset']:
                             if i == 0:
+                                # Within first drug period
                                 category = drug_info[0]['name']
                             else:
+                                # Within later drug period
                                 previous_drugs = ' + '.join([d['name'] for d in drug_info[:i]])
                                 category = f"{drug_info[i]['name']} after {previous_drugs}"
                             break
@@ -850,6 +903,8 @@ def analyze_day_running_drug(day_name, animals, params):
                     event_categories[category] = []
                 event_categories[category].append(event_time)
                 all_drug_categories.add(category)
+            
+            log_message(f"Event distribution: {[(cat, len(evts)) for cat, evts in event_categories.items()]}")
             
             # Get data
             ast2_data = animal_data.get('ast2_data_adjusted')
@@ -898,14 +953,16 @@ def analyze_day_running_drug(day_name, animals, params):
                 # Collect statistics
                 if params['export_stats']:
                     statistics_rows.extend(collect_statistics(
-                        day_name, f"{animal_id}_{category}", params['full_event_type'],
-                        category_result, time_array, params, target_wavelengths, active_channels
+                        day_name, animal_id, category, category_result,
+                        time_array, params, target_wavelengths, active_channels
                     ))
-                        
+        
         except Exception as e:
-            log_message(f"Error analyzing {animal_data.get('animal_single_channel_id', 'Unknown')}: {str(e)}", "ERROR")
-            continue
+            log_message(f"Error processing {animal_id}: {str(e)}", "ERROR")
+            import traceback
+            traceback.print_exc()
     
+    # Calculate means for each category
     # Build result structure
     result = {
         'time': time_array,
