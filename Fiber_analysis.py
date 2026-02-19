@@ -1,11 +1,12 @@
 import numpy as np
+import pandas as pd
 from scipy.signal import savgol_filter
 from sklearn.linear_model import LinearRegression
 from scipy.optimize import curve_fit
 from logger import log_message
 
-def smooth_data(animal_data=None, window_size=11, poly_order=3, target_signal="470"):
-    """Apply smoothing to all signals (target + 410) - supports combined wavelengths"""
+def smooth_data(animal_data=None, window_size=11, poly_order=3, target_signal="470", reference_signal="410"):
+    """Apply smoothing to target signals + reference signal"""
     try:
         if animal_data is not None and not isinstance(animal_data, dict):
             log_message(f"Invalid animal_data type: {type(animal_data)}", "ERROR")
@@ -49,15 +50,15 @@ def smooth_data(animal_data=None, window_size=11, poly_order=3, target_signal="4
         if not isinstance(active_channels, list):
             active_channels = [active_channels] if active_channels else []
         
-        # Parse target signal and collect all wavelengths to process (target + 410)
+        # Collect wavelengths to smooth: all target wavelengths + reference (if it's a real wavelength)
         target_wavelengths = target_signal.split('+') if '+' in target_signal else [target_signal]
         wavelengths_to_process = set(target_wavelengths)
-        wavelengths_to_process.add('410')  # Always include 410
+        if reference_signal and reference_signal != "baseline":
+            wavelengths_to_process.add(reference_signal)  # reference is always a single wavelength
         
         smoothed_count = 0
         for channel_num in active_channels:
             if channel_num in channel_data:
-                # Process all wavelengths (target + 410)
                 for wavelength in wavelengths_to_process:
                     target_col = channel_data[channel_num].get(wavelength)
                     if target_col and target_col in preprocessed_data.columns:
@@ -71,15 +72,16 @@ def smooth_data(animal_data=None, window_size=11, poly_order=3, target_signal="4
         else:
             globals()['preprocessed_data'] = preprocessed_data
         
-        log_message(f"Smoothing applied to {smoothed_count} signals (target + 410)", "INFO")
+        log_message(f"Smoothing applied to {smoothed_count} signals (target + reference)", "INFO")
         return True
         
     except Exception as e:
         log_message(f"Smoothing failed: {str(e)}", "ERROR")
         return False
 
-def baseline_correction(animal_data=None, model_type="Polynomial", target_signal="470", apply_smooth=False):
-    """Apply baseline correction to all signals (target + 410) - independent of smoothing"""
+def baseline_correction(animal_data=None, model_type="Polynomial", target_signal="470",
+                        reference_signal="410", apply_smooth=False):
+    """Apply baseline correction to target signals + reference signal"""
     try:
         if animal_data:
             if 'preprocessed_data' not in animal_data:
@@ -104,21 +106,20 @@ def baseline_correction(animal_data=None, model_type="Polynomial", target_signal
         time_col = channels['time']
         time_data = preprocessed_data[time_col]
         
-        # Parse target signal and collect all wavelengths to process (target + 410)
+        # Collect wavelengths to correct: all target wavelengths + reference (if it's a real wavelength)
         target_wavelengths = target_signal.split('+') if '+' in target_signal else [target_signal]
         wavelengths_to_process = set(target_wavelengths)
-        wavelengths_to_process.add('410')  # Always include 410
+        if reference_signal and reference_signal != "baseline":
+            wavelengths_to_process.add(reference_signal)  # reference is always a single wavelength
         
         corrected_count = 0
         for channel_num in active_channels:
             if channel_num in channel_data:
-                # Process all wavelengths (target + 410)
                 for wavelength in wavelengths_to_process:
                     target_col = channel_data[channel_num].get(wavelength)
                     if not target_col or target_col not in fiber_data.columns:
                         continue
                     
-                    # Choose data source based on apply_smooth flag
                     smoothed_col = f"CH{channel_num}_{wavelength}_smoothed"
                     if apply_smooth and smoothed_col in preprocessed_data.columns:
                         signal_col = smoothed_col
@@ -147,7 +148,6 @@ def baseline_correction(animal_data=None, model_type="Polynomial", target_signal
                             0.01,
                             np.min(signal_data)
                         ]
-                        
                         try:
                             params, _ = curve_fit(exp_model, time_data[baseline_mask], signal_data[baseline_mask], p0=p0, maxfev=5000)
                             baseline_pred = exp_model(time_data, *params)
@@ -169,16 +169,16 @@ def baseline_correction(animal_data=None, model_type="Polynomial", target_signal
         else:
             globals()['preprocessed_data'] = preprocessed_data
         
-        log_message(f"Baseline correction applied to {corrected_count} signals (target + 410)", "INFO")
+        log_message(f"Baseline correction applied to {corrected_count} signals (target + reference)", "INFO")
         return True
         
     except Exception as e:
         log_message(f"Baseline correction failed: {str(e)}", "ERROR")
         return False
 
-def motion_correction(animal_data=None, target_signal="470", reference_signal="410", 
+def motion_correction(animal_data=None, target_signal="470", reference_signal="410",
                      apply_smooth=False, apply_baseline=False):
-    """Apply motion correction to target signals only - uses appropriate 410 reference"""
+    """Apply motion correction to target signals using selected reference wavelength"""
     try:
         if animal_data:
             if 'preprocessed_data' not in animal_data:
@@ -200,85 +200,82 @@ def motion_correction(animal_data=None, target_signal="470", reference_signal="4
         if not isinstance(active_channels, list):
             active_channels = [active_channels] if active_channels else []
         
-        if reference_signal != "410":
-            log_message("Motion correction requires 410nm as reference signal", "WARNING")
+        # reference_signal must be a single wavelength, not 'baseline'
+        if not reference_signal or reference_signal == "baseline":
+            log_message("Motion correction requires a wavelength-based reference signal (not 'baseline')", "WARNING")
             return False
         
-        # Parse target signal (only process target wavelengths, not 410)
+        # reference_signal is a single wavelength string (e.g. "410")
         target_wavelengths = target_signal.split('+') if '+' in target_signal else [target_signal]
         
         corrected_count = 0
         for channel_num in active_channels:
-            if channel_num in channel_data:
-                ref_col = channel_data[channel_num].get('410')
-                if not ref_col or ref_col not in fiber_data.columns:
-                    log_message(f"No 410nm data for channel CH{channel_num}", "INFO")
+            if channel_num not in channel_data:
+                continue
+            
+            # Get the raw column for the reference wavelength
+            ref_col_raw = channel_data[channel_num].get(reference_signal)
+            if not ref_col_raw or ref_col_raw not in fiber_data.columns:
+                log_message(f"No {reference_signal}nm data for channel CH{channel_num}", "INFO")
+                continue
+            
+            # Determine which version of the reference signal to use
+            if apply_baseline:
+                ref_bc_col = f"CH{channel_num}_{reference_signal}_baseline_corrected"
+                if ref_bc_col in preprocessed_data.columns:
+                    ref_data = preprocessed_data[ref_bc_col]
+                    ref_source = f"baseline-corrected {reference_signal}"
+                elif apply_smooth and f"CH{channel_num}_{reference_signal}_smoothed" in preprocessed_data.columns:
+                    ref_data = preprocessed_data[f"CH{channel_num}_{reference_signal}_smoothed"]
+                    ref_source = f"smoothed {reference_signal}"
+                else:
+                    ref_data = preprocessed_data[ref_col_raw]
+                    ref_source = f"raw {reference_signal}"
+                    log_message(f"Baseline corrected {reference_signal} not found for CH{channel_num}, using raw", "INFO")
+            else:
+                if apply_smooth and f"CH{channel_num}_{reference_signal}_smoothed" in preprocessed_data.columns:
+                    ref_data = preprocessed_data[f"CH{channel_num}_{reference_signal}_smoothed"]
+                    ref_source = f"smoothed {reference_signal}"
+                else:
+                    ref_data = preprocessed_data[ref_col_raw]
+                    ref_source = f"raw {reference_signal}"
+            
+            # Process each target wavelength (skip if it happens to equal reference_signal)
+            for wavelength in target_wavelengths:
+                if wavelength == reference_signal:
                     continue
                 
-                # Determine which 410 reference to use based on baseline correction status
-                if apply_baseline:
-                    # Use baseline corrected 410 if available
-                    ref_410_col = f"CH{channel_num}_410_baseline_corrected"
-                    if ref_410_col in preprocessed_data.columns:
-                        ref_data = preprocessed_data[ref_410_col]
-                        ref_source = "baseline-corrected 410"
-                    else:
-                        # Fallback to smoothed or raw
-                        if apply_smooth and f"CH{channel_num}_410_smoothed" in preprocessed_data.columns:
-                            ref_data = preprocessed_data[f"CH{channel_num}_410_smoothed"]
-                            ref_source = "smoothed 410"
-                        else:
-                            ref_data = preprocessed_data[ref_col]
-                            ref_source = "raw 410"
-                        log_message(f"Baseline corrected 410 not found for CH{channel_num}, using {ref_source}", "INFO")
-                else:
-                    # Use smoothed or raw 410
-                    if apply_smooth and f"CH{channel_num}_410_smoothed" in preprocessed_data.columns:
-                        ref_data = preprocessed_data[f"CH{channel_num}_410_smoothed"]
-                        ref_source = "smoothed 410"
-                    else:
-                        ref_data = preprocessed_data[ref_col]
-                        ref_source = "raw 410"
+                target_col = channel_data[channel_num].get(wavelength)
+                if not target_col or target_col not in fiber_data.columns:
+                    continue
                 
-                # Process each target wavelength separately (not 410)
-                for wavelength in target_wavelengths:
-                    if wavelength == '410':
-                        continue  # Skip 410 for motion correction
-                    
-                    target_col = channel_data[channel_num].get(wavelength)
-                    if not target_col or target_col not in fiber_data.columns:
-                        continue
-                    
-                    # Choose target signal data source based on preprocessing history
-                    baseline_col = f"CH{channel_num}_{wavelength}_baseline_corrected"
-                    smoothed_col = f"CH{channel_num}_{wavelength}_smoothed"
-                    
-                    if apply_baseline and baseline_col in preprocessed_data.columns:
-                        signal_col = baseline_col
-                        signal_source = "baseline-corrected"
-                    elif apply_smooth and smoothed_col in preprocessed_data.columns:
-                        signal_col = smoothed_col
-                        signal_source = "smoothed"
-                    else:
-                        signal_col = target_col
-                        signal_source = "raw"
-                    
-                    signal_data = preprocessed_data[signal_col]
-                    
-                    # Perform linear regression
-                    X = ref_data.values.reshape(-1, 1)
-                    y = signal_data.values
-                    model = LinearRegression()
-                    model.fit(X, y)
-                    
-                    predicted_signal = model.predict(X)
-                    
-                    motion_corrected_col = f"CH{channel_num}_{wavelength}_motion_corrected"
-                    preprocessed_data[motion_corrected_col] = signal_data - predicted_signal
-                    preprocessed_data[f"CH{channel_num}_{wavelength}_fitted_ref"] = predicted_signal
-                    corrected_count += 1
-                    
-                    log_message(f"CH{channel_num}_{wavelength}: {signal_source} signal fitted against {ref_source}", "INFO")
+                baseline_col = f"CH{channel_num}_{wavelength}_baseline_corrected"
+                smoothed_col = f"CH{channel_num}_{wavelength}_smoothed"
+                
+                if apply_baseline and baseline_col in preprocessed_data.columns:
+                    signal_col = baseline_col
+                    signal_source = "baseline-corrected"
+                elif apply_smooth and smoothed_col in preprocessed_data.columns:
+                    signal_col = smoothed_col
+                    signal_source = "smoothed"
+                else:
+                    signal_col = target_col
+                    signal_source = "raw"
+                
+                signal_data = preprocessed_data[signal_col]
+                
+                X = ref_data.values.reshape(-1, 1)
+                y = signal_data.values
+                model = LinearRegression()
+                model.fit(X, y)
+                predicted_signal = model.predict(X)
+                
+                motion_corrected_col = f"CH{channel_num}_{wavelength}_motion_corrected"
+                preprocessed_data[motion_corrected_col] = signal_data - predicted_signal
+                preprocessed_data[f"CH{channel_num}_{wavelength}_fitted_ref"] = predicted_signal
+                corrected_count += 1
+                
+                log_message(f"CH{channel_num}_{wavelength}: {signal_source} signal fitted against {ref_source}", "INFO")
         
         if animal_data:
             animal_data['preprocessed_data'] = preprocessed_data
@@ -303,15 +300,16 @@ def apply_preprocessing(animal_data=None, target_signal="470", reference_signal=
         apply_motion = bool(apply_motion)
         
         if apply_smooth:
-            if not smooth_data(animal_data, window_size, poly_order, target_signal):
+            if not smooth_data(animal_data, window_size, poly_order, target_signal, reference_signal):
                 return False
         
         if apply_baseline:
-            if not baseline_correction(animal_data, baseline_model, target_signal, apply_smooth):
+            if not baseline_correction(animal_data, baseline_model, target_signal, reference_signal, apply_smooth):
                 return False
         
-        if apply_motion and reference_signal == "410":
-            if not motion_correction(animal_data, target_signal, reference_signal, 
+        # Motion correction requires a real wavelength reference (not 'baseline')
+        if apply_motion and reference_signal != "baseline":
+            if not motion_correction(animal_data, target_signal, reference_signal,
                                    apply_smooth, apply_baseline):
                 return False
 

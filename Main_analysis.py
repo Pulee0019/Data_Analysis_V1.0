@@ -2,6 +2,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.backends.backend_tkagg import NavigationToolbar2Tk
 from matplotlib.figure import Figure
 from tkinter import filedialog, ttk
+from itertools import combinations
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import tkinter as tk
@@ -3727,20 +3728,27 @@ def clear_all():
 def fiber_preprocessing():
     global preprocess_frame, multi_animal_data
     
-    # Detect available wavelengths from loaded data
     available_wavelengths = []
+    all_detected_wavelengths = []
+    
     if multi_animal_data:
         for animal_data in multi_animal_data:
             if 'channel_data' in animal_data:
                 wavelength_combos = detect_wavelengths_and_generate_combinations(animal_data['channel_data'])
                 available_wavelengths.extend(wavelength_combos)
-                break  # Use first animal's wavelengths as reference
+                for ch_data in animal_data['channel_data'].values():
+                    for wl, col in ch_data.items():
+                        if col is not None:
+                            all_detected_wavelengths.append(wl)
+                break
     
-    # Remove duplicates and sort
     available_wavelengths = sorted(list(set(available_wavelengths)))
+    all_detected_wavelengths = sorted(list(set(all_detected_wavelengths)))
     
     if not available_wavelengths:
-        available_wavelengths = ["470", "560"]  # Fallback default
+        available_wavelengths = ["470", "560"]
+    if not all_detected_wavelengths:
+        all_detected_wavelengths = ["410", "470"]
     
     prep_window = tk.Toplevel(root)
     prep_window.title("Fiber Data Preprocessing")
@@ -3762,9 +3770,52 @@ def fiber_preprocessing():
     target_menu.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
     
     ttk.Label(signal_frame, text="Reference Signal:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
-    ref_options = ["410", "baseline"]
-    ref_menu = ttk.OptionMenu(signal_frame, reference_signal_var, "410", *ref_options)
-    ref_menu.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
+    
+    ref_menu_container = ttk.Frame(signal_frame)
+    ref_menu_container.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
+    ref_menu_holder = [None]
+    
+    def get_ref_options():
+        current_target = target_signal_var.get()
+        target_wls = set(current_target.split('+')) if '+' in current_target else {current_target}
+        ref_wls = [wl for wl in all_detected_wavelengths if wl not in target_wls]
+        ref_wls.append("baseline")
+        return ref_wls
+    
+    def refresh_ref_menu(*args):
+        try:
+            if not prep_window.winfo_exists() or not ref_menu_container.winfo_exists():
+                return
+        except Exception:
+            return
+        
+        if ref_menu_holder[0] is not None:
+            try:
+                ref_menu_holder[0].destroy()
+            except Exception:
+                pass
+            ref_menu_holder[0] = None
+        
+        ref_options = get_ref_options()
+        if reference_signal_var.get() not in ref_options:
+            reference_signal_var.set(ref_options[0])
+        
+        new_menu = ttk.OptionMenu(ref_menu_container, reference_signal_var, reference_signal_var.get(), *ref_options)
+        new_menu.pack(fill=tk.X, expand=True)
+        ref_menu_holder[0] = new_menu
+    
+    refresh_ref_menu()
+    
+    trace_id = target_signal_var.trace_add("write", refresh_ref_menu)
+    
+    def on_prep_window_close():
+        try:
+            target_signal_var.trace_remove("write", trace_id)
+        except Exception:
+            pass
+        prep_window.destroy()
+    
+    prep_window.protocol("WM_DELETE_WINDOW", on_prep_window_close)
     
     global baseline_frame
     baseline_frame = ttk.LabelFrame(main_frame, text="Baseline Period")
@@ -3772,12 +3823,11 @@ def fiber_preprocessing():
     
     ttk.Label(baseline_frame, text="Start (s):").grid(row=0, column=0, sticky="w", padx=5, pady=5)
     ttk.Entry(baseline_frame, textvariable=baseline_start, width=5).grid(row=0, column=1, padx=5, pady=5)
-    
     ttk.Label(baseline_frame, text="End (s):").grid(row=0, column=2, sticky="w", padx=5, pady=5)
     ttk.Entry(baseline_frame, textvariable=baseline_end, width=5).grid(row=0, column=3, padx=5, pady=5)
     
     if reference_signal_var.get() != "baseline":
-            baseline_frame.pack_forget()
+        baseline_frame.pack_forget()
 
     reference_signal_var.trace_add("write", update_baseline_ui)
 
@@ -3787,14 +3837,12 @@ def fiber_preprocessing():
     
     ttk.Checkbutton(smooth_frame, text="Apply Smoothing", variable=apply_smooth,
                     command=lambda: toggle_widgets(smooth_frame, apply_smooth.get(), 1)).grid(row=0, column=0, sticky="w")
-    
     ttk.Label(smooth_frame, text="Window Size:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
-    ttk.Scale(smooth_frame, from_=3, to=101, orient=tk.HORIZONTAL, 
+    ttk.Scale(smooth_frame, from_=3, to=101, orient=tk.HORIZONTAL,
              variable=smooth_window, length=100).grid(row=1, column=1, padx=5, pady=5)
     ttk.Label(smooth_frame, textvariable=smooth_window).grid(row=1, column=2, padx=5, pady=5)
-    
     ttk.Label(smooth_frame, text="Polynomial Order:").grid(row=2, column=0, sticky="w", padx=5, pady=5)
-    ttk.Scale(smooth_frame, from_=1, to=5, orient=tk.HORIZONTAL, 
+    ttk.Scale(smooth_frame, from_=1, to=5, orient=tk.HORIZONTAL,
              variable=smooth_order, length=100).grid(row=2, column=1, padx=5, pady=5)
     ttk.Label(smooth_frame, textvariable=smooth_order).grid(row=2, column=2, padx=5, pady=5)
     
@@ -3802,9 +3850,8 @@ def fiber_preprocessing():
     baseline_corr_frame = ttk.LabelFrame(main_frame, text="Baseline Correction")
     baseline_corr_frame.pack(fill=tk.X, padx=5, pady=5)
     
-    ttk.Checkbutton(baseline_corr_frame, text="Apply Baseline Correction", variable=apply_baseline, 
+    ttk.Checkbutton(baseline_corr_frame, text="Apply Baseline Correction", variable=apply_baseline,
                     command=lambda: toggle_widgets(baseline_corr_frame, apply_baseline.get(), 1)).grid(row=0, column=0, sticky="w")
-
     ttk.Label(baseline_corr_frame, text="Baseline Model:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
     model_options = ["Polynomial", "Exponential"]
     model_menu = ttk.OptionMenu(baseline_corr_frame, baseline_model, "Polynomial", *model_options)
@@ -3821,15 +3868,16 @@ def fiber_preprocessing():
     button_frame = ttk.Frame(main_frame)
     button_frame.pack(fill=tk.X, padx=5, pady=10)
     
-    ttk.Button(button_frame, text="Apply Preprocessing", 
+    ttk.Button(button_frame, text="Apply Preprocessing",
               command=lambda: apply_preprocessing_wrapper()).pack(side=tk.LEFT, padx=5)
-    ttk.Button(button_frame, text="Close", 
-              command=prep_window.destroy).pack(side=tk.RIGHT, padx=5)
+    ttk.Button(button_frame, text="Close",
+              command=on_prep_window_close).pack(side=tk.RIGHT, padx=5)
 
 def toggle_motion_correction():
-        if reference_signal_var.get() != "410":
-            apply_motion.set(False)
-            log_message("Motion correction requires 410nm as reference signal", "WARNING")
+    """Motion correction is only available with a wavelength-based reference (not 'baseline')"""
+    if reference_signal_var.get() == "baseline":
+        apply_motion.set(False)
+        log_message("Motion correction is not available when reference signal is 'baseline'", "WARNING")
 
 def detect_wavelengths_and_generate_combinations(channel_data):
     """Detect available wavelengths and generate all possible combinations"""
@@ -3846,7 +3894,6 @@ def detect_wavelengths_and_generate_combinations(channel_data):
         return []
     
     # Generate all combinations
-    from itertools import combinations
     
     combinations_list = []
     # Single wavelengths
