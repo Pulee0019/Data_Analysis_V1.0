@@ -691,6 +691,9 @@ def analyze_day_running(day_name, animals, params):
             
             dff_data = animal_data.get('dff_data', {})
             active_channels = animal_data.get('active_channels', [])
+            channel_data = animal_data.get('channel_data', {})
+            reference_signal = animal_data.get('reference_signal', '410')
+            apply_baseline = animal_data.get('apply_baseline', False)
 
             # Calculate episodes
             result = calculate_running_episodes(
@@ -698,7 +701,11 @@ def analyze_day_running(day_name, animals, params):
                 fiber_timestamps, dff_data,
                 active_channels, target_wavelengths,
                 params['pre_time'], params['post_time'],
-                params['baseline_start'], params['baseline_end']
+                params['baseline_start'], params['baseline_end'],
+                preprocessed_data=preprocessed_data,
+                channel_data=channel_data,
+                reference_signal=reference_signal,
+                apply_baseline=apply_baseline
             )
 
             # Collect episodes
@@ -923,6 +930,9 @@ def analyze_day_running_drug(day_name, animals, params):
             fiber_timestamps = preprocessed_data[time_col].values
             dff_data = animal_data.get('dff_data', {})
             active_channels = animal_data.get('active_channels', [])
+            channel_data = animal_data.get('channel_data', {})
+            reference_signal = animal_data.get('reference_signal', '410')
+            apply_baseline = animal_data.get('apply_baseline', False)
             
             # Process each drug category
             for category, category_events in event_categories.items():
@@ -938,7 +948,11 @@ def analyze_day_running_drug(day_name, animals, params):
                     fiber_timestamps, dff_data,
                     active_channels, target_wavelengths,
                     params['pre_time'], params['post_time'],
-                    params['baseline_start'], params['baseline_end']
+                    params['baseline_start'], params['baseline_end'],
+                    preprocessed_data=preprocessed_data,
+                    channel_data=channel_data,
+                    reference_signal=reference_signal,
+                    apply_baseline=apply_baseline
                 )
                 
                 if len(category_result['running']) > 0:
@@ -1095,6 +1109,9 @@ def analyze_day_running_optogenetics(day_name, animals, params, all_optogenetic_
             
             dff_data = animal_data.get('dff_data', {})
             active_channels = animal_data.get('active_channels', [])
+            channel_data = animal_data.get('channel_data', {})
+            reference_signal = animal_data.get('reference_signal', '410')
+            apply_baseline = animal_data.get('apply_baseline', False)
             
             # Process events with optogenetics
             if with_opto_events:
@@ -1103,7 +1120,11 @@ def analyze_day_running_optogenetics(day_name, animals, params, all_optogenetic_
                     fiber_timestamps, dff_data,
                     active_channels, target_wavelengths,
                     params['pre_time'], params['post_time'],
-                    params['baseline_start'], params['baseline_end']
+                    params['baseline_start'], params['baseline_end'],
+                    preprocessed_data=preprocessed_data,
+                    channel_data=channel_data,
+                    reference_signal=reference_signal,
+                    apply_baseline=apply_baseline
                 )
                 
                 if len(with_result['running']) > 0:
@@ -1140,7 +1161,11 @@ def analyze_day_running_optogenetics(day_name, animals, params, all_optogenetic_
                     fiber_timestamps, dff_data,
                     active_channels, target_wavelengths,
                     params['pre_time'], params['post_time'],
-                    params['baseline_start'], params['baseline_end']
+                    params['baseline_start'], params['baseline_end'],
+                    preprocessed_data=preprocessed_data,
+                    channel_data=channel_data,
+                    reference_signal=reference_signal,
+                    apply_baseline=apply_baseline
                 )
                 
                 if len(without_result['running']) > 0:
@@ -3148,6 +3173,9 @@ def analyze_day_running_optogenetics_drug(day_name, animals, params,
                 fiber_timestamps = preprocessed_data[time_col].values
                 dff_data = animal_data.get('dff_data', {})
                 active_channels = animal_data.get('active_channels', [])
+                channel_data = animal_data.get('channel_data', {})
+                reference_signal = animal_data.get('reference_signal', '410')
+                apply_baseline = animal_data.get('apply_baseline', False)
                 
                 # Process with opto events
                 if with_opto:
@@ -3156,7 +3184,11 @@ def analyze_day_running_optogenetics_drug(day_name, animals, params,
                         fiber_timestamps, dff_data,
                         active_channels, target_wavelengths,
                         params['pre_time'], params['post_time'],
-                        params['baseline_start'], params['baseline_end']
+                        params['baseline_start'], params['baseline_end'],
+                        preprocessed_data=preprocessed_data,
+                        channel_data=channel_data,
+                        reference_signal=reference_signal,
+                        apply_baseline=apply_baseline
                     )
                     
                     if len(with_result['running']) > 0:
@@ -3185,7 +3217,11 @@ def analyze_day_running_optogenetics_drug(day_name, animals, params,
                         fiber_timestamps, dff_data,
                         active_channels, target_wavelengths,
                         params['pre_time'], params['post_time'],
-                        params['baseline_start'], params['baseline_end']
+                        params['baseline_start'], params['baseline_end'],
+                        preprocessed_data=preprocessed_data,
+                        channel_data=channel_data,
+                        reference_signal=reference_signal,
+                        apply_baseline=apply_baseline
                     )
                     
                     if len(without_result['running']) > 0:

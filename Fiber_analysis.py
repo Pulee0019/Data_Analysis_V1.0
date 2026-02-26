@@ -376,7 +376,7 @@ def calculate_dff(animal_data=None, target_signal="470", reference_signal="410",
                     
                     raw_target = preprocessed_data[raw_col]
                     
-                    if reference_signal == "410" and apply_baseline:
+                    if reference_signal != "baseline" and apply_baseline:
                         motion_corrected_col = f"CH{channel_num}_{wavelength}_motion_corrected"
                         if motion_corrected_col in preprocessed_data.columns:
                             dff_data = preprocessed_data[motion_corrected_col] / np.median(raw_target)
@@ -386,7 +386,7 @@ def calculate_dff(animal_data=None, target_signal="470", reference_signal="410",
                             if baseline_median == 0:
                                 baseline_median = np.finfo(float).eps
                             dff_data = (raw_target - baseline_median) / baseline_median
-                    elif reference_signal == "410" and not apply_baseline:
+                    elif reference_signal != "baseline" and not apply_baseline:
                         fitted_ref_col = f"CH{channel_num}_{wavelength}_fitted_ref"
                         if fitted_ref_col in preprocessed_data.columns:
                             denominator = preprocessed_data[fitted_ref_col]

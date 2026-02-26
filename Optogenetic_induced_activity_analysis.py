@@ -548,20 +548,37 @@ def run_optogenetic_induced_analysis(row_data, params, analysis_mode="optogeneti
 
 def calculate_optogenetic_episodes(stim_starts, fiber_timestamps, dff_data,
                                    active_channels, target_wavelengths,
-                                   pre_time, post_time, baseline_start, baseline_end):
+                                   pre_time, post_time, baseline_start, baseline_end,
+                                   preprocessed_data=None, channel_data=None,
+                                   reference_signal="410", apply_baseline=False):
     """
-    Calculate fiber episodes for optogenetic analysis
+    Calculate fiber episodes for optogenetic analysis.
+    
+    DFF is computed from raw data using the event baseline window as F0:
+      - reference_signal != 'baseline' and apply_baseline:
+            dff = motion_corrected / F0
+      - reference_signal != 'baseline' and not apply_baseline:
+            dff = (raw_target - fitted_ref) / F0
+      - reference_signal == 'baseline' and apply_baseline:
+            dff = (raw_target - baseline_pred) / F0
+      - reference_signal == 'baseline' and not apply_baseline:
+            dff = (raw_target - F0) / F0
+    where F0 = median of raw target in the event's baseline window.
     
     Args:
         stim_starts: List of stimulation start times
         fiber_timestamps: Array of fiber photometry timestamps
-        dff_data: Dictionary of dFF data {channel_wavelength: data}
+        dff_data: Dictionary of pre-computed dFF data (fallback if raw data unavailable)
         active_channels: List of active channels
         target_wavelengths: List of target wavelengths (e.g., ['470', '410'])
         pre_time: Time before stimulation (seconds)
         post_time: Time after stimulation (seconds)
         baseline_start: Baseline window start (relative to stim, negative)
         baseline_end: Baseline window end (relative to stim, usually 0)
+        preprocessed_data: DataFrame with all preprocessed signals (optional)
+        channel_data: Dict mapping channel -> wavelength -> column name (optional)
+        reference_signal: Reference signal type ('baseline' or wavelength string)
+        apply_baseline: Whether baseline correction was applied
     
     Returns:
         Dictionary containing:
@@ -579,49 +596,128 @@ def calculate_optogenetic_episodes(stim_starts, fiber_timestamps, dff_data,
         dff_episodes[wavelength] = []
         zscore_episodes[wavelength] = []
     
-    # Use first stimulation start as reference (similar to drug analysis)
+    # Use first stimulation start as reference event
     event_time = stim_starts[0]
+    
+    use_raw_dff = (preprocessed_data is not None and channel_data is not None)
     
     for channel in active_channels:
         for wavelength in target_wavelengths:
-            dff_key = f"{channel}_{wavelength}"
-            if dff_key in dff_data:
-                data = dff_data[dff_key]
-                if isinstance(data, pd.Series):
-                    data = data.values
+            if use_raw_dff and channel in channel_data:
+                target_col = channel_data[channel].get(wavelength)
+                if not target_col or target_col not in preprocessed_data.columns:
+                    continue
                 
-                # Calculate baseline statistics
+                smoothed_col = f"CH{channel}_{wavelength}_smoothed"
+                if smoothed_col in preprocessed_data.columns:
+                    raw_target = preprocessed_data[smoothed_col].values
+                else:
+                    raw_target = preprocessed_data[target_col].values
+                
+                motion_corrected_col = f"CH{channel}_{wavelength}_motion_corrected"
+                fitted_ref_col = f"CH{channel}_{wavelength}_fitted_ref"
+                baseline_pred_col = f"CH{channel}_{wavelength}_baseline_pred"
+                
+                # Baseline window indices
                 baseline_start_time = event_time + baseline_start
                 baseline_end_time = event_time + baseline_end
-                
                 baseline_start_idx = np.argmin(np.abs(fiber_timestamps - baseline_start_time))
                 baseline_end_idx = np.argmin(np.abs(fiber_timestamps - baseline_end_time))
                 
-                if baseline_end_idx > baseline_start_idx:
-                    baseline_data = data[baseline_start_idx:baseline_end_idx]
-                    mean_dff = np.nanmean(baseline_data)
-                    std_dff = np.nanstd(baseline_data)
+                if baseline_end_idx <= baseline_start_idx:
+                    continue
+                
+                # F0 = median of raw target in baseline window
+                raw_baseline = raw_target[baseline_start_idx:baseline_end_idx]
+                F0 = np.nanmedian(raw_baseline)
+                if F0 == 0 or np.isnan(F0):
+                    F0 = np.finfo(float).eps
+                
+                # Compute dff signal
+                if reference_signal != "baseline" and apply_baseline:
+                    if motion_corrected_col in preprocessed_data.columns:
+                        signal = preprocessed_data[motion_corrected_col].values
+                        dff_signal = signal / F0
+                        log_message(f"Using motion corrected signal for dFF calculation for CH{channel} {wavelength}", "INFO")
+                    else:
+                        log_message(f"Motion corrected signal not found for CH{channel} {wavelength}, falling back to raw target for dFF calculation", "WARNING")
+                        dff_signal = (raw_target - F0) / F0
+                elif reference_signal != "baseline" and not apply_baseline:
+                    if fitted_ref_col in preprocessed_data.columns:
+                        fitted_ref = preprocessed_data[fitted_ref_col].values
+                        dff_signal = (raw_target - fitted_ref) / F0
+                        log_message(f"Using fitted reference signal for dFF calculation for CH{channel} {wavelength}", "INFO")
+                    else:
+                        log_message(f"Fitted reference signal not found for CH{channel} {wavelength}, falling back to raw target for dFF calculation", "WARNING")
+                        dff_signal = (raw_target - F0) / F0
+                elif reference_signal == "baseline" and apply_baseline:
+                    if baseline_pred_col in preprocessed_data.columns:
+                        baseline_pred = preprocessed_data[baseline_pred_col].values
+                        dff_signal = (raw_target - baseline_pred) / F0
+                        log_message(f"Using baseline predicted signal for dFF calculation for CH{channel} {wavelength}", "INFO")
+                    else:
+                        log_message(f"Baseline predicted signal not found for CH{channel} {wavelength}, falling back to raw target for dFF calculation", "WARNING")
+                        dff_signal = (raw_target - F0) / F0
+                else:
+                    # reference_signal == "baseline" and not apply_baseline
+                    dff_signal = (raw_target - F0) / F0
+                    log_message(f"Using raw target for dFF calculation for CH{channel} {wavelength}", "INFO")
+                
+                # Extract plotting window
+                start_idx = np.argmin(np.abs(fiber_timestamps - (event_time - pre_time)))
+                end_idx = np.argmin(np.abs(fiber_timestamps - (event_time + post_time)))
+                
+                if end_idx > start_idx:
+                    episode_data = dff_signal[start_idx:end_idx]
+                    episode_times = fiber_timestamps[start_idx:end_idx] - event_time
                     
-                    if std_dff == 0:
-                        std_dff = 1e-10
-                    
-                    # Extract plotting window
-                    start_idx = np.argmin(np.abs(fiber_timestamps - (event_time - pre_time)))
-                    end_idx = np.argmin(np.abs(fiber_timestamps - (event_time + post_time)))
-                    
-                    if end_idx > start_idx:
-                        episode_data = data[start_idx:end_idx]
-                        episode_times = fiber_timestamps[start_idx:end_idx] - event_time
+                    if len(episode_times) > 1:
+                        interp_dff = np.interp(time_array, episode_times, episode_data)
+                        dff_episodes[wavelength].append(interp_dff)
                         
-                        if len(episode_times) > 1:
-                            # Store dFF data
-                            interp_dff = np.interp(time_array, episode_times, episode_data)
-                            dff_episodes[wavelength].append(interp_dff)
+                        # Z-score using baseline of computed dff
+                        baseline_dff = dff_signal[baseline_start_idx:baseline_end_idx]
+                        mean_dff = np.nanmean(baseline_dff)
+                        std_dff = np.nanstd(baseline_dff)
+                        if std_dff == 0:
+                            std_dff = 1e-10
+                        zscore_episode = (episode_data - mean_dff) / std_dff
+                        interp_zscore = np.interp(time_array, episode_times, zscore_episode)
+                        zscore_episodes[wavelength].append(interp_zscore)
+            else:
+                # Fallback: use pre-computed dff_data
+                dff_key = f"{channel}_{wavelength}"
+                if dff_key in dff_data:
+                    data = dff_data[dff_key]
+                    if isinstance(data, pd.Series):
+                        data = data.values
+                    
+                    baseline_start_time = event_time + baseline_start
+                    baseline_end_time = event_time + baseline_end
+                    baseline_start_idx = np.argmin(np.abs(fiber_timestamps - baseline_start_time))
+                    baseline_end_idx = np.argmin(np.abs(fiber_timestamps - baseline_end_time))
+                    
+                    if baseline_end_idx > baseline_start_idx:
+                        baseline_data = data[baseline_start_idx:baseline_end_idx]
+                        mean_dff = np.nanmean(baseline_data)
+                        std_dff = np.nanstd(baseline_data)
+                        if std_dff == 0:
+                            std_dff = 1e-10
+                        
+                        start_idx = np.argmin(np.abs(fiber_timestamps - (event_time - pre_time)))
+                        end_idx = np.argmin(np.abs(fiber_timestamps - (event_time + post_time)))
+                        
+                        if end_idx > start_idx:
+                            episode_data = data[start_idx:end_idx]
+                            episode_times = fiber_timestamps[start_idx:end_idx] - event_time
                             
-                            # Calculate z-score
-                            zscore_episode = (episode_data - mean_dff) / std_dff
-                            interp_zscore = np.interp(time_array, episode_times, zscore_episode)
-                            zscore_episodes[wavelength].append(interp_zscore)
+                            if len(episode_times) > 1:
+                                interp_dff = np.interp(time_array, episode_times, episode_data)
+                                dff_episodes[wavelength].append(interp_dff)
+                                
+                                zscore_episode = (episode_data - mean_dff) / std_dff
+                                interp_zscore = np.interp(time_array, episode_times, zscore_episode)
+                                zscore_episodes[wavelength].append(interp_zscore)
     
     return {
         'time': time_array,
@@ -756,13 +852,20 @@ def analyze_param_optogenetic(param_name, sessions, params):
             
             dff_data = animal_data.get('dff_data', {})
             active_channels = animal_data.get('active_channels', [])
+            channel_data = animal_data.get('channel_data', {})
+            reference_signal = animal_data.get('reference_signal', '410')
+            apply_baseline = animal_data.get('apply_baseline', False)
             
             # Use calculate_optogenetic_episodes for episode calculation
             fiber_result = calculate_optogenetic_episodes(
                 stim_starts, fiber_timestamps, dff_data,
                 active_channels, target_wavelengths,
                 params['pre_time'], params['post_time'],
-                params['baseline_start'], params['baseline_end']
+                params['baseline_start'], params['baseline_end'],
+                preprocessed_data=preprocessed_data,
+                channel_data=channel_data,
+                reference_signal=reference_signal,
+                apply_baseline=apply_baseline
             )
             
             # Collect episodes

@@ -344,8 +344,28 @@ def create_opto_parameter_string(freq, pulse_width, duration, power):
 def calculate_running_episodes(events, running_timestamps, running_speed,
                                fiber_timestamps, dff_data,
                                active_channels, target_wavelengths,
-                               pre_time, post_time, baseline_start, baseline_end):
-    """Calculate episodes around running events with custom baseline"""
+                               pre_time, post_time, baseline_start, baseline_end,
+                               preprocessed_data=None, channel_data=None,
+                               reference_signal="410", apply_baseline=False):
+    """Calculate episodes around running events with custom baseline.
+    
+    DFF is computed from raw data using the event baseline window as F0:
+      - reference_signal != 'baseline' and apply_baseline:
+            numerator = motion_corrected signal (F - F1 already computed)
+            F0 = median of raw target in baseline window
+            dff = motion_corrected / F0
+      - reference_signal != 'baseline' and not apply_baseline:
+            F = raw_target, F1 = fitted_ref
+            F0 = median of raw target in baseline window
+            dff = (F - F1) / F0
+      - reference_signal == 'baseline' and apply_baseline:
+            F = raw_target, F1 = baseline_pred
+            F0 = median of raw target in baseline window
+            dff = (F - F1) / F0
+      - reference_signal == 'baseline' and not apply_baseline:
+            F = raw_target, F1 = F0 = median of raw target in baseline window
+            dff = (F - F0) / F0
+    """
     time_array = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
     
     # Running episodes
@@ -370,47 +390,136 @@ def calculate_running_episodes(events, running_timestamps, running_speed,
         dff_episodes[wavelength] = []
         zscore_episodes[wavelength] = []
     
+    # If preprocessed_data and channel_data are provided, compute dff from raw data
+    use_raw_dff = (preprocessed_data is not None and channel_data is not None)
+    
     for channel in active_channels:
         for wavelength in target_wavelengths:
-            dff_key = f"{channel}_{wavelength}"
-            if dff_key in dff_data:
-                data = dff_data[dff_key]
-                if isinstance(data, pd.Series):
-                    data = data.values
+            if use_raw_dff and channel in channel_data:
+                # Get raw target column from channel_data
+                target_col = channel_data[channel].get(wavelength)
+                if not target_col or target_col not in preprocessed_data.columns:
+                    continue
+                
+                # Use smoothed if available, otherwise raw
+                smoothed_col = f"CH{channel}_{wavelength}_smoothed"
+                if smoothed_col in preprocessed_data.columns:
+                    raw_target = preprocessed_data[smoothed_col].values
+                else:
+                    raw_target = preprocessed_data[target_col].values
+                
+                # Get reference columns
+                motion_corrected_col = f"CH{channel}_{wavelength}_motion_corrected"
+                fitted_ref_col = f"CH{channel}_{wavelength}_fitted_ref"
+                baseline_pred_col = f"CH{channel}_{wavelength}_baseline_pred"
                 
                 for event in events:
-                    # Calculate baseline statistics from custom window
+                    # Baseline window indices in raw data
                     baseline_start_time = event + baseline_start
                     baseline_end_time = event + baseline_end
-                    
                     baseline_start_idx = np.argmin(np.abs(fiber_timestamps - baseline_start_time))
                     baseline_end_idx = np.argmin(np.abs(fiber_timestamps - baseline_end_time))
                     
-                    if baseline_end_idx > baseline_start_idx:
-                        baseline_data = data[baseline_start_idx:baseline_end_idx]
-                        mean_dff = np.nanmean(baseline_data)
-                        std_dff = np.nanstd(baseline_data)
+                    if baseline_end_idx <= baseline_start_idx:
+                        continue
+                    
+                    # F0 = median of raw target in baseline window
+                    raw_baseline = raw_target[baseline_start_idx:baseline_end_idx]
+                    F0 = np.nanmedian(raw_baseline)
+                    if F0 == 0 or np.isnan(F0):
+                        F0 = np.finfo(float).eps
+                    
+                    # Compute dff signal based on reference_signal and apply_baseline
+                    if reference_signal != "baseline" and apply_baseline:
+                        # numerator = motion_corrected (F - F1 already computed)
+                        if motion_corrected_col in preprocessed_data.columns:
+                            signal = preprocessed_data[motion_corrected_col].values
+                            dff_signal = signal / F0
+                            log_message(f"Using motion corrected signal for dF/F calculation for channel {channel} wavelength {wavelength}")
+                        else:
+                            # Fallback: use raw_target
+                            dff_signal = (raw_target - F0) / F0
+                            log_message(f"Motion corrected signal not found, using raw target for dF/F calculation for channel {channel} wavelength {wavelength}", "WARNING")
+                    elif reference_signal != "baseline" and not apply_baseline:
+                        # F = raw_target, F1 = fitted_ref
+                        if fitted_ref_col in preprocessed_data.columns:
+                            fitted_ref = preprocessed_data[fitted_ref_col].values
+                            dff_signal = (raw_target - fitted_ref) / F0
+                            log_message(f"Using fitted reference for dF/F calculation for channel {channel} wavelength {wavelength}")
+                        else:
+                            dff_signal = (raw_target - F0) / F0
+                            log_message(f"Fitted reference not found, using raw target for dF/F calculation for channel {channel} wavelength {wavelength}", "WARNING")
+                    elif reference_signal == "baseline" and apply_baseline:
+                        # F = raw_target, F1 = baseline_pred
+                        if baseline_pred_col in preprocessed_data.columns:
+                            baseline_pred = preprocessed_data[baseline_pred_col].values
+                            dff_signal = (raw_target - baseline_pred) / F0
+                            log_message(f"Using baseline prediction for dF/F calculation for channel {channel} wavelength {wavelength}")
+                        else:
+                            dff_signal = (raw_target - F0) / F0
+                            log_message(f"Baseline prediction not found, using raw target for dF/F calculation for channel {channel} wavelength {wavelength}", "WARNING")
+                    else:
+                        # reference_signal == "baseline" and not apply_baseline
+                        # F1 = F0, so dff = (F - F0) / F0
+                        dff_signal = (raw_target - F0) / F0
+                        log_message(f"Using baseline as reference for dF/F calculation for channel {channel} wavelength {wavelength}")
+                    
+                    # Extract plotting window
+                    start_idx = np.argmin(np.abs(fiber_timestamps - (event - pre_time)))
+                    end_idx = np.argmin(np.abs(fiber_timestamps - (event + post_time)))
+                    
+                    if end_idx > start_idx:
+                        episode_data = dff_signal[start_idx:end_idx]
+                        episode_times = fiber_timestamps[start_idx:end_idx] - event
                         
-                        if std_dff == 0:
-                            std_dff = 1e-10
-                        
-                        # Extract plotting window
-                        start_idx = np.argmin(np.abs(fiber_timestamps - (event - pre_time)))
-                        end_idx = np.argmin(np.abs(fiber_timestamps - (event + post_time)))
-                        
-                        if end_idx > start_idx:
-                            episode_data = data[start_idx:end_idx]
-                            episode_times = fiber_timestamps[start_idx:end_idx] - event
+                        if len(episode_times) > 1:
+                            interp_dff = np.interp(time_array, episode_times, episode_data)
+                            dff_episodes[wavelength].append(interp_dff)
                             
-                            if len(episode_times) > 1:
-                                # Store dFF data
-                                interp_dff = np.interp(time_array, episode_times, episode_data)
-                                dff_episodes[wavelength].append(interp_dff)
+                            # Z-score using baseline of computed dff
+                            baseline_dff = dff_signal[baseline_start_idx:baseline_end_idx]
+                            mean_dff = np.nanmean(baseline_dff)
+                            std_dff = np.nanstd(baseline_dff)
+                            if std_dff == 0:
+                                std_dff = 1e-10
+                            zscore_episode = (episode_data - mean_dff) / std_dff
+                            interp_zscore = np.interp(time_array, episode_times, zscore_episode)
+                            zscore_episodes[wavelength].append(interp_zscore)
+            else:
+                # Fallback: use pre-computed dff_data
+                dff_key = f"{channel}_{wavelength}"
+                if dff_key in dff_data:
+                    data = dff_data[dff_key]
+                    if isinstance(data, pd.Series):
+                        data = data.values
+                    
+                    for event in events:
+                        baseline_start_time = event + baseline_start
+                        baseline_end_time = event + baseline_end
+                        baseline_start_idx = np.argmin(np.abs(fiber_timestamps - baseline_start_time))
+                        baseline_end_idx = np.argmin(np.abs(fiber_timestamps - baseline_end_time))
+                        
+                        if baseline_end_idx > baseline_start_idx:
+                            baseline_data = data[baseline_start_idx:baseline_end_idx]
+                            mean_dff = np.nanmean(baseline_data)
+                            std_dff = np.nanstd(baseline_data)
+                            if std_dff == 0:
+                                std_dff = 1e-10
+                            
+                            start_idx = np.argmin(np.abs(fiber_timestamps - (event - pre_time)))
+                            end_idx = np.argmin(np.abs(fiber_timestamps - (event + post_time)))
+                            
+                            if end_idx > start_idx:
+                                episode_data = data[start_idx:end_idx]
+                                episode_times = fiber_timestamps[start_idx:end_idx] - event
                                 
-                                # Calculate z-score using custom baseline
-                                zscore_episode = (episode_data - mean_dff) / std_dff
-                                interp_zscore = np.interp(time_array, episode_times, zscore_episode)
-                                zscore_episodes[wavelength].append(interp_zscore)
+                                if len(episode_times) > 1:
+                                    interp_dff = np.interp(time_array, episode_times, episode_data)
+                                    dff_episodes[wavelength].append(interp_dff)
+                                    
+                                    zscore_episode = (episode_data - mean_dff) / std_dff
+                                    interp_zscore = np.interp(time_array, episode_times, zscore_episode)
+                                    zscore_episodes[wavelength].append(interp_zscore)
     
     return {
         'time': time_array,

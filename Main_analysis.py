@@ -4428,6 +4428,9 @@ def calculate_and_plot_dff_wrapper():
                     apply_baseline_val
                 )
                 
+                animal_data['apply_baseline'] = apply_baseline_val
+                animal_data['reference_signal'] = reference_signal
+                
                 successful_calculations += 1
                 log_message(f"Calculated ΔF/F for {animal_single_channel_id}", "INFO")
                 
