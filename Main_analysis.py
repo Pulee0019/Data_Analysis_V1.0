@@ -4415,11 +4415,6 @@ def calculate_and_plot_dff_wrapper():
             animal_single_channel_id = animal_data.get('animal_single_channel_id', f'Animal {idx}')
             
             try:
-                if 'preprocessed_data' not in animal_data or animal_data['preprocessed_data'] is None:
-                    log_message(f"Skipping {animal_single_channel_id}: No preprocessed data", "WARNING")
-                    failed_calculations += 1
-                    continue
-                
                 calculate_dff(
                     animal_data, 
                     target_signal,
