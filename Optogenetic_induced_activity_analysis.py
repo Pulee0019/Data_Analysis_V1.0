@@ -987,11 +987,11 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                             alpha = 1/len(param_data) + (1/len(param_data) * (list(param_data.keys()).index(timing_name)))
                             linestyle = '-'
                         
-                        log_message(f"Plotting {param_name} - {timing_name} with alpha {alpha:.2f}")
+                        log_message(f"Plotting {param_name} - {timing_name} - {list(param_data.keys()).index(timing_name)} with alpha {alpha:.2f}")
                         ax_dff.plot(time_array, mean_response, color=day_color, 
                                    linewidth=2, linestyle=linestyle, 
                                    label=f'{param_name} {timing_name}', alpha=alpha)
-                        log_message(f"Plotting {param_name} - {timing_name} with alpha {alpha:.2f}")
+                        log_message(f"Plotting {param_name} - {timing_name} - {list(param_data.keys()).index(timing_name)} with alpha {alpha:.2f}")
                         ax_dff.fill_between(time_array, mean_response - sem_response, 
                                            mean_response + sem_response, color=day_color, alpha=alpha*0.3)
                     
@@ -1043,7 +1043,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                             alpha = 1/len(param_data) + (1/len(param_data) * (list(param_data.keys()).index(timing_name)))
                             linestyle = '-'
                         
-                        log_message(f"Plotting {param_name} - {timing_name} with alpha {alpha:.2f}")
+                        log_message(f"Plotting {param_name} - {timing_name} - {list(param_data.keys()).index(timing_name)} with alpha {alpha:.2f}")
                         ax_zscore.plot(time_array, mean_response, color=day_color, 
                                       linewidth=2, linestyle=linestyle, 
                                       label=f'{param_name} {timing_name}', alpha=alpha)
@@ -1248,7 +1248,7 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
                         alpha = 1/len(param_data) + (1/len(param_data) * (list(param_data.keys()).index(timing_name)))
                         linestyle = '-'
                     
-                    log_message(f"Plotting {param_name} - {timing_name} with alpha {alpha:.2f}")
+                    log_message(f"Plotting {param_name} - {timing_name} - {list(param_data.keys()).index(timing_name)} with alpha {alpha:.2f}")
                     ax_dff.plot(time_array, mean_response, color=color, linewidth=2, 
                                linestyle=linestyle, label=timing_name, alpha=alpha)
                     ax_dff.fill_between(time_array, mean_response - sem_response,
@@ -1310,7 +1310,7 @@ def create_single_param_window(param_name, param_data, params, analysis_mode="op
                         alpha = 1/len(param_data) + (1/len(param_data) * (list(param_data.keys()).index(timing_name)))
                         linestyle = '-'
                     
-                    log_message(f"Plotting {param_name} - {timing_name} with alpha {alpha:.2f}")
+                    log_message(f"Plotting {param_name} - {timing_name} - {list(param_data.keys()).index(timing_name)} with alpha {alpha:.2f}")
                     ax_zscore.plot(time_array, mean_response, color=color, linewidth=2, 
                                   linestyle=linestyle, label=timing_name, alpha=alpha)
                     ax_zscore.fill_between(time_array, mean_response - sem_response,
