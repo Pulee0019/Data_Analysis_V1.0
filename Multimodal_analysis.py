@@ -528,26 +528,106 @@ def calculate_running_episodes(events, running_timestamps, running_speed,
         'zscore': zscore_episodes
     }
 
-def export_statistics(statistics_rows, analysis_type, event_type=None):
+def rebuild_results(results):
+    all_rows = []
+    counters = {}
+
+    def extract_trials(value):
+        """Extract a list of trial arrays from a value that may be a list or a dict with 'episodes'."""
+        if isinstance(value, list):
+            return value
+        if isinstance(value, dict) and 'episodes' in value:
+            episodes = value['episodes']
+            if isinstance(episodes, np.ndarray) and episodes.ndim == 2:
+                # 2D array: rows are trials
+                return [episodes[i, :] for i in range(episodes.shape[0])]
+            if isinstance(episodes, list):
+                return episodes
+        return []
+
+    for param_name, param_data in results.items():
+        # Determine if param_data is flat (contains signal keys directly) or nested
+        top_level_signals = [key for key in ['dff', 'zscore', 'running'] if key in param_data]
+        if top_level_signals:
+            # Flat structure: treat as a single group with empty group name
+            groups = {'': param_data}
+        else:
+            # Nested structure: param_data itself is a dict of groups
+            groups = param_data
+
+        for group_name, group_data in groups.items():
+            # Process dFF signals
+            if 'dff' in group_data:
+                dff_dict = group_data['dff']
+                for wavelength, value in dff_dict.items():
+                    trials = extract_trials(value)
+                    for trial_data in trials:
+                        key = (param_name, group_name, 'dff', wavelength)
+                        counters[key] = counters.get(key, 0) + 1
+                        if group_name:
+                            col_name = f"{param_name}_{group_name}_dff_{wavelength}_trial{counters[key]}"
+                        else:
+                            col_name = f"{param_name}_dff_{wavelength}_trial{counters[key]}"
+                        all_rows.append((col_name, trial_data))
+
+            # Process z-score signals
+            if 'zscore' in group_data:
+                zscore_dict = group_data['zscore']
+                for wavelength, value in zscore_dict.items():
+                    trials = extract_trials(value)
+                    for trial_data in trials:
+                        key = (param_name, group_name, 'zscore', wavelength)
+                        counters[key] = counters.get(key, 0) + 1
+                        if group_name:
+                            col_name = f"{param_name}_{group_name}_zscore_{wavelength}_trial{counters[key]}"
+                        else:
+                            col_name = f"{param_name}_zscore_{wavelength}_trial{counters[key]}"
+                        all_rows.append((col_name, trial_data))
+
+            # Process running speed signals
+            if 'running' in group_data:
+                running_value = group_data['running']
+                trials = extract_trials(running_value)
+                for trial_data in trials:
+                    key = (param_name, group_name, 'running')
+                    counters[key] = counters.get(key, 0) + 1
+                    if group_name:
+                        col_name = f"{param_name}_{group_name}_running_speed_trial{counters[key]}"
+                    else:
+                        col_name = f"{param_name}_running_speed_trial{counters[key]}"
+                    all_rows.append((col_name, trial_data))
+
+    # Build DataFrame
+    df_dict = {col: data for col, data in all_rows}
+    df = pd.DataFrame(df_dict)
+    return df
+                
+def export_results(results, statistics_rows, analysis_type, event_type=None):
     """Export statistics to CSV"""
     if not statistics_rows:
         log_message("No statistics data to export", "WARNING")
         return
     
-    df = pd.DataFrame(statistics_rows)
+    df1 = rebuild_results(results)
+    df2 = pd.DataFrame(statistics_rows)
     
     save_dir = filedialog.askdirectory(title='Select directory to save statistics CSV')
     
     if save_dir:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         if event_type:
-            filename = f"{analysis_type}_{event_type}_statistics_{timestamp}.csv"
+            filename1 = f"{analysis_type}_{event_type}_results_{timestamp}.csv"
+            filename2 = f"{analysis_type}_{event_type}_statistics_{timestamp}.csv"
         else:
-            filename = f"{analysis_type}_statistics_{timestamp}.csv"
-        save_path = os.path.join(save_dir, filename)
-        df.to_csv(save_path, index=False)
+            filename1 = f"{analysis_type}_results_{timestamp}.csv"
+            filename2 = f"{analysis_type}_statistics_{timestamp}.csv"
+        save_path1 = os.path.join(save_dir, filename1)
+        save_path2 = os.path.join(save_dir, filename2)
+        df1.to_csv(save_path1, index=False)
+        df2.to_csv(save_path2, index=False)
         
-        log_message(f"Statistics exported to {save_path} ({len(df)} rows)")
+        log_message(f"Results exported to {save_path1} ({len(df1)} rows)")
+        log_message(f"Statistics exported to {save_path2} ({len(df2)} rows)")
     else:
         log_message("Save directory not selected", "WARNING")
 
@@ -601,7 +681,7 @@ def create_parameter_panel(parent, param_config):
                                       font=("Microsoft YaHei", 8))
         bout_type_combo.pack(padx=10, pady=5, fill=tk.X)
         if config['bout_types']:
-            bout_type_combo.set(config['bout_types'][0])
+            bout_type_combo.set(config['bout_types'][1])
         
         param_frame.bout_type_var = bout_type_var
     
@@ -674,7 +754,7 @@ def create_parameter_panel(parent, param_config):
         export_frame.pack(fill=tk.X, padx=10, pady=10)
         
         export_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(export_frame, text="Export statistics to CSV", 
+        tk.Checkbutton(export_frame, text="Export results to CSV", 
                       variable=export_var, bg="#f8f8f8",
                       font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=10, pady=5)
         

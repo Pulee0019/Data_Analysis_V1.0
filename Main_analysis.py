@@ -1463,7 +1463,7 @@ class FiberVisualizationWindow:
             lbl = analysis_type if idx == 0 else '_nolegend_'
             self.ax.axvspan(start/fs, end/fs,
                             color='orange',
-                            alpha=0.1,
+                            alpha=0.3,
                             label=lbl)
     
     def _plot_optogenetic_markers(self):
@@ -1476,7 +1476,7 @@ class FiberVisualizationWindow:
                 lbl = "Optogenetic Stimulation" if idx == 0 else '_nolegend_'
                 self.ax.axvspan(int(start), int(end),
                                 color='blue',
-                                alpha=0.1,
+                                alpha=0.3,
                                 label=lbl)
     
     def _plot_drug_markers(self):
@@ -1488,8 +1488,8 @@ class FiberVisualizationWindow:
                 start_time = drug_sessions[idx]['time']
                 lbl = "Drug Administration" if idx == 0 else '_nolegend_'
                 self.ax.axvline(int(start_time),
-                                color='red',
-                                alpha=0.1,
+                                color='purple',
+                                alpha=0.3,
                                 label=lbl)
 
     def set_plot_type(self, plot_type):
@@ -3753,7 +3753,7 @@ def fiber_preprocessing():
     
     prep_window = tk.Toplevel(root)
     prep_window.title("Fiber Data Preprocessing")
-    prep_window.geometry("320x600")
+    prep_window.geometry("320x550")
     prep_window.transient(root)
     prep_window.grab_set()
     
@@ -5097,9 +5097,9 @@ EXPERIMENT_MODE_FIBER_AST2_DLC = "fiber+ast2+dlc"
 current_experiment_mode = EXPERIMENT_MODE_FIBER_AST2  # Default mode
 
 target_signal_var = tk.StringVar(value="470")
-reference_signal_var = tk.StringVar(value="410")
+reference_signal_var = tk.StringVar(value="baseline")
 baseline_start = tk.DoubleVar(value=0)
-baseline_end = tk.DoubleVar(value=60)
+baseline_end = tk.DoubleVar(value=120)
 apply_smooth = tk.BooleanVar(value=False)
 smooth_window = tk.IntVar(value=11)
 smooth_order = tk.IntVar(value=5)

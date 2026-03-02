@@ -14,7 +14,7 @@ from matplotlib import colors
 
 from logger import log_message
 from Multimodal_analysis import (
-    export_statistics, identify_drug_sessions,create_control_panel, 
+    export_results, identify_drug_sessions,create_control_panel, 
     create_table_window, initialize_table, create_parameter_panel,
     get_parameters_from_ui, FIBER_COLORS, DAY_COLORS
 )
@@ -374,7 +374,7 @@ def run_drug_induced_analysis(day_data, params):
             all_statistics.extend(day_stats)
     
     if params['export_stats'] and all_statistics:
-        export_statistics(all_statistics, "drug_induced")
+        export_results(results, all_statistics, "drug_induced")
     
     if results:
         plot_drug_induced_results(results, params)
@@ -643,7 +643,7 @@ def analyze_day_drug_induced(day_name, animals, params):
             drug_offset_time = animal_data.get('drug_offset_time')
             
             log_message(f"Processing {animal_id} Session{session_idx+1} ({drug_name})")
-            log_message(f"  Drug onset: {drug_onset_time}, offset: {drug_offset_time}")
+            log_message(f"Drug onset: {drug_onset_time}, offset: {drug_offset_time}")
             
             # Get data
             preprocessed_data = animal_data.get('preprocessed_data')

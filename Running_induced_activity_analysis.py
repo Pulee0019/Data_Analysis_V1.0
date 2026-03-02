@@ -13,7 +13,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 
 from logger import log_message
 from Multimodal_analysis import (
-    get_events_from_bouts, calculate_running_episodes, export_statistics,
+    get_events_from_bouts, calculate_running_episodes, export_results,
     create_table_window, initialize_table, create_control_panel, identify_optogenetic_events, 
     identify_drug_sessions, calculate_optogenetic_pulse_info, get_events_within_optogenetic, 
     create_opto_parameter_string, group_optogenetic_sessions, create_parameter_panel, 
@@ -83,7 +83,8 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
         if not all_drug_events:
             log_message("No drug events found", "ERROR")
             return
-    
+        
+    available_bout_types = []
     # Get available bout types
     for animal_data in multi_animal_data:
         if 'running_bouts' in animal_data and animal_data['running_bouts']:
@@ -606,7 +607,7 @@ def run_running_only_analysis(day_data, params):
             all_statistics.extend(day_stats)
     
     if params['export_stats'] and all_statistics:
-        export_statistics(all_statistics, "running_induced", params['full_event_type'])
+        export_results(results, all_statistics, "running_induced", params['full_event_type'])
     
     if results:
         plot_running_results(results, params)
@@ -631,7 +632,7 @@ def run_running_drug_analysis(day_data, params):
             all_statistics.extend(day_stats)
     
     if params['export_stats'] and all_statistics:
-        export_statistics(all_statistics, "running_drug_induced", params['full_event_type'])
+        export_results(results, all_statistics, "running_drug_induced", params['full_event_type'])
     
     if results:
         plot_running_drug_results(results, params)
@@ -672,7 +673,8 @@ def analyze_day_running(day_name, animals, params):
             if not events:
                 log_message(f"No events for {animal_id}", "WARNING")
                 continue
-                        # Get data
+            
+            # Get data
             ast2_data = animal_data.get('ast2_data_adjusted')
             if not ast2_data:
                 continue
@@ -792,7 +794,7 @@ def analyze_day_running_drug(day_name, animals, params):
         drug_config = {}
     
     # Collect all unique drug timing categories across all animals
-    all_drug_categories = set()
+    all_drug_categories = []
     
     # Initialize storage with dynamic categories
     category_data = {}
@@ -874,7 +876,7 @@ def analyze_day_running_drug(day_name, animals, params):
             
             log_message(f"Animal {animal_id} drug timing:")
             for d in drug_info:
-                log_message(f"  {d['name']}: onset={d['onset']:.1f}s, offset={d['offset']:.1f}s")
+                log_message(f"{d['name']}: onset={d['onset']:.1f}s, offset={d['offset']:.1f}s")
             
             # Get running events
             events = get_events_from_bouts(animal_data, params['full_event_type'], duration=False)
@@ -894,7 +896,7 @@ def analyze_day_running_drug(day_name, animals, params):
                 else:
                     # Find which drug period this event belongs to
                     # Check from latest to earliest drug
-                    for i in range(len(drug_info) - 1, -1, -1):
+                    for i in range(len(drug_info)):
                         # Event must be after onset AND before offset
                         if drug_info[i]['onset'] <= event_time < drug_info[i]['offset']:
                             if i == 0:
@@ -909,9 +911,10 @@ def analyze_day_running_drug(day_name, animals, params):
                 if category not in event_categories:
                     event_categories[category] = []
                 event_categories[category].append(event_time)
-                all_drug_categories.add(category)
+                if category not in all_drug_categories:
+                    all_drug_categories.append(category)
             
-            log_message(f"Event distribution: {[(cat, len(evts)) for cat, evts in event_categories.items()]}")
+            log_message(f"Animal {animal_id} all drug categories: {', '.join(all_drug_categories)}")
             
             # Get data
             ast2_data = animal_data.get('ast2_data_adjusted')
@@ -1970,7 +1973,9 @@ def plot_running_drug_results(results, params):
     for data in results.values():
         if 'drug_categories' in data:
             all_categories.update(data['drug_categories'])
+            print(data['drug_categories'])
     all_categories = list(all_categories)
+    print(all_categories)
     
     # Row 1: Traces
     # Running trace
@@ -3023,7 +3028,7 @@ def run_running_optogenetics_analysis(day_data, params, all_optogenetic_events,
     
     if params['export_stats'] and all_statistics:
         export_type = "running_opto_drug_induced" if analysis_mode == "running+optogenetics+drug" else "running_opto_induced"
-        export_statistics(all_statistics, export_type, params['full_event_type'])
+        export_results(results, all_statistics, export_type, params['full_event_type'])
     
     if results:
         if analysis_mode == "running+optogenetics+drug":
@@ -3061,7 +3066,7 @@ def analyze_day_running_optogenetics_drug(day_name, animals, params,
         drug_name_config = {}
     
     # Collect all unique drug categories
-    all_drug_categories = set()
+    all_drug_categories = []
     
     # Initialize dynamic storage for conditions
     # Format: {category: {with_opto: {...}, without_opto: {...}}}
@@ -3120,7 +3125,7 @@ def analyze_day_running_optogenetics_drug(day_name, animals, params,
                     category = 'baseline'
                 else:
                     # Find which drug period
-                    for i in range(len(drug_info) - 1, -1, -1):
+                    for i in range(len(drug_info)):
                         if start >= drug_info[i]['time']:
                             if i == 0:
                                 category = drug_info[0]['name']
@@ -3132,7 +3137,10 @@ def analyze_day_running_optogenetics_drug(day_name, animals, params,
                 if category not in event_categories:
                     event_categories[category] = []
                 event_categories[category].append((start, end))
-                all_drug_categories.add(category)
+                if category not in all_drug_categories:
+                    all_drug_categories.append(category)
+            
+            log_message(f"{animal_id} all drug categories: {', '.join(all_drug_categories)}")
             
             # For each category, further divide by with/without opto
             for category, category_events in event_categories.items():

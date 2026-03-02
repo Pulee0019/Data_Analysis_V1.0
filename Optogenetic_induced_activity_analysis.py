@@ -14,7 +14,7 @@ from matplotlib import colors
 
 from logger import log_message
 from Multimodal_analysis import (
-    export_statistics, identify_optogenetic_events, calculate_optogenetic_pulse_info,
+    export_results, identify_optogenetic_events, calculate_optogenetic_pulse_info,
     identify_drug_sessions, group_optogenetic_sessions, create_control_panel,
     create_parameter_panel, get_parameters_from_ui,
     create_table_window, initialize_table, FIBER_COLORS, DAY_COLORS
@@ -537,7 +537,7 @@ def run_optogenetic_induced_analysis(row_data, params, analysis_mode="optogeneti
                 all_statistics.extend(row_stats)
     
     if params['export_stats'] and all_statistics:
-        export_statistics(all_statistics, f"optogenetic_induced_{analysis_mode}")
+        export_results(results, all_statistics, f"optogenetic_induced_{analysis_mode}")
     
     if results:
         plot_optogenetic_results(results, params, analysis_mode)
