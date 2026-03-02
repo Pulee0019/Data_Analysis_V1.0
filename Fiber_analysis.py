@@ -1,3 +1,5 @@
+import os
+import json
 import numpy as np
 import pandas as pd
 from scipy.signal import savgol_filter
@@ -133,7 +135,18 @@ def baseline_correction(animal_data=None, model_type="Polynomial", target_signal
                     
                     events_col = channels.get('events')
                     if events_col and events_col in fiber_data.columns:
-                        drug_events = fiber_data[fiber_data[events_col].str.contains('Event1', na=False)]
+                        config_path = os.path.join(os.path.dirname(__file__), 'event_config.json')
+                        with open(config_path, 'r', encoding='utf-8') as f:
+                            event_config = json.load(f)
+                        
+                        drug_event_names = event_config.get('drug_event', 'Event1')
+                        # Support multiple drug events separated by comma
+                        if isinstance(drug_event_names, str):
+                            drug_event_names = [name.strip() for name in drug_event_names.split(',')]
+                        elif not isinstance(drug_event_names, list):
+                            drug_event_names = [str(drug_event_names)]
+                            
+                        drug_events = fiber_data[fiber_data[events_col].str.contains('|'.join(drug_event_names), na=False)]
                         if drug_events.empty:
                             baseline_mask = np.ones_like(time_data, dtype=bool)
                         else:
