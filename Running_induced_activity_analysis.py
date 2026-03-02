@@ -1969,13 +1969,12 @@ def plot_running_drug_results(results, params):
     time_array = list(results.values())[0]['time']
     
     # Get all drug categories
-    all_categories = set()
+    all_categories = []
     for data in results.values():
         if 'drug_categories' in data:
-            all_categories.update(data['drug_categories'])
-            print(data['drug_categories'])
-    all_categories = list(all_categories)
-    print(all_categories)
+            for category in data['drug_categories']:
+                if category not in all_categories:
+                    all_categories.append(category)
     
     # Row 1: Traces
     # Running trace
