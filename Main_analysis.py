@@ -10,6 +10,7 @@ import pandas as pd
 import numpy as np
 import threading
 import traceback
+import platform
 import fnmatch
 import signal
 import json
@@ -202,7 +203,7 @@ class BodypartVisualizationWindow:
         resize_frame.place(relx=1.0, rely=1.0, anchor="se")
         resize_frame.bind("<Button-1>", self.start_resize)
         resize_frame.bind("<B1-Motion>", self.do_resize)
-        resize_frame.config(cursor="size_nw_se")
+        resize_frame.config(cursor="sizing")
         
         # Create matplotlib figure - with better color scheme
         self.fig = Figure(figsize=(7, 4.5), dpi=90, facecolor='#f8f9fa')
@@ -969,7 +970,7 @@ class FiberVisualizationWindow:
         resize_frame.place(relx=1.0, rely=1.0, anchor="se")
         resize_frame.bind("<Button-1>", self.start_resize)
         resize_frame.bind("<B1-Motion>", self.do_resize)
-        resize_frame.config(cursor="size_nw_se")
+        resize_frame.config(cursor="sizing")
         
         self.fig = Figure(figsize=(3, 1), dpi=90, facecolor='#f8f9fa')
         self.ax = self.fig.add_subplot(111, facecolor='#ffffff')
@@ -1621,7 +1622,7 @@ class RunningVisualizationWindow:
         resize_frame.place(relx=1.0, rely=1.0, anchor="se")
         resize_frame.bind("<Button-1>", self.start_resize)
         resize_frame.bind("<B1-Motion>", self.do_resize)
-        resize_frame.config(cursor="size_nw_se")
+        resize_frame.config(cursor="sizing")
         
         self.fig = Figure(figsize=(3, 1), dpi=90, facecolor='#f8f9fa')
         self.ax = self.fig.add_subplot(111, facecolor='#ffffff')
@@ -5083,7 +5084,10 @@ def on_closing():
 
 root = tk.Tk()
 root.title("Fiber Photometry with Running Analysis")
-root.state('zoomed')
+if platform.system() == "Windows":
+    root.state('zoomed')
+else:
+    root.attributes('-zoomed', True)
 
 root.protocol("WM_DELETE_WINDOW", on_closing)
 
