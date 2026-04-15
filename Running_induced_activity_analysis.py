@@ -5,11 +5,7 @@ Supports both running-only and running+drug analysis
 import os
 import json
 import tkinter as tk
-from tkinter import ttk
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
 from logger import log_message
 from Multimodal_analysis import (
