@@ -18,15 +18,15 @@ def running_bout_analysis_classify(running_speed,
         speed = running_speed['filtered_speed']
         log_message("Using filtered speed data for bout analysis.")
 
-    [baseline_window, _, _, _] = std_based_baseline_windows(speed, window_size=int(0.01*len(speed)))
-    baseline = speed[baseline_window[0][0]:baseline_window[0][1]+1]
-    mean_baseline = np.mean(baseline)
-    std_baseline = np.std(baseline)
-    if abs(mean_baseline) <= general_threshold:
-        if mean_baseline < 0:
-            general_threshold = abs(mean_baseline - 3 * std_baseline)
-        else:
-            general_threshold = mean_baseline + 3 * std_baseline
+    # [baseline_window, _, _, _] = std_based_baseline_windows(speed, window_size=int(0.01*len(speed)))
+    # baseline = speed[baseline_window[0][0]:baseline_window[0][1]+1]
+    # mean_baseline = np.mean(baseline)
+    # std_baseline = np.std(baseline)
+    # if abs(mean_baseline) <= general_threshold:
+    #     if mean_baseline < 0:
+    #         general_threshold = abs(mean_baseline - 3 * std_baseline)
+    #     else:
+    #         general_threshold = mean_baseline + 3 * std_baseline
     
     log_message(f"General running threshold set at {general_threshold:.2f} cm/s")
     

@@ -17,8 +17,11 @@ from Multimodal_analysis import (
     create_table_window, initialize_table, create_control_panel, identify_optogenetic_events, 
     identify_drug_sessions, calculate_optogenetic_pulse_info, get_events_within_optogenetic, 
     create_opto_parameter_string, group_optogenetic_sessions, create_parameter_panel, 
-    get_parameters_from_ui, FIBER_COLORS, DAY_COLORS
+    get_parameters_from_ui, FIBER_COLORS, DAY_COLORS,
+    make_scrollable_window, make_figure, draw_heatmap, embed_figure
 )
+
+NUM_COLS = 3     # Running: speed | ΔF/F | Z-score
 
 def show_running_induced_analysis(root, multi_animal_data, analysis_mode="running"):
     """
@@ -693,9 +696,6 @@ def analyze_day_running(day_name, animals, params):
             
             dff_data = animal_data.get('dff_data', {})
             active_channels = animal_data.get('active_channels', [])
-            channel_data = animal_data.get('channel_data', {})
-            reference_signal = animal_data.get('reference_signal', '410')
-            apply_baseline = animal_data.get('apply_baseline', False)
 
             # Calculate episodes
             result = calculate_running_episodes(
@@ -703,11 +703,7 @@ def analyze_day_running(day_name, animals, params):
                 fiber_timestamps, dff_data,
                 active_channels, target_wavelengths,
                 params['pre_time'], params['post_time'],
-                params['baseline_start'], params['baseline_end'],
-                preprocessed_data=preprocessed_data,
-                channel_data=channel_data,
-                reference_signal=reference_signal,
-                apply_baseline=apply_baseline
+                params['baseline_start'], params['baseline_end']
             )
 
             # Collect episodes
@@ -933,9 +929,6 @@ def analyze_day_running_drug(day_name, animals, params):
             fiber_timestamps = preprocessed_data[time_col].values
             dff_data = animal_data.get('dff_data', {})
             active_channels = animal_data.get('active_channels', [])
-            channel_data = animal_data.get('channel_data', {})
-            reference_signal = animal_data.get('reference_signal', '410')
-            apply_baseline = animal_data.get('apply_baseline', False)
             
             # Process each drug category
             for category, category_events in event_categories.items():
@@ -951,11 +944,7 @@ def analyze_day_running_drug(day_name, animals, params):
                     fiber_timestamps, dff_data,
                     active_channels, target_wavelengths,
                     params['pre_time'], params['post_time'],
-                    params['baseline_start'], params['baseline_end'],
-                    preprocessed_data=preprocessed_data,
-                    channel_data=channel_data,
-                    reference_signal=reference_signal,
-                    apply_baseline=apply_baseline
+                    params['baseline_start'], params['baseline_end']
                 )
                 
                 if len(category_result['running']) > 0:
@@ -1112,9 +1101,6 @@ def analyze_day_running_optogenetics(day_name, animals, params, all_optogenetic_
             
             dff_data = animal_data.get('dff_data', {})
             active_channels = animal_data.get('active_channels', [])
-            channel_data = animal_data.get('channel_data', {})
-            reference_signal = animal_data.get('reference_signal', '410')
-            apply_baseline = animal_data.get('apply_baseline', False)
             
             # Process events with optogenetics
             if with_opto_events:
@@ -1123,11 +1109,7 @@ def analyze_day_running_optogenetics(day_name, animals, params, all_optogenetic_
                     fiber_timestamps, dff_data,
                     active_channels, target_wavelengths,
                     params['pre_time'], params['post_time'],
-                    params['baseline_start'], params['baseline_end'],
-                    preprocessed_data=preprocessed_data,
-                    channel_data=channel_data,
-                    reference_signal=reference_signal,
-                    apply_baseline=apply_baseline
+                    params['baseline_start'], params['baseline_end']
                 )
                 
                 if len(with_result['running']) > 0:
@@ -1164,11 +1146,7 @@ def analyze_day_running_optogenetics(day_name, animals, params, all_optogenetic_
                     fiber_timestamps, dff_data,
                     active_channels, target_wavelengths,
                     params['pre_time'], params['post_time'],
-                    params['baseline_start'], params['baseline_end'],
-                    preprocessed_data=preprocessed_data,
-                    channel_data=channel_data,
-                    reference_signal=reference_signal,
-                    apply_baseline=apply_baseline
+                    params['baseline_start'], params['baseline_end']
                 )
                 
                 if len(without_result['running']) > 0:
@@ -1349,207 +1327,157 @@ def collect_statistics(day_name, animal_id, event_type, result, time_array, para
     return rows
 
 def plot_running_results(results, params):
-    """Plot running-only results"""
+    """Plot running-only results — all days overlaid."""
     target_wavelengths = []
-    for day_name, data in results.items():
-        if 'target_wavelengths' in data:
-            target_wavelengths = data['target_wavelengths']
+    for data in results.values():
+        if "target_wavelengths" in data:
+            target_wavelengths = data["target_wavelengths"]
             break
-    
     if not target_wavelengths:
-        target_wavelengths = ['470']
-    
-    result_window = tk.Toplevel()
-    wavelength_label = '+'.join(target_wavelengths)
-    result_window.title(f"Running-Induced Activity - All Days ({wavelength_label}nm)")
-    result_window.state('zoomed')
-    result_window.configure(bg='#f8f8f8')
-    
-    num_wavelengths = len(target_wavelengths)
-    num_cols = 1 + 2 * num_wavelengths
-    
-    fig = Figure(figsize=(4 * num_cols, 10), dpi=100)
-    
-    plot_idx = 1
-    
-    # Row 1: Traces
-    # Running trace
-    ax_running = fig.add_subplot(2, num_cols, plot_idx)
-    for idx, (day_name, data) in enumerate(results.items()):
-        day_color = DAY_COLORS[idx % len(DAY_COLORS)]
-        if 'running' in data and data['running']['mean'] is not None:
-            ax_running.plot(data['time'], data['running']['mean'],
-                          color=day_color, linewidth=2, label=day_name)
-            ax_running.fill_between(data['time'],
-                                   data['running']['mean'] - data['running']['sem'],
-                                   data['running']['mean'] + data['running']['sem'],
-                                   color=day_color, alpha=0.3)
-    
-    ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
-    ax_running.set_xlim([data['time'][0], data['time'][-1]])
-    ax_running.set_xlabel('Time (s)')
-    ax_running.set_ylabel('Speed (cm/s)')
-    ax_running.set_title('Running Speed - All Days')
-    ax_running.legend()
-    ax_running.grid(False)
-    plot_idx += 1
-    
-    # Fiber traces
+        target_wavelengths = ["470"]
+ 
+    wavelength_label = "+".join(target_wavelengths)
+    time_array = list(results.values())[0]["time"]
+ 
+    win, _, inner = make_scrollable_window(
+        f"Running-Induced Activity - All Days ({wavelength_label}nm)"
+    )
+ 
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
-        
-        # dFF trace
-        ax_dff = fig.add_subplot(2, num_cols, plot_idx)
+        fig = make_figure(NUM_COLS)
+        fig.suptitle(f"Wavelength {wl} nm — All Days",
+                     fontsize=12, fontweight="bold")
+ 
+        # Row 1: Traces
+        ax_run = fig.add_subplot(2, NUM_COLS, 1)
         for idx, (day_name, data) in enumerate(results.items()):
-            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
-            if wl in data['dff']:
-                ax_dff.plot(data['time'], data['dff'][wl]['mean'],
-                          color=day_color, linewidth=2, label=day_name)
-                ax_dff.fill_between(data['time'],
-                                   data['dff'][wl]['mean'] - data['dff'][wl]['sem'],
-                                   data['dff'][wl]['mean'] + data['dff'][wl]['sem'],
-                                   color=day_color, alpha=0.3)
-        
-        ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
-        ax_dff.set_xlim([data['time'][0], data['time'][-1]])
-        ax_dff.set_xlabel('Time (s)')
-        ax_dff.set_ylabel('ΔF/F')
-        ax_dff.set_title(f'Fiber ΔF/F {wl}nm - All Days')
-        ax_dff.legend()
+            dc = DAY_COLORS[idx % len(DAY_COLORS)]
+            if "running" in data and data["running"]["mean"] is not None:
+                t = data["time"]
+                ax_run.plot(t, data["running"]["mean"],
+                            color=dc, linewidth=2, label=day_name)
+                ax_run.fill_between(
+                    t,
+                    data["running"]["mean"] - data["running"]["sem"],
+                    data["running"]["mean"] + data["running"]["sem"],
+                    color=dc, alpha=0.3)
+        ax_run.axvline(x=0, color="#808080", linestyle="--", alpha=0.8)
+        ax_run.set_xlim(time_array[0], time_array[-1])
+        ax_run.set_xlabel("Time (s)")
+        ax_run.set_ylabel("Speed (cm/s)")
+        ax_run.set_title("Running Speed - All Days")
+        ax_run.legend(fontsize=7)
+        ax_run.grid(False)
+ 
+        ax_dff = fig.add_subplot(2, NUM_COLS, 2)
+        for idx, (day_name, data) in enumerate(results.items()):
+            dc = DAY_COLORS[idx % len(DAY_COLORS)]
+            if wl in data["dff"]:
+                t = data["time"]
+                ax_dff.plot(t, data["dff"][wl]["mean"],
+                            color=dc, linewidth=2, label=day_name)
+                ax_dff.fill_between(
+                    t,
+                    data["dff"][wl]["mean"] - data["dff"][wl]["sem"],
+                    data["dff"][wl]["mean"] + data["dff"][wl]["sem"],
+                    color=dc, alpha=0.3)
+        ax_dff.axvline(x=0, color="#808080", linestyle="--", alpha=0.8)
+        ax_dff.set_xlim(time_array[0], time_array[-1])
+        ax_dff.set_xlabel("Time (s)")
+        ax_dff.set_ylabel("ΔF/F")
+        ax_dff.set_title(f"Fiber ΔF/F {wl}nm - All Days")
+        ax_dff.legend(fontsize=7)
         ax_dff.grid(False)
-        plot_idx += 1
-        
-        # Z-score trace
-        ax_zscore = fig.add_subplot(2, num_cols, plot_idx)
+ 
+        ax_zs = fig.add_subplot(2, NUM_COLS, 3)
         for idx, (day_name, data) in enumerate(results.items()):
-            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
-            if wl in data['zscore']:
-                ax_zscore.plot(data['time'], data['zscore'][wl]['mean'],
-                             color=day_color, linewidth=2, label=day_name)
-                ax_zscore.fill_between(data['time'],
-                                      data['zscore'][wl]['mean'] - data['zscore'][wl]['sem'],
-                                      data['zscore'][wl]['mean'] + data['zscore'][wl]['sem'],
-                                      color=day_color, alpha=0.3)
-        
-        ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
-        ax_zscore.set_xlim([data['time'][0], data['time'][-1]])
-        ax_zscore.set_xlabel('Time (s)')
-        ax_zscore.set_ylabel('Z-score')
-        ax_zscore.set_title(f'Fiber Z-score {wl}nm - All Days')
-        ax_zscore.legend()
-        ax_zscore.grid(False)
-        plot_idx += 1
-    
-    # Row 2: Heatmaps
-    # Running heatmap
-    ax_running_heat = fig.add_subplot(2, num_cols, plot_idx)
-    all_running = []
-    for day_name, data in results.items():
-        if 'running' in data and len(data['running']['episodes']) > 0:
-            all_running.extend(data['running']['episodes'])
-    
-    if all_running:
-        time_array = list(results.values())[0]['time']
-        all_running = np.array(all_running)
-
-        if len(all_running) == 1:
-            all_running = np.vstack([all_running[0], all_running[0]])
-            im = ax_running_heat.imshow(all_running, aspect='auto', interpolation='nearest',
-                                        extent=[time_array[0], time_array[-1], 0, 1],
-                                        cmap='viridis', origin='lower')
-            ax_running_heat.set_yticks(np.arange(0, 2, 1))
+            dc = DAY_COLORS[idx % len(DAY_COLORS)]
+            if wl in data["zscore"]:
+                t = data["time"]
+                ax_zs.plot(t, data["zscore"][wl]["mean"],
+                           color=dc, linewidth=2, label=day_name)
+                ax_zs.fill_between(
+                    t,
+                    data["zscore"][wl]["mean"] - data["zscore"][wl]["sem"],
+                    data["zscore"][wl]["mean"] + data["zscore"][wl]["sem"],
+                    color=dc, alpha=0.3)
+        ax_zs.axvline(x=0, color="#808080", linestyle="--", alpha=0.8)
+        ax_zs.set_xlim(time_array[0], time_array[-1])
+        ax_zs.set_xlabel("Time (s)")
+        ax_zs.set_ylabel("Z-score")
+        ax_zs.set_title(f"Fiber Z-score {wl}nm - All Days")
+        ax_zs.legend(fontsize=7)
+        ax_zs.grid(False)
+ 
+        # Row 2: Heatmaps
+        ax_run_heat = fig.add_subplot(2, NUM_COLS, 4)
+        all_run, counts = [], []
+        for data in results.values():
+            if "running" in data and len(data["running"]["episodes"]) > 0:
+                all_run.extend(data["running"]["episodes"])
+                counts.append(len(data["running"]["episodes"]))
+        if all_run:
+            boundaries = []
+            acc = 0
+            for c in counts[:-1]:
+                acc += c
+                boundaries.append(acc)
+            draw_heatmap(ax_run_heat, np.array(all_run), time_array,
+                          "viridis", "Speed (cm/s)",
+                          extra_lines=boundaries if boundaries else None)
+            ax_run_heat.set_title("Running Speed Heatmap")
         else:
-            im = ax_running_heat.imshow(all_running, aspect='auto', interpolation='nearest',
-                                        extent=[time_array[0], time_array[-1], 0, len(all_running)],
-                                        cmap='viridis', origin='lower')
-            if len(all_running) <= 10:
-                ax_running_heat.set_yticks(np.arange(0, len(all_running)+1, 1))
-
-        ax_running_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-        ax_running_heat.set_xlabel('Time (s)')
-        ax_running_heat.set_ylabel('Trials')
-        ax_running_heat.set_title('Running Speed Heatmap')
-        plt.colorbar(im, ax=ax_running_heat, label='Speed (cm/s)', orientation='horizontal')
-    plot_idx += 1
-    
-    # Fiber heatmaps
-    for wl_idx, wl in enumerate(target_wavelengths):
-        # dFF heatmap
-        ax_dff_heat = fig.add_subplot(2, num_cols, plot_idx)
-        all_dff = []
-        for day_name, data in results.items():
-            if wl in data['dff']:
-                all_dff.extend(data['dff'][wl]['episodes'])
-        
+            ax_run_heat.axis("off")
+            ax_run_heat.set_title("Running Speed Heatmap")
+ 
+        ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
+        all_dff, counts = [], []
+        for data in results.values():
+            if wl in data["dff"]:
+                ep = data["dff"][wl]["episodes"]
+                all_dff.extend(ep)
+                counts.append(len(ep))
         if all_dff:
-            time_array = list(results.values())[0]['time']
-            all_dff = np.array(all_dff)
-            if len(all_dff) == 1:
-                all_dff = np.vstack([all_dff[0], all_dff[0]])
-                im = ax_dff_heat.imshow(all_dff, aspect='auto', interpolation='nearest',
-                                    extent=[time_array[0], time_array[-1], 0, 1],
-                                    cmap='coolwarm', origin='lower')
-                ax_dff_heat.set_yticks(np.arange(0, 2, 1))
-            else:
-                im = ax_dff_heat.imshow(all_dff, aspect='auto', interpolation='nearest',
-                                    extent=[time_array[0], time_array[-1], 0, len(all_dff)],
-                                    cmap='coolwarm', origin='lower')
-                if len(all_dff) <= 10:
-                    ax_dff_heat.set_yticks(np.arange(0, len(all_dff)+1, 1))
-
-            ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            ax_dff_heat.set_xlabel('Time (s)')
-            ax_dff_heat.set_ylabel('Trials')
-            ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
-            plt.colorbar(im, ax=ax_dff_heat, label='ΔF/F', orientation='horizontal')
-        plot_idx += 1
-        
-        # Z-score heatmap
-        ax_zscore_heat = fig.add_subplot(2, num_cols, plot_idx)
-        all_zscore = []
-        for day_name, data in results.items():
-            if wl in data['zscore']:
-                all_zscore.extend(data['zscore'][wl]['episodes'])
-        
-        if all_zscore:
-            time_array = list(results.values())[0]['time']
-            all_zscore = np.array(all_zscore)
-
-            if len(all_zscore) == 1:
-                all_zscore = np.vstack([all_zscore[0], all_zscore[0]])
-                im = ax_zscore_heat.imshow(all_zscore, aspect='auto', interpolation='nearest',
-                                        extent=[time_array[0], time_array[-1], 0, 1],
-                                        cmap='coolwarm', origin='lower')
-                ax_zscore_heat.set_yticks(np.arange(0, 2, 1))
-            else:
-                im = ax_zscore_heat.imshow(all_zscore, aspect='auto', interpolation='nearest',
-                                        extent=[time_array[0], time_array[-1], 0, len(all_zscore)],
-                                        cmap='coolwarm', origin='lower')
-                if len(all_zscore) <= 10:
-                    ax_zscore_heat.set_yticks(np.arange(0, len(all_zscore)+1, 1))
-
-            ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            ax_zscore_heat.set_xlabel('Time (s)')
-            ax_zscore_heat.set_ylabel('Trials')
-            ax_zscore_heat.set_title(f'Fiber Z-score Heatmap {wl}nm')
-            plt.colorbar(im, ax=ax_zscore_heat, label='Z-score', orientation='horizontal')
-        plot_idx += 1
-    
-    fig.tight_layout()
-    
-    canvas_frame = tk.Frame(result_window, bg='#f8f8f8')
-    canvas_frame.pack(fill=tk.BOTH, expand=True)
-    
-    canvas = FigureCanvasTkAgg(fig, canvas_frame)
-    canvas.draw()
-    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-    
-    toolbar_frame = tk.Frame(canvas_frame, bg="#f5f5f5")
-    toolbar_frame.pack(fill=tk.X, padx=2, pady=(0,2))
-    toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
-
-    # Create individual day windows
+            boundaries = []
+            acc = 0
+            for c in counts[:-1]:
+                acc += c
+                boundaries.append(acc)
+            draw_heatmap(ax_dff_heat, np.array(all_dff), time_array,
+                          "coolwarm", "ΔF/F",
+                          extra_lines=boundaries if boundaries else None)
+            ax_dff_heat.set_title(f"Fiber ΔF/F Heatmap {wl}nm")
+        else:
+            ax_dff_heat.axis("off")
+            ax_dff_heat.set_title(f"Fiber ΔF/F Heatmap {wl}nm")
+ 
+        ax_zs_heat = fig.add_subplot(2, NUM_COLS, 6)
+        all_zs, counts = [], []
+        for data in results.values():
+            if wl in data["zscore"]:
+                ep = data["zscore"][wl]["episodes"]
+                all_zs.extend(ep)
+                counts.append(len(ep))
+        if all_zs:
+            boundaries = []
+            acc = 0
+            for c in counts[:-1]:
+                acc += c
+                boundaries.append(acc)
+            draw_heatmap(ax_zs_heat, np.array(all_zs), time_array,
+                          "coolwarm", "Z-score",
+                          extra_lines=boundaries if boundaries else None)
+            ax_zs_heat.set_title(f"Fiber Z-score Heatmap {wl}nm")
+        else:
+            ax_zs_heat.axis("off")
+            ax_zs_heat.set_title(f"Fiber Z-score Heatmap {wl}nm")
+ 
+        fig.tight_layout(rect=[0, 0, 1, 0.96])
+        embed_figure(inner, fig, row_in_frame=wl_idx)
+ 
     create_individual_day_windows_running(results, params)
+    log_message("Running results plotted.")
 
 def create_individual_day_windows_running(results, params):
     """Create individual windows for each day - running only"""
@@ -1557,390 +1485,110 @@ def create_individual_day_windows_running(results, params):
         create_single_day_window_running(day_name, data, params)
 
 def create_single_day_window_running(day_name, data, params):
-    """Create window for a single day - running only"""
-    day_window = tk.Toplevel()
-    
-    target_wavelengths = data.get('target_wavelengths', ['470'])
-    wavelength_label = '+'.join(target_wavelengths)
-    
-    day_window.title(f"Running-Induced Activity - {day_name} - {params['full_event_type']}")
-    day_window.state("zoomed")
-    day_window.configure(bg='#f8f8f8')
-    
-    num_wavelengths = len(target_wavelengths)
-    num_cols = 1 + 2 * num_wavelengths
-    fig = Figure(figsize=(4 * num_cols, 8), dpi=100)
-    
-    plot_idx = 1
-    time_array = data['time']
-    
-    # Row 1: Traces
-    # Running trace
-    ax_running = fig.add_subplot(2, num_cols, plot_idx)
-    if 'running' in data and data['running']['mean'] is not None:
-        ax_running.plot(time_array, data['running']['mean'], 
-                       color="#000000", linewidth=2, label='Mean')
-        ax_running.fill_between(time_array,
-                               data['running']['mean'] - data['running']['sem'],
-                               data['running']['mean'] + data['running']['sem'],
-                               color="#000000", alpha=0.3)
-        ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
-        ax_running.set_xlim(time_array[0], time_array[-1])
-        ax_running.set_xlabel('Time (s)')
-        ax_running.set_ylabel('Speed (cm/s)')
-        ax_running.set_title(f'{day_name} - Running Speed - {params["full_event_type"]}')
-        ax_running.legend()
-        ax_running.grid(False)
-    plot_idx += 1
-    
-    # Fiber traces
+    """Create window for a single day — running only."""
+    from Multimodal_analysis import FIBER_COLORS
+    from logger import log_message
+ 
+    target_wavelengths = data.get("target_wavelengths", ["470"])
+    time_array = data["time"]
+ 
+    win, _, inner = make_scrollable_window(
+        f"Running-Induced Activity - {day_name} - {params['full_event_type']}"
+    )
+ 
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
-        
-        # dFF trace
-        ax_dff = fig.add_subplot(2, num_cols, plot_idx)
-        if wl in data['dff']:
-            ax_dff.plot(time_array, data['dff'][wl]['mean'],
-                       color=color, linewidth=2, label='Mean')
-            ax_dff.fill_between(time_array,
-                               data['dff'][wl]['mean'] - data['dff'][wl]['sem'],
-                               data['dff'][wl]['mean'] + data['dff'][wl]['sem'],
-                               color=color, alpha=0.3)
-            ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
+        fig = make_figure(NUM_COLS)
+        fig.suptitle(f"{day_name} — Wavelength {wl} nm",
+                     fontsize=12, fontweight="bold")
+ 
+        # Row 1: Traces
+        ax_run = fig.add_subplot(2, NUM_COLS, 1)
+        if "running" in data and data["running"]["mean"] is not None:
+            ax_run.plot(time_array, data["running"]["mean"],
+                        color="#000000", linewidth=2, label="Mean")
+            ax_run.fill_between(
+                time_array,
+                data["running"]["mean"] - data["running"]["sem"],
+                data["running"]["mean"] + data["running"]["sem"],
+                color="#000000", alpha=0.3)
+            ax_run.axvline(x=0, color="#808080", linestyle="--",
+                           alpha=0.8, label="Event")
+            ax_run.set_xlim(time_array[0], time_array[-1])
+            ax_run.set_xlabel("Time (s)")
+            ax_run.set_ylabel("Speed (cm/s)")
+            ax_run.legend()
+            ax_run.grid(False)
+        ax_run.set_title(
+            f"{day_name} - Running Speed - {params['full_event_type']}")
+ 
+        ax_dff = fig.add_subplot(2, NUM_COLS, 2)
+        if wl in data["dff"]:
+            ax_dff.plot(time_array, data["dff"][wl]["mean"],
+                        color=color, linewidth=2, label="Mean")
+            ax_dff.fill_between(
+                time_array,
+                data["dff"][wl]["mean"] - data["dff"][wl]["sem"],
+                data["dff"][wl]["mean"] + data["dff"][wl]["sem"],
+                color=color, alpha=0.3)
+            ax_dff.axvline(x=0, color="#808080", linestyle="--",
+                           alpha=0.8, label="Event")
             ax_dff.set_xlim(time_array[0], time_array[-1])
-            ax_dff.set_xlabel('Time (s)')
-            ax_dff.set_ylabel('ΔF/F')
-            ax_dff.set_title(f'{day_name} - Fiber ΔF/F {wl}nm')
+            ax_dff.set_xlabel("Time (s)")
+            ax_dff.set_ylabel("ΔF/F")
             ax_dff.legend()
             ax_dff.grid(False)
-        plot_idx += 1
-        
-        # Z-score trace
-        ax_zscore = fig.add_subplot(2, num_cols, plot_idx)
-        if wl in data['zscore']:
-            ax_zscore.plot(time_array, data['zscore'][wl]['mean'],
-                          color=color, linewidth=2, label='Mean')
-            ax_zscore.fill_between(time_array,
-                                  data['zscore'][wl]['mean'] - data['zscore'][wl]['sem'],
-                                  data['zscore'][wl]['mean'] + data['zscore'][wl]['sem'],
-                                  color=color, alpha=0.3)
-            ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
-            ax_zscore.set_xlim(time_array[0], time_array[-1])
-            ax_zscore.set_xlabel('Time (s)')
-            ax_zscore.set_ylabel('Z-score')
-            ax_zscore.set_title(f'{day_name} - Fiber Z-score {wl}nm')
-            ax_zscore.legend()
-            ax_zscore.grid(False)
-        plot_idx += 1
-    
-    # Row 2: Heatmaps
-    # Running heatmap
-    ax_running_heat = fig.add_subplot(2, num_cols, plot_idx)
-    if 'running' in data and len(data['running']['episodes']) > 0:
-        episodes_array = data['running']['episodes']
-
-        if len(episodes_array) == 1:
-            episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-            im = ax_running_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                        extent=[time_array[0], time_array[-1], 0, 1],
-                                        cmap='viridis', origin='lower')
-            ax_running_heat.set_yticks(np.arange(0, 2, 1))
+        ax_dff.set_title(f"{day_name} - Fiber ΔF/F {wl}nm")
+ 
+        ax_zs = fig.add_subplot(2, NUM_COLS, 3)
+        if wl in data["zscore"]:
+            ax_zs.plot(time_array, data["zscore"][wl]["mean"],
+                       color=color, linewidth=2, label="Mean")
+            ax_zs.fill_between(
+                time_array,
+                data["zscore"][wl]["mean"] - data["zscore"][wl]["sem"],
+                data["zscore"][wl]["mean"] + data["zscore"][wl]["sem"],
+                color=color, alpha=0.3)
+            ax_zs.axvline(x=0, color="#808080", linestyle="--",
+                          alpha=0.8, label="Event")
+            ax_zs.set_xlim(time_array[0], time_array[-1])
+            ax_zs.set_xlabel("Time (s)")
+            ax_zs.set_ylabel("Z-score")
+            ax_zs.legend()
+            ax_zs.grid(False)
+        ax_zs.set_title(f"{day_name} - Fiber Z-score {wl}nm")
+ 
+        # Row 2: Heatmaps
+        ax_run_heat = fig.add_subplot(2, NUM_COLS, 4)
+        if "running" in data and len(data["running"]["episodes"]) > 0:
+            draw_heatmap(ax_run_heat, data["running"]["episodes"],
+                          time_array, "viridis", "Speed (cm/s)")
+            ax_run_heat.set_title(f"{day_name} - Running Speed Heatmap")
         else:
-            im = ax_running_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                        extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
-                                        cmap='viridis', origin='lower')
-            if len(episodes_array) <= 10:
-                ax_running_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
-
-        ax_running_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-        ax_running_heat.set_xlabel('Time (s)')
-        ax_running_heat.set_ylabel('Trials')
-        ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap')
-        plt.colorbar(im, ax=ax_running_heat, label='Speed (cm/s)', orientation='horizontal')
-    plot_idx += 1
-    
-    # Fiber heatmaps
-    for wl_idx, wl in enumerate(target_wavelengths):
-        # dFF heatmap
-        ax_dff_heat = fig.add_subplot(2, num_cols, plot_idx)
-        if wl in data['dff']:
-            episodes_array = data['dff'][wl]['episodes']
-
-            if len(episodes_array) == 1:
-                episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                       extent=[time_array[0], time_array[-1], 0, 1],
-                                       cmap='coolwarm', origin='lower')
-                ax_dff_heat.set_yticks(np.arange(0, 2, 1))
-            else:
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                    extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
-                                    cmap='coolwarm', origin='lower')
-                if len(episodes_array) <= 10:
-                    ax_dff_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
-
-            ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            ax_dff_heat.set_xlabel('Time (s)')
-            ax_dff_heat.set_ylabel('Trials')
-            ax_dff_heat.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm')
-            plt.colorbar(im, ax=ax_dff_heat, label='ΔF/F', orientation='horizontal')
-        plot_idx += 1
-        
-        # Z-score heatmap
-        ax_zscore_heat = fig.add_subplot(2, num_cols, plot_idx)
-        if wl in data['zscore']:
-            episodes_array = data['zscore'][wl]['episodes']
-
-            if len(episodes_array) == 1:
-                episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                       extent=[time_array[0], time_array[-1], 0, 1],
-                                       cmap='coolwarm', origin='lower')
-                ax_zscore_heat.set_yticks(np.arange(0, 2, 1))
-            else:
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                        extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
-                                        cmap='coolwarm', origin='lower')
-                if len(episodes_array) <= 10:
-                    ax_zscore_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
-
-            ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            ax_zscore_heat.set_xlabel('Time (s)')
-            ax_zscore_heat.set_ylabel('Trials')
-            ax_zscore_heat.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm')
-            plt.colorbar(im, ax=ax_zscore_heat, label='Z-score', orientation='horizontal')
-        plot_idx += 1
-    
-    fig.tight_layout()
-    
-    canvas_frame = tk.Frame(day_window, bg='#f8f8f8')
-    canvas_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-    
-    canvas = FigureCanvasTkAgg(fig, canvas_frame)
-    canvas.draw()
-    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-    
-    toolbar_frame = tk.Frame(canvas_frame, bg="#f5f5f5")
-    toolbar_frame.pack(fill=tk.X, padx=2, pady=(0,2))
-    toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
-    
-    log_message(f"Individual day plot created for {day_name}")
-
-def create_individual_day_windows_running_drug(results, params):
-    """Create individual windows for each day - running+drug"""
-    for day_name, data in results.items():
-        create_single_day_window_running_drug(day_name, data, params)
-
-def create_single_day_window_running_drug(day_name, data, params):
-    """Create window for a single day - running+drug"""
-    day_window = tk.Toplevel()
-    
-    target_wavelengths = data.get('target_wavelengths', ['470'])
-    wavelength_label = '+'.join(target_wavelengths)
-    drug_name = params.get('drug_name', 'Drug')
-    
-    day_window.title(f"Running+Drug Analysis - {day_name} - {params['full_event_type']}")
-    day_window.state("zoomed")
-    day_window.configure(bg='#f8f8f8')
-    
-    num_wavelengths = len(target_wavelengths)
-    num_cols = 1 + 2 * num_wavelengths
-    fig = Figure(figsize=(4 * num_cols, 8), dpi=100)
-    
-    plot_idx = 1
-    time_array = data['time']
-    
-    # Row 1: Traces
-    # Running trace
-    ax_running = fig.add_subplot(2, num_cols, plot_idx)
-    
-    if data['pre_drug']['running']['mean'] is not None:
-        ax_running.plot(time_array, data['pre_drug']['running']['mean'],
-                      color="#000000", linewidth=2, linestyle='-', alpha=0.5, label=f'Pre {drug_name}')
-        ax_running.fill_between(time_array,
-                               data['pre_drug']['running']['mean'] - data['pre_drug']['running']['sem'],
-                               data['pre_drug']['running']['mean'] + data['pre_drug']['running']['sem'],
-                               color="#000000", alpha=0.2)
-    
-    if data['post_drug']['running']['mean'] is not None:
-        ax_running.plot(time_array, data['post_drug']['running']['mean'],
-                      color="#000000", linewidth=2, linestyle='-', alpha=1, label=f'Post {drug_name}')
-        ax_running.fill_between(time_array,
-                               data['post_drug']['running']['mean'] - data['post_drug']['running']['sem'],
-                               data['post_drug']['running']['mean'] + data['post_drug']['running']['sem'],
-                               color="#000000", alpha=0.5)
-    
-    ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
-    ax_running.set_xlim(time_array[0], time_array[-1])
-    ax_running.set_xlabel('Time (s)')
-    ax_running.set_ylabel('Speed (cm/s)')
-    ax_running.set_title(f'{day_name} - Running Speed - {params["full_event_type"]}')
-    ax_running.legend()
-    ax_running.grid(False)
-    plot_idx += 1
-    
-    # Fiber traces
-    for wl_idx, wl in enumerate(target_wavelengths):
-        color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
-        
-        # dFF trace
-        ax_dff = fig.add_subplot(2, num_cols, plot_idx)
-        
-        if wl in data['pre_drug']['dff']:
-            ax_dff.plot(time_array, data['pre_drug']['dff'][wl]['mean'],
-                      color=color, linewidth=2, linestyle='-', alpha=0.5, label=f'Pre {drug_name}')
-            ax_dff.fill_between(time_array,
-                               data['pre_drug']['dff'][wl]['mean'] - data['pre_drug']['dff'][wl]['sem'],
-                               data['pre_drug']['dff'][wl]['mean'] + data['pre_drug']['dff'][wl]['sem'],
-                               color=color, alpha=0.2)
-        
-        if wl in data['post_drug']['dff']:
-            ax_dff.plot(time_array, data['post_drug']['dff'][wl]['mean'],
-                      color=color, linewidth=2, linestyle='-', alpha=1, label=f'Post {drug_name}')
-            ax_dff.fill_between(time_array,
-                               data['post_drug']['dff'][wl]['mean'] - data['post_drug']['dff'][wl]['sem'],
-                               data['post_drug']['dff'][wl]['mean'] + data['post_drug']['dff'][wl]['sem'],
-                               color=color, alpha=0.5)
-        
-        ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
-        ax_dff.set_xlim(time_array[0], time_array[-1])
-        ax_dff.set_xlabel('Time (s)')
-        ax_dff.set_ylabel('ΔF/F')
-        ax_dff.set_title(f'{day_name} - Fiber ΔF/F {wl}nm')
-        ax_dff.legend()
-        ax_dff.grid(False)
-        plot_idx += 1
-        
-        # Z-score trace
-        ax_zscore = fig.add_subplot(2, num_cols, plot_idx)
-        
-        if wl in data['pre_drug']['zscore']:
-            ax_zscore.plot(time_array, data['pre_drug']['zscore'][wl]['mean'],
-                         color=color, linewidth=2, linestyle='-', alpha=0.5, label=f'Pre {drug_name}')
-            ax_zscore.fill_between(time_array,
-                                  data['pre_drug']['zscore'][wl]['mean'] - data['pre_drug']['zscore'][wl]['sem'],
-                                  data['pre_drug']['zscore'][wl]['mean'] + data['pre_drug']['zscore'][wl]['sem'],
-                                  color=color, alpha=0.2)
-        
-        if wl in data['post_drug']['zscore']:
-            ax_zscore.plot(time_array, data['post_drug']['zscore'][wl]['mean'],
-                         color=color, linewidth=2, linestyle='-', alpha=1, label=f'Post {drug_name}')
-            ax_zscore.fill_between(time_array,
-                                  data['post_drug']['zscore'][wl]['mean'] - data['post_drug']['zscore'][wl]['sem'],
-                                  data['post_drug']['zscore'][wl]['mean'] + data['post_drug']['zscore'][wl]['sem'],
-                                  color=color, alpha=0.5)
-        
-        ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
-        ax_zscore.set_xlim(time_array[0], time_array[-1])
-        ax_zscore.set_xlabel('Time (s)')
-        ax_zscore.set_ylabel('Z-score')
-        ax_zscore.set_title(f'{day_name} - Fiber Z-score {wl}nm')
-        ax_zscore.legend()
-        ax_zscore.grid(False)
-        plot_idx += 1
-    
-    # Row 2: Heatmaps
-    # Running heatmap
-    ax_running_heat = fig.add_subplot(2, num_cols, plot_idx)
-    
-    if len(data['pre_drug']['running']['episodes']) > 0 and len(data['post_drug']['running']['episodes']) > 0:
-        combined = np.vstack([data['pre_drug']['running']['episodes'], data['post_drug']['running']['episodes']])
-        n_pre = len(data['pre_drug']['running']['episodes'])
-        
-        if len(combined) == 1:
-            combined = np.vstack([combined[0], combined[0]])
-            im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
-                                       extent=[time_array[0], time_array[-1], 0, 1],
-                                       cmap='viridis', origin='lower')
-            ax_running_heat.set_yticks(np.arange(0, 2, 1))
+            ax_run_heat.axis("off")
+            ax_run_heat.set_title(f"{day_name} - Running Speed Heatmap")
+ 
+        ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
+        if wl in data["dff"]:
+            draw_heatmap(ax_dff_heat, data["dff"][wl]["episodes"],
+                          time_array, "coolwarm", "ΔF/F")
+            ax_dff_heat.set_title(f"{day_name} - Fiber ΔF/F Heatmap {wl}nm")
         else:
-            im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
-                                    extent=[time_array[0], time_array[-1], 0, len(combined)],
-                                    cmap='viridis', origin='lower')
-            if len(combined) <= 10:
-                ax_running_heat.set_yticks(np.arange(0, len(combined)+1, 1))
-
-        ax_running_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-        ax_running_heat.axhline(y=n_pre, color='k', linestyle='--', linewidth=1)
-        ax_running_heat.set_xlabel('Time (s)')
-        ax_running_heat.set_ylabel('Trials')
-        ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap')
-        plt.colorbar(im, ax=ax_running_heat, label='Speed (cm/s)', orientation='horizontal')
-    plot_idx += 1
-    
-    # Fiber heatmaps
-    for wl_idx, wl in enumerate(target_wavelengths):
-        # dFF heatmap
-        ax_dff_heat = fig.add_subplot(2, num_cols, plot_idx)
-        
-        if wl in data['pre_drug']['dff'] and wl in data['post_drug']['dff']:
-            combined = np.vstack([data['pre_drug']['dff'][wl]['episodes'], 
-                                 data['post_drug']['dff'][wl]['episodes']])
-            n_pre = len(data['pre_drug']['dff'][wl]['episodes'])
-            
-            if len(combined) == 1:
-                combined = np.vstack([combined[0], combined[0]])
-                im = ax_dff_heat.imshow(combined, aspect='auto', interpolation='nearest',
-                                    extent=[time_array[0], time_array[-1], 0, 1],
-                                    cmap='coolwarm', origin='lower')
-                ax_dff_heat.set_yticks(np.arange(0, 2, 1))
-            else:
-                im = ax_dff_heat.imshow(combined, aspect='auto', interpolation='nearest',
-                                    extent=[time_array[0], time_array[-1], 0, len(combined)],
-                                    cmap='coolwarm', origin='lower')
-                if len(combined) <= 10:
-                    ax_dff_heat.set_yticks(np.arange(0, len(combined)+1, 1))
-
-            ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            ax_dff_heat.axhline(y=n_pre, color='k', linestyle='--', linewidth=1)
-            ax_dff_heat.set_xlabel('Time (s)')
-            ax_dff_heat.set_ylabel('Trials')
-            ax_dff_heat.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm')
-            plt.colorbar(im, ax=ax_dff_heat, label='ΔF/F', orientation='horizontal')
-        plot_idx += 1
-        
-        # Z-score heatmap
-        ax_zscore_heat = fig.add_subplot(2, num_cols, plot_idx)
-        
-        if wl in data['pre_drug']['zscore'] and wl in data['post_drug']['zscore']:
-            combined = np.vstack([data['pre_drug']['zscore'][wl]['episodes'],
-                                 data['post_drug']['zscore'][wl]['episodes']])
-            n_pre = len(data['pre_drug']['zscore'][wl]['episodes'])
-            
-            if len(combined) == 1:
-                combined = np.vstack([combined[0], combined[0]])
-                im = ax_zscore_heat.imshow(combined, aspect='auto', interpolation='nearest',
-                                       extent=[time_array[0], time_array[-1], 0, 1],
-                                       cmap='coolwarm', origin='lower')
-                ax_zscore_heat.set_yticks(np.arange(0, 2, 1))
-            else:
-                im = ax_zscore_heat.imshow(combined, aspect='auto', interpolation='nearest',
-                                        extent=[time_array[0], time_array[-1], 0, len(combined)],
-                                        cmap='coolwarm', origin='lower')
-                if len(combined) <= 10:
-                    ax_zscore_heat.set_yticks(np.arange(0, len(combined)+1, 1))
-
-            ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            ax_zscore_heat.axhline(y=n_pre, color='k', linestyle='--', linewidth=1)
-            ax_zscore_heat.set_xlabel('Time (s)')
-            ax_zscore_heat.set_ylabel('Trials')
-            ax_zscore_heat.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm')
-            plt.colorbar(im, ax=ax_zscore_heat, label='Z-score', orientation='horizontal')
-        plot_idx += 1
-    
-    fig.tight_layout()
-    
-    canvas_frame = tk.Frame(day_window, bg='#f8f8f8')
-    canvas_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-    
-    canvas = FigureCanvasTkAgg(fig, canvas_frame)
-    canvas.draw()
-    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-    
-    toolbar_frame = tk.Frame(canvas_frame, bg="#f5f5f5")
-    toolbar_frame.pack(fill=tk.X, padx=2, pady=(0,2))
-    toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
-    
+            ax_dff_heat.axis("off")
+            ax_dff_heat.set_title(f"{day_name} - Fiber ΔF/F Heatmap {wl}nm")
+ 
+        ax_zs_heat = fig.add_subplot(2, NUM_COLS, 6)
+        if wl in data["zscore"]:
+            draw_heatmap(ax_zs_heat, data["zscore"][wl]["episodes"],
+                          time_array, "coolwarm", "Z-score")
+            ax_zs_heat.set_title(f"{day_name} - Fiber Z-score Heatmap {wl}nm")
+        else:
+            ax_zs_heat.axis("off")
+            ax_zs_heat.set_title(f"{day_name} - Fiber Z-score Heatmap {wl}nm")
+ 
+        fig.tight_layout(rect=[0, 0, 1, 0.96])
+        embed_figure(inner, fig, row_in_frame=wl_idx)
+ 
     log_message(f"Individual day plot created for {day_name}")
 
 def plot_running_drug_results(results, params):
@@ -1950,24 +1598,12 @@ def plot_running_drug_results(results, params):
         if 'target_wavelengths' in data:
             target_wavelengths = data['target_wavelengths']
             break
-    
     if not target_wavelengths:
         target_wavelengths = ['470']
-    
-    result_window = tk.Toplevel()
+ 
     wavelength_label = '+'.join(target_wavelengths)
-    result_window.title(f"Running+Drug Analysis - {params['full_event_type']}")
-    result_window.state('zoomed')
-    result_window.configure(bg='#f8f8f8')
-    
-    num_wavelengths = len(target_wavelengths)
-    num_cols = 1 + 2 * num_wavelengths
-    
-    fig = Figure(figsize=(4 * num_cols, 8), dpi=100)
-    
-    plot_idx = 1
     time_array = list(results.values())[0]['time']
-    
+ 
     # Get all drug categories
     all_categories = []
     for data in results.values():
@@ -1975,48 +1611,46 @@ def plot_running_drug_results(results, params):
             for category in data['drug_categories']:
                 if category not in all_categories:
                     all_categories.append(category)
-    
-    # Row 1: Traces
-    # Running trace
-    ax_running = fig.add_subplot(2, num_cols, plot_idx)
-    for idx, (day_name, data) in enumerate(results.items()):
-        day_color = DAY_COLORS[idx % len(DAY_COLORS)]
-        
-        for cat_idx, category in enumerate(all_categories):
-            if category in data and data[category]['running']['mean'] is not None:
-                # Use different alpha/linestyle for different categories
-                if category == 'baseline':
-                    alpha = 1/len(all_categories)
-                    linestyle = '-'
-                else:
-                    alpha = 1/len(all_categories) + (1/len(all_categories) * cat_idx)
-                    linestyle = '-'
-                
-                log_message(f"Plotting {day_name} - {category} - {cat_idx} running trace with alpha {alpha:.2f}")
-                ax_running.plot(time_array, data[category]['running']['mean'],
-                              color=day_color, linestyle=linestyle, linewidth=2, alpha=alpha,
-                              label=f"{day_name} {category}")
-                ax_running.fill_between(time_array,
-                                       data[category]['running']['mean'] - data[category]['running']['sem'],
-                                       data[category]['running']['mean'] + data[category]['running']['sem'],
-                                       color=day_color, alpha=alpha*0.3)
-
-    ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
-    ax_running.set_xlim(time_array[0], time_array[-1])
-    ax_running.set_xlabel('Time (s)')
-    ax_running.set_ylabel('Speed (cm/s)')
-    ax_running.set_title(f'Running Speed - {params["full_event_type"]}')
-    ax_running.legend(fontsize=7, ncol=2)
-    ax_running.grid(False)
-    plot_idx += 1
-
-    # Fiber traces (similar structure for dFF and z-score)
+ 
+    win, _, inner = make_scrollable_window(
+        f"Running+Drug Analysis - {params['full_event_type']}"
+    )
+ 
     for wl_idx, wl in enumerate(target_wavelengths):
-        # dFF trace
-        ax_dff = fig.add_subplot(2, num_cols, plot_idx)
+        color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
+        fig = make_figure(NUM_COLS)
+        fig.suptitle(f"Wavelength {wl} nm — Running+Drug", fontsize=12, fontweight="bold")
+ 
+        # ── Row 1: Traces ──────────────────────────────────────────────
+        ax_running = fig.add_subplot(2, NUM_COLS, 1)
         for idx, (day_name, data) in enumerate(results.items()):
             day_color = DAY_COLORS[idx % len(DAY_COLORS)]
-            
+            for cat_idx, category in enumerate(all_categories):
+                if category in data and data[category]['running']['mean'] is not None:
+                    if category == 'baseline':
+                        alpha = 1/len(all_categories)
+                        linestyle = '-'
+                    else:
+                        alpha = 1/len(all_categories) + (1/len(all_categories) * cat_idx)
+                        linestyle = '-'
+                    ax_running.plot(time_array, data[category]['running']['mean'],
+                                  color=day_color, linestyle=linestyle, linewidth=2, alpha=alpha,
+                                  label=f"{day_name} {category}")
+                    ax_running.fill_between(time_array,
+                                           data[category]['running']['mean'] - data[category]['running']['sem'],
+                                           data[category]['running']['mean'] + data[category]['running']['sem'],
+                                           color=day_color, alpha=alpha*0.3)
+        ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
+        ax_running.set_xlim(time_array[0], time_array[-1])
+        ax_running.set_xlabel('Time (s)')
+        ax_running.set_ylabel('Speed (cm/s)')
+        ax_running.set_title(f'Running Speed - {params["full_event_type"]}')
+        ax_running.legend(fontsize=7, ncol=2)
+        ax_running.grid(False)
+ 
+        ax_dff = fig.add_subplot(2, NUM_COLS, 2)
+        for idx, (day_name, data) in enumerate(results.items()):
+            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
             for cat_idx, category in enumerate(all_categories):
                 if category in data and wl in data[category]['dff']:
                     if category == 'baseline':
@@ -2025,8 +1659,6 @@ def plot_running_drug_results(results, params):
                     else:
                         alpha = 1/len(all_categories) + (1/len(all_categories) * cat_idx)
                         linestyle = '-'
-                    
-                    log_message(f"Plotting {day_name} - {category} - {cat_idx} dFF trace at {wl}nm with alpha {alpha:.2f}")
                     ax_dff.plot(time_array, data[category]['dff'][wl]['mean'],
                               color=day_color, linewidth=2, linestyle=linestyle, alpha=alpha,
                               label=f'{day_name} {category}')
@@ -2034,7 +1666,6 @@ def plot_running_drug_results(results, params):
                                        data[category]['dff'][wl]['mean'] - data[category]['dff'][wl]['sem'],
                                        data[category]['dff'][wl]['mean'] + data[category]['dff'][wl]['sem'],
                                        color=day_color, alpha=alpha*0.3)
-        
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
@@ -2042,13 +1673,10 @@ def plot_running_drug_results(results, params):
         ax_dff.set_title(f'Fiber ΔF/F {wl}nm')
         ax_dff.legend(fontsize=7, ncol=2)
         ax_dff.grid(False)
-        plot_idx += 1
-        
-        # Z-score trace
-        ax_zscore = fig.add_subplot(2, num_cols, plot_idx)
+ 
+        ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
         for idx, (day_name, data) in enumerate(results.items()):
             day_color = DAY_COLORS[idx % len(DAY_COLORS)]
-            
             for cat_idx, category in enumerate(all_categories):
                 if category in data and wl in data[category]['zscore']:
                     if category == 'baseline':
@@ -2057,16 +1685,13 @@ def plot_running_drug_results(results, params):
                     else:
                         alpha = 1/len(all_categories) + (1/len(all_categories) * cat_idx)
                         linestyle = '-'
-                    
-                    log_message(f"Plotting {day_name} - {category} - {cat_idx} z-score trace at {wl}nm with alpha {alpha:.2f}")
                     ax_zscore.plot(time_array, data[category]['zscore'][wl]['mean'],
-                                  color=day_color, linewidth=2, linestyle=linestyle, alpha=alpha,
-                                  label=f'{day_name} {category}')
+                                 color=day_color, linewidth=2, linestyle=linestyle, alpha=alpha,
+                                 label=f'{day_name} {category}')
                     ax_zscore.fill_between(time_array,
                                           data[category]['zscore'][wl]['mean'] - data[category]['zscore'][wl]['sem'],
                                           data[category]['zscore'][wl]['mean'] + data[category]['zscore'][wl]['sem'],
                                           color=day_color, alpha=alpha*0.3)
-        
         ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_zscore.set_xlim(time_array[0], time_array[-1])
         ax_zscore.set_xlabel('Time (s)')
@@ -2074,147 +1699,74 @@ def plot_running_drug_results(results, params):
         ax_zscore.set_title(f'Fiber Z-score {wl}nm')
         ax_zscore.legend(fontsize=7, ncol=2)
         ax_zscore.grid(False)
-        plot_idx += 1
-
-    # Row 2: Heatmaps (combine all categories with dividing lines)
-    # Running heatmap
-    ax_running_heat = fig.add_subplot(2, num_cols, plot_idx)
-    all_running_episodes = []
-    category_boundaries = []
-    
-    for category in all_categories:
-        category_episodes = []
-        for day_name, data in results.items():
-            if category in data and len(data[category]['running']['episodes']) > 0:
-                category_episodes.extend(data[category]['running']['episodes'])
-        
-        if category_episodes:
-            all_running_episodes.extend(category_episodes)
-            if all_running_episodes:
-                category_boundaries.append(len(all_running_episodes))
-
-    if all_running_episodes:
-        episodes_array = np.array(all_running_episodes)
-        if len(episodes_array) == 1:
-            episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-            im = ax_running_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                        extent=[time_array[0], time_array[-1], 0, 1],
-                                        cmap='viridis', origin='lower')
+ 
+        # ── Row 2: Heatmaps ────────────────────────────────────────────
+        ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
+        all_running_episodes = []
+        category_boundaries = []
+        for category in all_categories:
+            category_episodes = []
+            for day_name, data in results.items():
+                if category in data and len(data[category]['running']['episodes']) > 0:
+                    category_episodes.extend(data[category]['running']['episodes'])
+            if category_episodes:
+                all_running_episodes.extend(category_episodes)
+                if all_running_episodes:
+                    category_boundaries.append(len(all_running_episodes))
+        if all_running_episodes:
+            draw_heatmap(ax_running_heat, np.array(all_running_episodes), time_array,
+                         'viridis', 'Speed (cm/s)',
+                         extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
+            ax_running_heat.set_title('Running Speed Heatmap')
         else:
-            im = ax_running_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                        extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
-                                        cmap='viridis', origin='lower')
-            if len(episodes_array) <= 10:
-                ax_running_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
-
-        ax_running_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-        
-        # Draw category boundaries
-        for boundary in category_boundaries[:-1]:
-            ax_running_heat.axhline(y=boundary, color='k', linestyle='--', linewidth=1)
-        
-        ax_running_heat.set_xlabel('Time (s)')
-        ax_running_heat.set_ylabel('Trials')
-        ax_running_heat.set_title('Running Speed Heatmap')
-        plt.colorbar(im, ax=ax_running_heat, label='Speed (cm/s)', orientation='horizontal')
-    plot_idx += 1
-
-    # Fiber heatmaps (similar for dFF and z-score)
-    for wl_idx, wl in enumerate(target_wavelengths):
-        # dFF heatmap
-        ax_dff_heat = fig.add_subplot(2, num_cols, plot_idx)
+            ax_running_heat.axis('off')
+            ax_running_heat.set_title('Running Speed Heatmap')
+ 
+        ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         all_dff_episodes = []
         category_boundaries = []
-        
         for category in all_categories:
             category_episodes = []
             for day_name, data in results.items():
                 if category in data and wl in data[category]['dff']:
                     category_episodes.extend(data[category]['dff'][wl]['episodes'])
-            
             if category_episodes:
                 all_dff_episodes.extend(category_episodes)
                 if all_dff_episodes:
                     category_boundaries.append(len(all_dff_episodes))
-        
         if all_dff_episodes:
-            episodes_array = np.array(all_dff_episodes)
-            if len(episodes_array) == 1:
-                episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                    extent=[time_array[0], time_array[-1], 0, 1],
-                                    cmap='coolwarm', origin='lower')
-            else:
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                    extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
-                                    cmap='coolwarm', origin='lower')
-                if len(episodes_array) <= 10:
-                    ax_dff_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
-            
-            ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            for boundary in category_boundaries[:-1]:
-                ax_dff_heat.axhline(y=boundary, color='k', linestyle='--', linewidth=1)
-            
-            ax_dff_heat.set_xlabel('Time (s)')
-            ax_dff_heat.set_ylabel('Trials')
+            draw_heatmap(ax_dff_heat, np.array(all_dff_episodes), time_array,
+                         'coolwarm', 'ΔF/F',
+                         extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
             ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
-            plt.colorbar(im, ax=ax_dff_heat, label='ΔF/F', orientation='horizontal')
-        plot_idx += 1
-        
-        # Z-score heatmap (similar structure)
-        ax_zscore_heat = fig.add_subplot(2, num_cols, plot_idx)
+        else:
+            ax_dff_heat.axis('off')
+            ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
+ 
+        ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_zscore_episodes = []
         category_boundaries = []
-        
         for category in all_categories:
             category_episodes = []
             for day_name, data in results.items():
                 if category in data and wl in data[category]['zscore']:
                     category_episodes.extend(data[category]['zscore'][wl]['episodes'])
-            
             if category_episodes:
                 all_zscore_episodes.extend(category_episodes)
                 if all_zscore_episodes:
                     category_boundaries.append(len(all_zscore_episodes))
-        
         if all_zscore_episodes:
-            episodes_array = np.array(all_zscore_episodes)
-            if len(episodes_array) == 1:
-                episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                        extent=[time_array[0], time_array[-1], 0, 1],
-                                        cmap='coolwarm', origin='lower')
-            else:
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                        extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
-                                        cmap='coolwarm', origin='lower')
-                if len(episodes_array) <= 10:
-                    ax_zscore_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
-
-            ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            for boundary in category_boundaries[:-1]:
-                ax_zscore_heat.axhline(y=boundary, color='k', linestyle='--', linewidth=1)
-            
-            ax_zscore_heat.set_xlabel('Time (s)')
-            ax_zscore_heat.set_ylabel('Trials')
+            draw_heatmap(ax_zscore_heat, np.array(all_zscore_episodes), time_array,
+                         'coolwarm', 'Z-score',
+                         extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
             ax_zscore_heat.set_title(f'Fiber Z-score Heatmap {wl}nm')
-            plt.colorbar(im, ax=ax_zscore_heat, label='Z-score', orientation='horizontal')
-        plot_idx += 1
-
-    fig.tight_layout()
-
-    canvas_frame = tk.Frame(result_window, bg='#f8f8f8')
-    canvas_frame.pack(fill=tk.BOTH, expand=True)
-
-    canvas = FigureCanvasTkAgg(fig, canvas_frame)
-    canvas.draw()
-    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-
-    toolbar_frame = tk.Frame(canvas_frame, bg="#f5f5f5")
-    toolbar_frame.pack(fill=tk.X, padx=2, pady=(0,2))
-    toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
-
-    # Create individual day windows
+        else:
+            ax_zscore_heat.axis('off')
+            ax_zscore_heat.set_title(f'Fiber Z-score Heatmap {wl}nm')
+ 
+        fig.tight_layout()
+        embed_figure(inner, fig, row_in_frame=wl_idx)
+ 
     create_individual_day_windows_running_drug(results, params)
 
 def create_individual_day_windows_running_drug(results, params):
@@ -2224,64 +1776,47 @@ def create_individual_day_windows_running_drug(results, params):
 
 def create_single_day_window_running_drug(day_name, data, params):
     """Create window for a single day - running+drug with multiple categories"""
-    day_window = tk.Toplevel()
-    
     target_wavelengths = data.get('target_wavelengths', ['470'])
-    wavelength_label = '+'.join(target_wavelengths)
-    
-    # Get all drug categories
     drug_categories = data.get('drug_categories', [])
-    
-    day_window.title(f"Running+Drug Analysis - {day_name} - {params['full_event_type']}")
-    day_window.state("zoomed")
-    day_window.configure(bg='#f8f8f8')
-    
-    num_wavelengths = len(target_wavelengths)
-    num_cols = 1 + 2 * num_wavelengths
-    fig = Figure(figsize=(4 * num_cols, 8), dpi=100)
-    
-    plot_idx = 1
     time_array = data['time']
-    
-    # Row 1: Traces
-    # Running trace
-    ax_running = fig.add_subplot(2, num_cols, plot_idx)
-    
-    for cat_idx, category in enumerate(drug_categories):
-        if category in data and data[category]['running']['mean'] is not None:
-            # Different styles for different categories
-            if category == 'baseline':
-                alpha = 1/len(drug_categories)
-                linestyle = '-'
-            else:
-                alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
-                linestyle = '-'
-            
-            log_message(f"Plotting {day_name} - {category} - {cat_idx} running trace with alpha {alpha:.2f}")
-            ax_running.plot(time_array, data[category]['running']['mean'],
-                          color="#000000", linewidth=2, linestyle=linestyle, 
-                          alpha=alpha, label=category)
-            ax_running.fill_between(time_array,
-                                   data[category]['running']['mean'] - data[category]['running']['sem'],
-                                   data[category]['running']['mean'] + data[category]['running']['sem'],
-                                   color="#000000", alpha=alpha*0.5)
-    
-    ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
-    ax_running.set_xlim(time_array[0], time_array[-1])
-    ax_running.set_xlabel('Time (s)')
-    ax_running.set_ylabel('Speed (cm/s)')
-    ax_running.set_title(f'{day_name} - Running Speed (Multi-Drug)')
-    ax_running.legend(fontsize=8)
-    ax_running.grid(False)
-    plot_idx += 1
-    
-    # Fiber traces
+ 
+    win, _, inner = make_scrollable_window(
+        f"Running+Drug Analysis - {day_name} - {params['full_event_type']}"
+    )
+ 
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
-        
-        # dFF trace
-        ax_dff = fig.add_subplot(2, num_cols, plot_idx)
-        
+        fig = make_figure(NUM_COLS)
+        fig.suptitle(f"{day_name} — Wavelength {wl} nm (Running+Drug)",
+                     fontsize=12, fontweight="bold")
+ 
+        # Row 1: Traces
+        ax_running = fig.add_subplot(2, NUM_COLS, 1)
+        for cat_idx, category in enumerate(drug_categories):
+            if category in data and data[category]['running']['mean'] is not None:
+                if category == 'baseline':
+                    alpha = 1/len(drug_categories)
+                    linestyle = '-'
+                else:
+                    alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
+                    linestyle = '-'
+                log_message(f"Plotting {day_name} - {category} - {cat_idx} running trace with alpha {alpha:.2f}")
+                ax_running.plot(time_array, data[category]['running']['mean'],
+                              color="#000000", linewidth=2, linestyle=linestyle,
+                              alpha=alpha, label=category)
+                ax_running.fill_between(time_array,
+                                       data[category]['running']['mean'] - data[category]['running']['sem'],
+                                       data[category]['running']['mean'] + data[category]['running']['sem'],
+                                       color="#000000", alpha=alpha*0.5)
+        ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
+        ax_running.set_xlim(time_array[0], time_array[-1])
+        ax_running.set_xlabel('Time (s)')
+        ax_running.set_ylabel('Speed (cm/s)')
+        ax_running.set_title(f'{day_name} - Running Speed (Multi-Drug)')
+        ax_running.legend(fontsize=8)
+        ax_running.grid(False)
+ 
+        ax_dff = fig.add_subplot(2, NUM_COLS, 2)
         for cat_idx, category in enumerate(drug_categories):
             if category in data and wl in data[category]['dff']:
                 if category == 'baseline':
@@ -2290,16 +1825,14 @@ def create_single_day_window_running_drug(day_name, data, params):
                 else:
                     alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
                     linestyle = '-'
-                
                 log_message(f"Plotting {day_name} - {category} - {cat_idx} dFF trace at {wl}nm with alpha {alpha:.2f}")
                 ax_dff.plot(time_array, data[category]['dff'][wl]['mean'],
-                          color=color, linewidth=2, linestyle=linestyle, 
+                          color=color, linewidth=2, linestyle=linestyle,
                           alpha=alpha, label=category)
                 ax_dff.fill_between(time_array,
                                    data[category]['dff'][wl]['mean'] - data[category]['dff'][wl]['sem'],
                                    data[category]['dff'][wl]['mean'] + data[category]['dff'][wl]['sem'],
                                    color=color, alpha=alpha*0.5)
-        
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
@@ -2307,11 +1840,8 @@ def create_single_day_window_running_drug(day_name, data, params):
         ax_dff.set_title(f'{day_name} - Fiber ΔF/F {wl}nm (Multi-Drug)')
         ax_dff.legend(fontsize=8)
         ax_dff.grid(False)
-        plot_idx += 1
-        
-        # Z-score trace
-        ax_zscore = fig.add_subplot(2, num_cols, plot_idx)
-        
+ 
+        ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
         for cat_idx, category in enumerate(drug_categories):
             if category in data and wl in data[category]['zscore']:
                 if category == 'baseline':
@@ -2320,16 +1850,14 @@ def create_single_day_window_running_drug(day_name, data, params):
                 else:
                     alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
                     linestyle = '-'
-                
                 log_message(f"Plotting {day_name} - {category} - {cat_idx} z-score trace at {wl}nm with alpha {alpha:.2f}")
                 ax_zscore.plot(time_array, data[category]['zscore'][wl]['mean'],
-                             color=color, linewidth=2, linestyle=linestyle, 
+                             color=color, linewidth=2, linestyle=linestyle,
                              alpha=alpha, label=category)
                 ax_zscore.fill_between(time_array,
                                       data[category]['zscore'][wl]['mean'] - data[category]['zscore'][wl]['sem'],
                                       data[category]['zscore'][wl]['mean'] + data[category]['zscore'][wl]['sem'],
                                       color=color, alpha=alpha*0.5)
-        
         ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
         ax_zscore.set_xlim(time_array[0], time_array[-1])
         ax_zscore.set_xlabel('Time (s)')
@@ -2337,144 +1865,62 @@ def create_single_day_window_running_drug(day_name, data, params):
         ax_zscore.set_title(f'{day_name} - Fiber Z-score {wl}nm (Multi-Drug)')
         ax_zscore.legend(fontsize=8)
         ax_zscore.grid(False)
-        plot_idx += 1
-    
-    # Row 2: Heatmaps
-    # Running heatmap
-    ax_running_heat = fig.add_subplot(2, num_cols, plot_idx)
-    
-    all_running_episodes = []
-    category_boundaries = []
-    
-    for category in drug_categories:
-        if category in data and len(data[category]['running']['episodes']) > 0:
-            all_running_episodes.extend(data[category]['running']['episodes'])
-            if all_running_episodes:
-                category_boundaries.append(len(all_running_episodes))
-    
-    if all_running_episodes:
-        episodes_array = np.array(all_running_episodes)
-        
-        if len(episodes_array) == 1:
-            episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-            im = ax_running_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                       extent=[time_array[0], time_array[-1], 0, 1],
-                                       cmap='viridis', origin='lower')
-            ax_running_heat.set_yticks(np.arange(0, 2, 1))
+ 
+        # Row 2: Heatmaps
+        ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
+        all_running_episodes = []
+        category_boundaries = []
+        for category in drug_categories:
+            if category in data and len(data[category]['running']['episodes']) > 0:
+                all_running_episodes.extend(data[category]['running']['episodes'])
+                if all_running_episodes:
+                    category_boundaries.append(len(all_running_episodes))
+        if all_running_episodes:
+            draw_heatmap(ax_running_heat, np.array(all_running_episodes), time_array,
+                         'viridis', 'Speed (cm/s)',
+                         extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
+            ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap (Multi-Drug)')
         else:
-            im = ax_running_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                    extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
-                                    cmap='viridis', origin='lower')
-            if len(episodes_array) <= 10:
-                ax_running_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
-
-        ax_running_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-        
-        # Draw category boundaries
-        for boundary in category_boundaries[:-1]:
-            ax_running_heat.axhline(y=boundary, color='k', linestyle='--', linewidth=1)
-        
-        ax_running_heat.set_xlabel('Time (s)')
-        ax_running_heat.set_ylabel('Trials')
-        ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap (Multi-Drug)')
-        plt.colorbar(im, ax=ax_running_heat, label='Speed (cm/s)', orientation='horizontal')
-    plot_idx += 1
-    
-    # Fiber heatmaps
-    for wl_idx, wl in enumerate(target_wavelengths):
-        # dFF heatmap
-        ax_dff_heat = fig.add_subplot(2, num_cols, plot_idx)
-        
+            ax_running_heat.axis('off')
+            ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap (Multi-Drug)')
+ 
+        ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         all_dff_episodes = []
         category_boundaries = []
-        
         for category in drug_categories:
             if category in data and wl in data[category]['dff']:
                 all_dff_episodes.extend(data[category]['dff'][wl]['episodes'])
                 if all_dff_episodes:
                     category_boundaries.append(len(all_dff_episodes))
-        
         if all_dff_episodes:
-            episodes_array = np.array(all_dff_episodes)
-            
-            if len(episodes_array) == 1:
-                episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                    extent=[time_array[0], time_array[-1], 0, 1],
-                                    cmap='coolwarm', origin='lower')
-                ax_dff_heat.set_yticks(np.arange(0, 2, 1))
-            else:
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                    extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
-                                    cmap='coolwarm', origin='lower')
-                if len(episodes_array) <= 10:
-                    ax_dff_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
-                
-            ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            
-            # Draw category boundaries
-            for boundary in category_boundaries[:-1]:
-                ax_dff_heat.axhline(y=boundary, color='k', linestyle='--', linewidth=1)
-            
-            ax_dff_heat.set_xlabel('Time (s)')
-            ax_dff_heat.set_ylabel('Trials')
+            draw_heatmap(ax_dff_heat, np.array(all_dff_episodes), time_array,
+                         'coolwarm', 'ΔF/F',
+                         extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
             ax_dff_heat.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm (Multi-Drug)')
-            plt.colorbar(im, ax=ax_dff_heat, label='ΔF/F', orientation='horizontal')
-        plot_idx += 1
-        
-        # Z-score heatmap
-        ax_zscore_heat = fig.add_subplot(2, num_cols, plot_idx)
-        
+        else:
+            ax_dff_heat.axis('off')
+            ax_dff_heat.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm (Multi-Drug)')
+ 
+        ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_zscore_episodes = []
         category_boundaries = []
-        
         for category in drug_categories:
             if category in data and wl in data[category]['zscore']:
                 all_zscore_episodes.extend(data[category]['zscore'][wl]['episodes'])
                 if all_zscore_episodes:
                     category_boundaries.append(len(all_zscore_episodes))
-        
         if all_zscore_episodes:
-            episodes_array = np.array(all_zscore_episodes)
-            
-            if len(episodes_array) == 1:
-                episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                       extent=[time_array[0], time_array[-1], 0, 1],
-                                       cmap='coolwarm', origin='lower')
-                ax_zscore_heat.set_yticks(np.arange(0, 2, 1))
-            else:
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                        extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
-                                        cmap='coolwarm', origin='lower')
-                if len(episodes_array) <= 10:
-                    ax_zscore_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
-
-            ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            
-            # Draw category boundaries
-            for boundary in category_boundaries[:-1]:
-                ax_zscore_heat.axhline(y=boundary, color='k', linestyle='--', linewidth=1)
-            
-            ax_zscore_heat.set_xlabel('Time (s)')
-            ax_zscore_heat.set_ylabel('Trials')
+            draw_heatmap(ax_zscore_heat, np.array(all_zscore_episodes), time_array,
+                         'coolwarm', 'Z-score',
+                         extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
             ax_zscore_heat.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm (Multi-Drug)')
-            plt.colorbar(im, ax=ax_zscore_heat, label='Z-score', orientation='horizontal')
-        plot_idx += 1
-    
-    fig.tight_layout()
-    
-    canvas_frame = tk.Frame(day_window, bg='#f8f8f8')
-    canvas_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-    
-    canvas = FigureCanvasTkAgg(fig, canvas_frame)
-    canvas.draw()
-    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-    
-    toolbar_frame = tk.Frame(canvas_frame, bg="#f5f5f5")
-    toolbar_frame.pack(fill=tk.X, padx=2, pady=(0,2))
-    toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
-    
+        else:
+            ax_zscore_heat.axis('off')
+            ax_zscore_heat.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm (Multi-Drug)')
+ 
+        fig.tight_layout()
+        embed_figure(inner, fig, row_in_frame=wl_idx)
+ 
     log_message(f"Individual day plot created for {day_name} with {len(drug_categories)} drug categories")
 
 def plot_running_optogenetics_results(results, params):
@@ -2484,69 +1930,53 @@ def plot_running_optogenetics_results(results, params):
         if 'target_wavelengths' in data:
             target_wavelengths = data['target_wavelengths']
             break
-    
     if not target_wavelengths:
         target_wavelengths = ['470']
-    
-    result_window = tk.Toplevel()
+ 
     wavelength_label = '+'.join(target_wavelengths)
-    result_window.title(f"Running+Optogenetics Analysis - {params['full_event_type']}")
-    result_window.state('zoomed')
-    result_window.configure(bg='#f8f8f8')
-    
-    num_wavelengths = len(target_wavelengths)
-    num_cols = 1 + 2 * num_wavelengths
-    
-    fig = Figure(figsize=(4 * num_cols, 8), dpi=100)
-    
-    plot_idx = 1
     time_array = list(results.values())[0]['time']
-    
-    # Row 1: Traces
-    # Running trace
-    ax_running = fig.add_subplot(2, num_cols, plot_idx)
-    for idx, (day_name, data) in enumerate(results.items()):
-        day_color = DAY_COLORS[idx % len(DAY_COLORS)]
-        
-        # Plot with optogenetics
-        if data['with_opto']['running']['mean'] is not None:
-            ax_running.plot(time_array, data['with_opto']['running']['mean'],
-                          color=day_color, linestyle='-', linewidth=2, alpha=1,
-                          label=f"{day_name} With Opto")
-            ax_running.fill_between(time_array,
-                                   data['with_opto']['running']['mean'] - data['with_opto']['running']['sem'],
-                                   data['with_opto']['running']['mean'] + data['with_opto']['running']['sem'],
-                                   color=day_color, alpha=0.5)
-        
-        # Plot without optogenetics
-        if data['without_opto']['running']['mean'] is not None:
-            ax_running.plot(time_array, data['without_opto']['running']['mean'],
-                          color=day_color, linestyle='-', linewidth=2, alpha=0.5,
-                          label=f"{day_name} Without Opto")
-            ax_running.fill_between(time_array,
-                                   data['without_opto']['running']['mean'] - data['without_opto']['running']['sem'],
-                                   data['without_opto']['running']['mean'] + data['without_opto']['running']['sem'],
-                                   color=day_color, alpha=0.2)
-    
-    ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
-    ax_running.set_xlim(time_array[0], time_array[-1])
-    ax_running.set_xlabel('Time (s)')
-    ax_running.set_ylabel('Speed (cm/s)')
-    ax_running.set_title(f'Running Speed - {params["full_event_type"]}')
-    ax_running.legend(fontsize=8)
-    ax_running.grid(False)
-    plot_idx += 1
-    
-    # Fiber traces
+ 
+    win, _, inner = make_scrollable_window(
+        f"Running+Optogenetics Analysis - {params['full_event_type']}"
+    )
+ 
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
-        
-        # dFF trace
-        ax_dff = fig.add_subplot(2, num_cols, plot_idx)
+        fig = make_figure(NUM_COLS)
+        fig.suptitle(f"Wavelength {wl} nm — Running+Optogenetics",
+                     fontsize=12, fontweight="bold")
+ 
+        # ── Row 1: Traces ──────────────────────────────────────────────
+        ax_running = fig.add_subplot(2, NUM_COLS, 1)
         for idx, (day_name, data) in enumerate(results.items()):
             day_color = DAY_COLORS[idx % len(DAY_COLORS)]
-            
-            # With optogenetics
+            if data['with_opto']['running']['mean'] is not None:
+                ax_running.plot(time_array, data['with_opto']['running']['mean'],
+                              color=day_color, linestyle='-', linewidth=2, alpha=1,
+                              label=f"{day_name} With Opto")
+                ax_running.fill_between(time_array,
+                                       data['with_opto']['running']['mean'] - data['with_opto']['running']['sem'],
+                                       data['with_opto']['running']['mean'] + data['with_opto']['running']['sem'],
+                                       color=day_color, alpha=0.5)
+            if data['without_opto']['running']['mean'] is not None:
+                ax_running.plot(time_array, data['without_opto']['running']['mean'],
+                              color=day_color, linestyle='-', linewidth=2, alpha=0.5,
+                              label=f"{day_name} Without Opto")
+                ax_running.fill_between(time_array,
+                                       data['without_opto']['running']['mean'] - data['without_opto']['running']['sem'],
+                                       data['without_opto']['running']['mean'] + data['without_opto']['running']['sem'],
+                                       color=day_color, alpha=0.2)
+        ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
+        ax_running.set_xlim(time_array[0], time_array[-1])
+        ax_running.set_xlabel('Time (s)')
+        ax_running.set_ylabel('Speed (cm/s)')
+        ax_running.set_title(f'Running Speed - {params["full_event_type"]}')
+        ax_running.legend(fontsize=8)
+        ax_running.grid(False)
+ 
+        ax_dff = fig.add_subplot(2, NUM_COLS, 2)
+        for idx, (day_name, data) in enumerate(results.items()):
+            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
             if wl in data['with_opto']['dff']:
                 ax_dff.plot(time_array, data['with_opto']['dff'][wl]['mean'],
                           color=day_color, linewidth=2, linestyle='-', alpha=1,
@@ -2555,8 +1985,6 @@ def plot_running_optogenetics_results(results, params):
                                    data['with_opto']['dff'][wl]['mean'] - data['with_opto']['dff'][wl]['sem'],
                                    data['with_opto']['dff'][wl]['mean'] + data['with_opto']['dff'][wl]['sem'],
                                    color=day_color, alpha=0.5)
-            
-            # Without optogenetics
             if wl in data['without_opto']['dff']:
                 ax_dff.plot(time_array, data['without_opto']['dff'][wl]['mean'],
                           color=day_color, linewidth=2, linestyle='-', alpha=0.5,
@@ -2565,7 +1993,6 @@ def plot_running_optogenetics_results(results, params):
                                    data['without_opto']['dff'][wl]['mean'] - data['without_opto']['dff'][wl]['sem'],
                                    data['without_opto']['dff'][wl]['mean'] + data['without_opto']['dff'][wl]['sem'],
                                    color=day_color, alpha=0.2)
-        
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
@@ -2573,14 +2000,10 @@ def plot_running_optogenetics_results(results, params):
         ax_dff.set_title(f'Fiber ΔF/F {wl}nm')
         ax_dff.legend(fontsize=8)
         ax_dff.grid(False)
-        plot_idx += 1
-        
-        # Z-score trace
-        ax_zscore = fig.add_subplot(2, num_cols, plot_idx)
+ 
+        ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
         for idx, (day_name, data) in enumerate(results.items()):
             day_color = DAY_COLORS[idx % len(DAY_COLORS)]
-            
-            # With optogenetics
             if wl in data['with_opto']['zscore']:
                 ax_zscore.plot(time_array, data['with_opto']['zscore'][wl]['mean'],
                              color=day_color, linewidth=2, linestyle='-', alpha=1,
@@ -2589,8 +2012,6 @@ def plot_running_optogenetics_results(results, params):
                                       data['with_opto']['zscore'][wl]['mean'] - data['with_opto']['zscore'][wl]['sem'],
                                       data['with_opto']['zscore'][wl]['mean'] + data['with_opto']['zscore'][wl]['sem'],
                                       color=day_color, alpha=0.5)
-            
-            # Without optogenetics
             if wl in data['without_opto']['zscore']:
                 ax_zscore.plot(time_array, data['without_opto']['zscore'][wl]['mean'],
                              color=day_color, linewidth=2, linestyle='-', alpha=0.5,
@@ -2599,7 +2020,6 @@ def plot_running_optogenetics_results(results, params):
                                       data['without_opto']['zscore'][wl]['mean'] - data['without_opto']['zscore'][wl]['sem'],
                                       data['without_opto']['zscore'][wl]['mean'] + data['without_opto']['zscore'][wl]['sem'],
                                       color=day_color, alpha=0.2)
-        
         ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_zscore.set_xlim(time_array[0], time_array[-1])
         ax_zscore.set_xlabel('Time (s)')
@@ -2607,49 +2027,36 @@ def plot_running_optogenetics_results(results, params):
         ax_zscore.set_title(f'Fiber Z-score {wl}nm')
         ax_zscore.legend(fontsize=8)
         ax_zscore.grid(False)
-        plot_idx += 1
-    
-    # Row 2: Heatmaps
-    # Running heatmap
-    ax_running_heat = fig.add_subplot(2, num_cols, plot_idx)
-    all_with_opto = []
-    all_without_opto = []
-    
-    for day_name, data in results.items():
-        if len(data['with_opto']['running']['episodes']) > 0:
-            all_with_opto.extend(data['with_opto']['running']['episodes'])
-        if len(data['without_opto']['running']['episodes']) > 0:
-            all_without_opto.extend(data['without_opto']['running']['episodes'])
-    
-    if all_with_opto and all_without_opto:
-        combined = np.vstack([np.array(all_with_opto), np.array(all_without_opto)])
-        n_with = len(all_with_opto)
-        
-        if len(combined) == 1:
-            combined = np.vstack([combined[0], combined[0]])
-            im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
-                                        extent=[time_array[0], time_array[-1], 0, 1],
-                                        cmap='viridis', origin='lower')
-            ax_running_heat.set_yticks(np.arange(0, 2, 1))
+ 
+        # ── Row 2: Heatmaps ────────────────────────────────────────────
+        ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
+        all_with_opto = []
+        all_without_opto = []
+        for day_name, data in results.items():
+            if len(data['with_opto']['running']['episodes']) > 0:
+                all_with_opto.extend(data['with_opto']['running']['episodes'])
+            if len(data['without_opto']['running']['episodes']) > 0:
+                all_without_opto.extend(data['without_opto']['running']['episodes'])
+        if all_with_opto and all_without_opto:
+            combined = np.vstack([np.array(all_with_opto), np.array(all_without_opto)])
+            n_with = len(all_with_opto)
+            draw_heatmap(ax_running_heat, combined, time_array,
+                         'viridis', 'Speed (cm/s)',
+                         extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
+            ax_running_heat.set_title('Running Speed Heatmap')
+        elif all_with_opto:
+            draw_heatmap(ax_running_heat, np.array(all_with_opto), time_array,
+                         'viridis', 'Speed (cm/s)')
+            ax_running_heat.set_title('Running Speed Heatmap')
+        elif all_without_opto:
+            draw_heatmap(ax_running_heat, np.array(all_without_opto), time_array,
+                         'viridis', 'Speed (cm/s)')
+            ax_running_heat.set_title('Running Speed Heatmap')
         else:
-            im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
-                                        extent=[time_array[0], time_array[-1], 0, len(combined)],
-                                        cmap='viridis', origin='lower')
-            if len(combined) <= 10:
-                ax_running_heat.set_yticks(np.arange(0, len(combined)+1, 1))
-        
-        ax_running_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-        ax_running_heat.axhline(y=n_with, color='k', linestyle='--', linewidth=1)
-        ax_running_heat.set_xlabel('Time (s)')
-        ax_running_heat.set_ylabel('Trials')
-        ax_running_heat.set_title('Running Speed Heatmap')
-        plt.colorbar(im, ax=ax_running_heat, label='Speed (cm/s)', orientation='horizontal')
-    plot_idx += 1
-    
-    # Fiber heatmaps (similar structure for dFF and z-score)
-    for wl_idx, wl in enumerate(target_wavelengths):
-        # dFF heatmap
-        ax_dff_heat = fig.add_subplot(2, num_cols, plot_idx)
+            ax_running_heat.axis('off')
+            ax_running_heat.set_title('Running Speed Heatmap')
+ 
+        ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         all_with_opto_dff = []
         all_without_opto_dff = []
         for day_name, data in results.items():
@@ -2657,33 +2064,26 @@ def plot_running_optogenetics_results(results, params):
                 all_with_opto_dff.extend(data['with_opto']['dff'][wl]['episodes'])
             if wl in data['without_opto']['dff']:
                 all_without_opto_dff.extend(data['without_opto']['dff'][wl]['episodes'])
-        
         if all_with_opto_dff and all_without_opto_dff:
             combined_dff = np.vstack([np.array(all_with_opto_dff), np.array(all_without_opto_dff)])
             n_with = len(all_with_opto_dff)
-            if len(combined_dff) == 1:
-                combined_dff = np.vstack([combined_dff[0], combined_dff[0]])
-                im = ax_dff_heat.imshow(combined_dff, aspect='auto', interpolation='nearest',
-                                    extent=[time_array[0], time_array[-1], 0, 1],
-                                    cmap='coolwarm', origin='lower')
-                ax_dff_heat.set_yticks(np.arange(0, 2, 1))
-            else:
-                im = ax_dff_heat.imshow(combined_dff, aspect='auto', interpolation='nearest',
-                                    extent=[time_array[0], time_array[-1], 0, len(combined_dff)],
-                                    cmap='coolwarm', origin='lower')
-                if len(combined_dff) <= 10:
-                    ax_dff_heat.set_yticks(np.arange(0, len(combined_dff)+1, 1))
-            
-            ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            ax_dff_heat.axhline(y=n_with, color='k', linestyle='--', linewidth=1)
-            ax_dff_heat.set_xlabel('Time (s)')
-            ax_dff_heat.set_ylabel('Trials')
+            draw_heatmap(ax_dff_heat, combined_dff, time_array,
+                         'coolwarm', 'ΔF/F',
+                         extra_lines=[n_with] if n_with > 0 and len(combined_dff) > n_with else None)
             ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
-            plt.colorbar(im, ax=ax_dff_heat, label='ΔF/F', orientation='horizontal')
-        plot_idx += 1
-
-        # Z-score heatmap
-        ax_zscore_heat = fig.add_subplot(2, num_cols, plot_idx)
+        elif all_with_opto_dff:
+            draw_heatmap(ax_dff_heat, np.array(all_with_opto_dff), time_array,
+                         'coolwarm', 'ΔF/F')
+            ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
+        elif all_without_opto_dff:
+            draw_heatmap(ax_dff_heat, np.array(all_without_opto_dff), time_array,
+                         'coolwarm', 'ΔF/F')
+            ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
+        else:
+            ax_dff_heat.axis('off')
+            ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
+ 
+        ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_with_opto_zscore = []
         all_without_opto_zscore = []
         for day_name, data in results.items():
@@ -2694,41 +2094,25 @@ def plot_running_optogenetics_results(results, params):
         if all_with_opto_zscore and all_without_opto_zscore:
             combined_zscore = np.vstack([np.array(all_with_opto_zscore), np.array(all_without_opto_zscore)])
             n_with = len(all_with_opto_zscore)
-            if len(combined_zscore) == 1:
-                combined_zscore = np.vstack([combined_zscore[0], combined_zscore[0]])
-                im = ax_zscore_heat.imshow(combined_zscore, aspect='auto', interpolation='nearest',
-                                        extent=[time_array[0], time_array[-1], 0, 1],
-                                        cmap='coolwarm', origin='lower')
-                ax_zscore_heat.set_yticks(np.arange(0, 2, 1))
-            else:
-                im = ax_zscore_heat.imshow(combined_zscore, aspect='auto', interpolation='nearest',
-                                        extent=[time_array[0], time_array[-1], 0, len(combined_zscore)],
-                                        cmap='coolwarm', origin='lower')
-                if len(combined_zscore) <= 10:
-                    ax_zscore_heat.set_yticks(np.arange(0, len(combined_zscore)+1, 1))
-
-            ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            ax_zscore_heat.axhline(y=n_with, color='k', linestyle='--', linewidth=1)
-            ax_zscore_heat.set_xlabel('Time (s)')
-            ax_zscore_heat.set_ylabel('Trials')
+            draw_heatmap(ax_zscore_heat, combined_zscore, time_array,
+                         'coolwarm', 'Z-score',
+                         extra_lines=[n_with] if n_with > 0 and len(combined_zscore) > n_with else None)
             ax_zscore_heat.set_title(f'Fiber Z-score Heatmap {wl}nm')
-            plt.colorbar(im, ax=ax_zscore_heat, label='Z-score', orientation='horizontal')
-        plot_idx += 1
-    
-    fig.tight_layout()
-    
-    canvas_frame = tk.Frame(result_window, bg='#f8f8f8')
-    canvas_frame.pack(fill=tk.BOTH, expand=True)
-    
-    canvas = FigureCanvasTkAgg(fig, canvas_frame)
-    canvas.draw()
-    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-    
-    toolbar_frame = tk.Frame(canvas_frame, bg="#f5f5f5")
-    toolbar_frame.pack(fill=tk.X, padx=2, pady=(0,2))
-    toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
-    
-    # Create individual day windows
+        elif all_with_opto_zscore:
+            draw_heatmap(ax_zscore_heat, np.array(all_with_opto_zscore), time_array,
+                         'coolwarm', 'Z-score')
+            ax_zscore_heat.set_title(f'Fiber Z-score Heatmap {wl}nm')
+        elif all_without_opto_zscore:
+            draw_heatmap(ax_zscore_heat, np.array(all_without_opto_zscore), time_array,
+                         'coolwarm', 'Z-score')
+            ax_zscore_heat.set_title(f'Fiber Z-score Heatmap {wl}nm')
+        else:
+            ax_zscore_heat.axis('off')
+            ax_zscore_heat.set_title(f'Fiber Z-score Heatmap {wl}nm')
+ 
+        fig.tight_layout()
+        embed_figure(inner, fig, row_in_frame=wl_idx)
+        
     create_individual_day_windows_running_optogenetics(results, params)
 
 def create_individual_day_windows_running_optogenetics(results, params):
@@ -2738,61 +2122,44 @@ def create_individual_day_windows_running_optogenetics(results, params):
 
 def create_single_day_window_running_optogenetics(day_name, data, params):
     """Create window for a single day - running+optogenetics"""
-    day_window = tk.Toplevel()
-    
     target_wavelengths = data.get('target_wavelengths', ['470'])
-    wavelength_label = '+'.join(target_wavelengths)
-    
-    day_window.title(f"Running+Optogenetics Analysis - {day_name} - {params['full_event_type']}")
-    day_window.state("zoomed")
-    day_window.configure(bg='#f8f8f8')
-    
-    num_wavelengths = len(target_wavelengths)
-    num_cols = 1 + 2 * num_wavelengths
-    fig = Figure(figsize=(4 * num_cols, 8), dpi=100)
-    
-    plot_idx = 1
     time_array = data['time']
-    
-    # Row 1: Traces
-    # Running trace
-    ax_running = fig.add_subplot(2, num_cols, plot_idx)
-    
-    # Plot with optogenetics
-    if data['with_opto']['running']['mean'] is not None:
-        ax_running.plot(time_array, data['with_opto']['running']['mean'],
-                      color="#000000", linewidth=2, linestyle='-', alpha=1, label='With Opto')
-        ax_running.fill_between(time_array,
-                               data['with_opto']['running']['mean'] - data['with_opto']['running']['sem'],
-                               data['with_opto']['running']['mean'] + data['with_opto']['running']['sem'],
-                               color="#000000", alpha=0.5)
-    
-    # Plot without optogenetics
-    if data['without_opto']['running']['mean'] is not None:
-        ax_running.plot(time_array, data['without_opto']['running']['mean'],
-                      color="#000000", linewidth=2, linestyle='-', alpha=0.5, label='Without Opto')
-        ax_running.fill_between(time_array,
-                               data['without_opto']['running']['mean'] - data['without_opto']['running']['sem'],
-                               data['without_opto']['running']['mean'] + data['without_opto']['running']['sem'],
-                               color="#000000", alpha=0.2)
-    
-    ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
-    ax_running.set_xlim(time_array[0], time_array[-1])
-    ax_running.set_xlabel('Time (s)')
-    ax_running.set_ylabel('Speed (cm/s)')
-    ax_running.set_title(f'{day_name} - Running Speed')
-    ax_running.legend()
-    ax_running.grid(False)
-    plot_idx += 1
-    
-    # Fiber traces
+ 
+    win, _, inner = make_scrollable_window(
+        f"Running+Optogenetics Analysis - {day_name} - {params['full_event_type']}"
+    )
+ 
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
-        
-        # dFF trace
-        ax_dff = fig.add_subplot(2, num_cols, plot_idx)
-        
-        # With optogenetics
+        fig = make_figure(NUM_COLS)
+        fig.suptitle(f"{day_name} — Wavelength {wl} nm (Running+Optogenetics)",
+                     fontsize=12, fontweight="bold")
+ 
+        # Row 1: Traces
+        ax_running = fig.add_subplot(2, NUM_COLS, 1)
+        if data['with_opto']['running']['mean'] is not None:
+            ax_running.plot(time_array, data['with_opto']['running']['mean'],
+                          color="#000000", linewidth=2, linestyle='-', alpha=1, label='With Opto')
+            ax_running.fill_between(time_array,
+                                   data['with_opto']['running']['mean'] - data['with_opto']['running']['sem'],
+                                   data['with_opto']['running']['mean'] + data['with_opto']['running']['sem'],
+                                   color="#000000", alpha=0.5)
+        if data['without_opto']['running']['mean'] is not None:
+            ax_running.plot(time_array, data['without_opto']['running']['mean'],
+                          color="#000000", linewidth=2, linestyle='-', alpha=0.5, label='Without Opto')
+            ax_running.fill_between(time_array,
+                                   data['without_opto']['running']['mean'] - data['without_opto']['running']['sem'],
+                                   data['without_opto']['running']['mean'] + data['without_opto']['running']['sem'],
+                                   color="#000000", alpha=0.2)
+        ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
+        ax_running.set_xlim(time_array[0], time_array[-1])
+        ax_running.set_xlabel('Time (s)')
+        ax_running.set_ylabel('Speed (cm/s)')
+        ax_running.set_title(f'{day_name} - Running Speed')
+        ax_running.legend()
+        ax_running.grid(False)
+ 
+        ax_dff = fig.add_subplot(2, NUM_COLS, 2)
         if wl in data['with_opto']['dff']:
             ax_dff.plot(time_array, data['with_opto']['dff'][wl]['mean'],
                       color=color, linewidth=2, linestyle='-', alpha=1, label='With Opto')
@@ -2800,8 +2167,6 @@ def create_single_day_window_running_optogenetics(day_name, data, params):
                                data['with_opto']['dff'][wl]['mean'] - data['with_opto']['dff'][wl]['sem'],
                                data['with_opto']['dff'][wl]['mean'] + data['with_opto']['dff'][wl]['sem'],
                                color=color, alpha=0.5)
-        
-        # Without optogenetics
         if wl in data['without_opto']['dff']:
             ax_dff.plot(time_array, data['without_opto']['dff'][wl]['mean'],
                       color=color, linewidth=2, linestyle='-', alpha=0.5, label='Without Opto')
@@ -2809,7 +2174,6 @@ def create_single_day_window_running_optogenetics(day_name, data, params):
                                data['without_opto']['dff'][wl]['mean'] - data['without_opto']['dff'][wl]['sem'],
                                data['without_opto']['dff'][wl]['mean'] + data['without_opto']['dff'][wl]['sem'],
                                color=color, alpha=0.2)
-        
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
@@ -2817,12 +2181,8 @@ def create_single_day_window_running_optogenetics(day_name, data, params):
         ax_dff.set_title(f'{day_name} - Fiber ΔF/F {wl}nm')
         ax_dff.legend()
         ax_dff.grid(False)
-        plot_idx += 1
-        
-        # Z-score trace
-        ax_zscore = fig.add_subplot(2, num_cols, plot_idx)
-        
-        # With optogenetics
+ 
+        ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
         if wl in data['with_opto']['zscore']:
             ax_zscore.plot(time_array, data['with_opto']['zscore'][wl]['mean'],
                          color=color, linewidth=2, linestyle='-', alpha=1, label='With Opto')
@@ -2830,8 +2190,6 @@ def create_single_day_window_running_optogenetics(day_name, data, params):
                                   data['with_opto']['zscore'][wl]['mean'] - data['with_opto']['zscore'][wl]['sem'],
                                   data['with_opto']['zscore'][wl]['mean'] + data['with_opto']['zscore'][wl]['sem'],
                                   color=color, alpha=0.5)
-        
-        # Without optogenetics
         if wl in data['without_opto']['zscore']:
             ax_zscore.plot(time_array, data['without_opto']['zscore'][wl]['mean'],
                          color=color, linewidth=2, linestyle='-', alpha=0.5, label='Without Opto')
@@ -2839,7 +2197,6 @@ def create_single_day_window_running_optogenetics(day_name, data, params):
                                   data['without_opto']['zscore'][wl]['mean'] - data['without_opto']['zscore'][wl]['sem'],
                                   data['without_opto']['zscore'][wl]['mean'] + data['without_opto']['zscore'][wl]['sem'],
                                   color=color, alpha=0.2)
-        
         ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
         ax_zscore.set_xlim(time_array[0], time_array[-1])
         ax_zscore.set_xlabel('Time (s)')
@@ -2847,154 +2204,86 @@ def create_single_day_window_running_optogenetics(day_name, data, params):
         ax_zscore.set_title(f'{day_name} - Fiber Z-score {wl}nm')
         ax_zscore.legend()
         ax_zscore.grid(False)
-        plot_idx += 1
-    
-    # Row 2: Heatmaps
-    # Running heatmap
-    ax_running_heat = fig.add_subplot(2, num_cols, plot_idx)
-    
-    if (len(data['with_opto']['running']['episodes']) > 0 and 
-        len(data['without_opto']['running']['episodes']) > 0):
-        
-        # Combine with and without opto episodes
-        combined = np.vstack([
-            data['with_opto']['running']['episodes'], 
-            data['without_opto']['running']['episodes']
-        ])
-        n_with_opto = len(data['with_opto']['running']['episodes'])
-        
-        if len(combined) == 1:
-            combined = np.vstack([combined[0], combined[0]])
-            im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
-                                    extent=[time_array[0], time_array[-1], 0, 1],
-                                    cmap='viridis', origin='lower')
-            ax_running_heat.set_yticks(np.arange(0, 2, 1))
+ 
+        # Row 2: Heatmaps
+        ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
+        with_run = data['with_opto']['running']['episodes']
+        without_run = data['without_opto']['running']['episodes']
+        if len(with_run) > 0 and len(without_run) > 0:
+            combined = np.vstack([with_run, without_run])
+            n_with = len(with_run)
+            draw_heatmap(ax_running_heat, combined, time_array,
+                         'viridis', 'Speed (cm/s)',
+                         extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
+            ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap')
+        elif len(with_run) > 0:
+            draw_heatmap(ax_running_heat, with_run, time_array, 'viridis', 'Speed (cm/s)')
+            ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap')
+        elif len(without_run) > 0:
+            draw_heatmap(ax_running_heat, without_run, time_array, 'viridis', 'Speed (cm/s)')
+            ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap')
         else:
-            im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
-                                    extent=[time_array[0], time_array[-1], 0, len(combined)],
-                                    cmap='viridis', origin='lower')
-            if len(combined) <= 10:
-                ax_running_heat.set_yticks(np.arange(0, len(combined)+1, 1))
-        
-        ax_running_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-        ax_running_heat.axhline(y=n_with_opto, color='k', linestyle='--', linewidth=1)
-        ax_running_heat.set_xlabel('Time (s)')
-        ax_running_heat.set_ylabel('Trials')
-        ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap')
-        plt.colorbar(im, ax=ax_running_heat, label='Speed (cm/s)', orientation='horizontal')
-    else:
-        # Show message if no data
-        ax_running_heat.text(0.5, 0.5, 'No running data available',
-                           ha='center', va='center', transform=ax_running_heat.transAxes,
-                           fontsize=12, color='#666666')
-        ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap')
-        ax_running_heat.axis('off')
-    
-    plot_idx += 1
-    
-    # Fiber heatmaps
-    for wl_idx, wl in enumerate(target_wavelengths):
-        color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
-        
-        # dFF heatmap
-        ax_dff_heat = fig.add_subplot(2, num_cols, plot_idx)
-        
+            ax_running_heat.text(0.5, 0.5, 'No running data available',
+                               ha='center', va='center', transform=ax_running_heat.transAxes,
+                               fontsize=12, color='#666666')
+            ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap')
+            ax_running_heat.axis('off')
+ 
+        ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         if (wl in data['with_opto']['dff'] and wl in data['without_opto']['dff'] and
-            len(data['with_opto']['dff'][wl]['episodes']) > 0 and 
-            len(data['without_opto']['dff'][wl]['episodes']) > 0):
-            
-            # Combine with and without opto episodes
-            combined = np.vstack([
-                data['with_opto']['dff'][wl]['episodes'], 
-                data['without_opto']['dff'][wl]['episodes']
-            ])
-            n_with_opto = len(data['with_opto']['dff'][wl]['episodes'])
-            
-            if len(combined) == 1:
-                combined = np.vstack([combined[0], combined[0]])
-                im = ax_dff_heat.imshow(combined, aspect='auto', interpolation='nearest',
-                                    extent=[time_array[0], time_array[-1], 0, 1],
-                                    cmap='coolwarm', origin='lower')
-                ax_dff_heat.set_yticks(np.arange(0, 2, 1))
-            else:
-                im = ax_dff_heat.imshow(combined, aspect='auto', interpolation='nearest',
-                                    extent=[time_array[0], time_array[-1], 0, len(combined)],
-                                    cmap='coolwarm', origin='lower')
-                if len(combined) <= 10:
-                    ax_dff_heat.set_yticks(np.arange(0, len(combined)+1, 1))
-            
-            ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            ax_dff_heat.axhline(y=n_with_opto, color='k', linestyle='--', linewidth=1)
-            ax_dff_heat.set_xlabel('Time (s)')
-            ax_dff_heat.set_ylabel('Trials')
+                len(data['with_opto']['dff'][wl]['episodes']) > 0 and
+                len(data['without_opto']['dff'][wl]['episodes']) > 0):
+            combined = np.vstack([data['with_opto']['dff'][wl]['episodes'],
+                                  data['without_opto']['dff'][wl]['episodes']])
+            n_with = len(data['with_opto']['dff'][wl]['episodes'])
+            draw_heatmap(ax_dff_heat, combined, time_array,
+                         'coolwarm', 'ΔF/F',
+                         extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
             ax_dff_heat.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm')
-            plt.colorbar(im, ax=ax_dff_heat, label='ΔF/F', orientation='horizontal')
+        elif wl in data['with_opto']['dff'] and len(data['with_opto']['dff'][wl]['episodes']) > 0:
+            draw_heatmap(ax_dff_heat, data['with_opto']['dff'][wl]['episodes'],
+                         time_array, 'coolwarm', 'ΔF/F')
+            ax_dff_heat.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm')
+        elif wl in data['without_opto']['dff'] and len(data['without_opto']['dff'][wl]['episodes']) > 0:
+            draw_heatmap(ax_dff_heat, data['without_opto']['dff'][wl]['episodes'],
+                         time_array, 'coolwarm', 'ΔF/F')
+            ax_dff_heat.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm')
         else:
-            # Show message if no data
             ax_dff_heat.text(0.5, 0.5, f'No dFF data for {wl}nm',
                            ha='center', va='center', transform=ax_dff_heat.transAxes,
                            fontsize=12, color='#666666')
             ax_dff_heat.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm')
             ax_dff_heat.axis('off')
-        
-        plot_idx += 1
-        
-        # Z-score heatmap
-        ax_zscore_heat = fig.add_subplot(2, num_cols, plot_idx)
-        
+ 
+        ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         if (wl in data['with_opto']['zscore'] and wl in data['without_opto']['zscore'] and
-            len(data['with_opto']['zscore'][wl]['episodes']) > 0 and 
-            len(data['without_opto']['zscore'][wl]['episodes']) > 0):
-            
-            # Combine with and without opto episodes
-            combined = np.vstack([
-                data['with_opto']['zscore'][wl]['episodes'], 
-                data['without_opto']['zscore'][wl]['episodes']
-            ])
-            n_with_opto = len(data['with_opto']['zscore'][wl]['episodes'])
-            
-            if len(combined) == 1:
-                combined = np.vstack([combined[0], combined[0]])
-                im = ax_zscore_heat.imshow(combined, aspect='auto', interpolation='nearest',
-                                        extent=[time_array[0], time_array[-1], 0, 1],
-                                        cmap='coolwarm', origin='lower')
-                ax_zscore_heat.set_yticks(np.arange(0, 2, 1))
-            else:
-                im = ax_zscore_heat.imshow(combined, aspect='auto', interpolation='nearest',
-                                        extent=[time_array[0], time_array[-1], 0, len(combined)],
-                                        cmap='coolwarm', origin='lower')
-                if len(combined) <= 10:
-                    ax_zscore_heat.set_yticks(np.arange(0, len(combined)+1, 1))
-            
-            ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            ax_zscore_heat.axhline(y=n_with_opto, color='k', linestyle='--', linewidth=1)
-            ax_zscore_heat.set_xlabel('Time (s)')
-            ax_zscore_heat.set_ylabel('Trials')
+                len(data['with_opto']['zscore'][wl]['episodes']) > 0 and
+                len(data['without_opto']['zscore'][wl]['episodes']) > 0):
+            combined = np.vstack([data['with_opto']['zscore'][wl]['episodes'],
+                                  data['without_opto']['zscore'][wl]['episodes']])
+            n_with = len(data['with_opto']['zscore'][wl]['episodes'])
+            draw_heatmap(ax_zscore_heat, combined, time_array,
+                         'coolwarm', 'Z-score',
+                         extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
             ax_zscore_heat.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm')
-            plt.colorbar(im, ax=ax_zscore_heat, label='Z-score', orientation='horizontal')
+        elif wl in data['with_opto']['zscore'] and len(data['with_opto']['zscore'][wl]['episodes']) > 0:
+            draw_heatmap(ax_zscore_heat, data['with_opto']['zscore'][wl]['episodes'],
+                         time_array, 'coolwarm', 'Z-score')
+            ax_zscore_heat.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm')
+        elif wl in data['without_opto']['zscore'] and len(data['without_opto']['zscore'][wl]['episodes']) > 0:
+            draw_heatmap(ax_zscore_heat, data['without_opto']['zscore'][wl]['episodes'],
+                         time_array, 'coolwarm', 'Z-score')
+            ax_zscore_heat.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm')
         else:
-            # Show message if no data
             ax_zscore_heat.text(0.5, 0.5, f'No z-score data for {wl}nm',
                               ha='center', va='center', transform=ax_zscore_heat.transAxes,
                               fontsize=12, color='#666666')
             ax_zscore_heat.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm')
             ax_zscore_heat.axis('off')
-        
-        plot_idx += 1
-    
-    fig.tight_layout()
-    
-    canvas_frame = tk.Frame(day_window, bg='#f8f8f8')
-    canvas_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-    
-    canvas = FigureCanvasTkAgg(fig, canvas_frame)
-    canvas.draw()
-    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-    
-    toolbar_frame = tk.Frame(canvas_frame, bg="#f5f5f5")
-    toolbar_frame.pack(fill=tk.X, padx=2, pady=(0,2))
-    toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
-    
+ 
+        fig.tight_layout()
+        embed_figure(inner, fig, row_in_frame=wl_idx)
+ 
     log_message(f"Individual day plot created for {day_name} (with/without optogenetics)")
 
 def run_running_optogenetics_analysis(day_data, params, all_optogenetic_events, 
@@ -3180,9 +2469,6 @@ def analyze_day_running_optogenetics_drug(day_name, animals, params,
                 fiber_timestamps = preprocessed_data[time_col].values
                 dff_data = animal_data.get('dff_data', {})
                 active_channels = animal_data.get('active_channels', [])
-                channel_data = animal_data.get('channel_data', {})
-                reference_signal = animal_data.get('reference_signal', '410')
-                apply_baseline = animal_data.get('apply_baseline', False)
                 
                 # Process with opto events
                 if with_opto:
@@ -3191,11 +2477,7 @@ def analyze_day_running_optogenetics_drug(day_name, animals, params,
                         fiber_timestamps, dff_data,
                         active_channels, target_wavelengths,
                         params['pre_time'], params['post_time'],
-                        params['baseline_start'], params['baseline_end'],
-                        preprocessed_data=preprocessed_data,
-                        channel_data=channel_data,
-                        reference_signal=reference_signal,
-                        apply_baseline=apply_baseline
+                        params['baseline_start'], params['baseline_end']
                     )
                     
                     if len(with_result['running']) > 0:
@@ -3224,11 +2506,7 @@ def analyze_day_running_optogenetics_drug(day_name, animals, params,
                         fiber_timestamps, dff_data,
                         active_channels, target_wavelengths,
                         params['pre_time'], params['post_time'],
-                        params['baseline_start'], params['baseline_end'],
-                        preprocessed_data=preprocessed_data,
-                        channel_data=channel_data,
-                        reference_signal=reference_signal,
-                        apply_baseline=apply_baseline
+                        params['baseline_start'], params['baseline_end']
                     )
                     
                     if len(without_result['running']) > 0:
@@ -3427,79 +2705,62 @@ def plot_running_optogenetics_drug_results(results, params):
     # Create individual day windows
     create_individual_day_windows_running_optogenetics_drug_multi(results, params)
 
-def plot_comparison_window_multi_drug(results, params, category, condition1_key, condition2_key, 
+def plot_comparison_window_multi_drug(results, params, category, condition1_key, condition2_key,
                                       window_title, label1, label2):
     target_wavelengths = []
     for day_name, data in results.items():
         if 'target_wavelengths' in data:
             target_wavelengths = data['target_wavelengths']
             break
-    
     if not target_wavelengths:
         target_wavelengths = ['470']
-    
-    result_window = tk.Toplevel()
-    result_window.title(f"{window_title} - All Days")
-    result_window.state('zoomed')
-    result_window.configure(bg='#f8f8f8')
-    
-    num_wavelengths = len(target_wavelengths)
-    num_cols = 1 + 2 * num_wavelengths
-    
-    fig = Figure(figsize=(4 * num_cols, 8), dpi=100)
-    
-    plot_idx = 1
+ 
     time_array = list(results.values())[0]['time']
-    
-    ax_running = fig.add_subplot(2, num_cols, plot_idx)
-    
-    for idx, (day_name, data) in enumerate(results.items()):
-        if category not in data:
-            continue
-            
-        day_color = DAY_COLORS[idx % len(DAY_COLORS)]
-        category_data = data[category]
-        
-        if condition1_key in category_data and category_data[condition1_key]['running']['mean'] is not None:
-            ax_running.plot(time_array, category_data[condition1_key]['running']['mean'],
-                          color=day_color, linestyle='-', linewidth=2, alpha=1,
-                          label=f"{day_name} {label1}")
-            ax_running.fill_between(time_array,
-                                   category_data[condition1_key]['running']['mean'] - category_data[condition1_key]['running']['sem'],
-                                   category_data[condition1_key]['running']['mean'] + category_data[condition1_key]['running']['sem'],
-                                   color=day_color, alpha=0.5)
-        
-        if condition2_key in category_data and category_data[condition2_key]['running']['mean'] is not None:
-            ax_running.plot(time_array, category_data[condition2_key]['running']['mean'],
-                          color=day_color, linestyle='-', linewidth=2, alpha=0.5,
-                          label=f"{day_name} {label2}")
-            ax_running.fill_between(time_array,
-                                   category_data[condition2_key]['running']['mean'] - category_data[condition2_key]['running']['sem'],
-                                   category_data[condition2_key]['running']['mean'] + category_data[condition2_key]['running']['sem'],
-                                   color=day_color, alpha=0.2)
-    
-    ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
-    ax_running.set_xlim(time_array[0], time_array[-1])
-    ax_running.set_xlabel('Time (s)')
-    ax_running.set_ylabel('Speed (cm/s)')
-    ax_running.set_title(f'{category} - Running Speed Comparison')
-    ax_running.legend(fontsize=8, ncol=2)
-    ax_running.grid(False)
-    plot_idx += 1
-    
+ 
+    win, _, inner = make_scrollable_window(f"{window_title} - All Days")
+ 
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
-        
-        # dFF
-        ax_dff = fig.add_subplot(2, num_cols, plot_idx)
-        
+        fig = make_figure(NUM_COLS)
+        fig.suptitle(f"Wavelength {wl} nm — {window_title}", fontsize=11, fontweight="bold")
+ 
+        # Row 1: Traces
+        ax_running = fig.add_subplot(2, NUM_COLS, 1)
         for idx, (day_name, data) in enumerate(results.items()):
             if category not in data:
                 continue
-                
             day_color = DAY_COLORS[idx % len(DAY_COLORS)]
             category_data = data[category]
-            
+            if condition1_key in category_data and category_data[condition1_key]['running']['mean'] is not None:
+                ax_running.plot(time_array, category_data[condition1_key]['running']['mean'],
+                              color=day_color, linestyle='-', linewidth=2, alpha=1,
+                              label=f"{day_name} {label1}")
+                ax_running.fill_between(time_array,
+                                       category_data[condition1_key]['running']['mean'] - category_data[condition1_key]['running']['sem'],
+                                       category_data[condition1_key]['running']['mean'] + category_data[condition1_key]['running']['sem'],
+                                       color=day_color, alpha=0.5)
+            if condition2_key in category_data and category_data[condition2_key]['running']['mean'] is not None:
+                ax_running.plot(time_array, category_data[condition2_key]['running']['mean'],
+                              color=day_color, linestyle='-', linewidth=2, alpha=0.5,
+                              label=f"{day_name} {label2}")
+                ax_running.fill_between(time_array,
+                                       category_data[condition2_key]['running']['mean'] - category_data[condition2_key]['running']['sem'],
+                                       category_data[condition2_key]['running']['mean'] + category_data[condition2_key]['running']['sem'],
+                                       color=day_color, alpha=0.2)
+        ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
+        ax_running.set_xlim(time_array[0], time_array[-1])
+        ax_running.set_xlabel('Time (s)')
+        ax_running.set_ylabel('Speed (cm/s)')
+        ax_running.set_title(f'{category} - Running Speed Comparison')
+        ax_running.legend(fontsize=8, ncol=2)
+        ax_running.grid(False)
+ 
+        ax_dff = fig.add_subplot(2, NUM_COLS, 2)
+        for idx, (day_name, data) in enumerate(results.items()):
+            if category not in data:
+                continue
+            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+            category_data = data[category]
             if condition1_key in category_data and wl in category_data[condition1_key]['dff']:
                 ax_dff.plot(time_array, category_data[condition1_key]['dff'][wl]['mean'],
                           color=day_color, linewidth=2, linestyle='-', alpha=1,
@@ -3508,7 +2769,6 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
                                    category_data[condition1_key]['dff'][wl]['mean'] - category_data[condition1_key]['dff'][wl]['sem'],
                                    category_data[condition1_key]['dff'][wl]['mean'] + category_data[condition1_key]['dff'][wl]['sem'],
                                    color=day_color, alpha=0.5)
-            
             if condition2_key in category_data and wl in category_data[condition2_key]['dff']:
                 ax_dff.plot(time_array, category_data[condition2_key]['dff'][wl]['mean'],
                           color=day_color, linewidth=2, linestyle='-', alpha=0.5,
@@ -3517,7 +2777,6 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
                                    category_data[condition2_key]['dff'][wl]['mean'] - category_data[condition2_key]['dff'][wl]['sem'],
                                    category_data[condition2_key]['dff'][wl]['mean'] + category_data[condition2_key]['dff'][wl]['sem'],
                                    color=day_color, alpha=0.2)
-        
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
@@ -3525,18 +2784,13 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
         ax_dff.set_title(f'{category} - Fiber ΔF/F {wl}nm Comparison')
         ax_dff.legend(fontsize=8, ncol=2)
         ax_dff.grid(False)
-        plot_idx += 1
-        
-        # Z-score
-        ax_zscore = fig.add_subplot(2, num_cols, plot_idx)
-        
+ 
+        ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
         for idx, (day_name, data) in enumerate(results.items()):
             if category not in data:
                 continue
-                
             day_color = DAY_COLORS[idx % len(DAY_COLORS)]
             category_data = data[category]
-            
             if condition1_key in category_data and wl in category_data[condition1_key]['zscore']:
                 ax_zscore.plot(time_array, category_data[condition1_key]['zscore'][wl]['mean'],
                              color=day_color, linewidth=2, linestyle='-', alpha=1,
@@ -3545,7 +2799,6 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
                                       category_data[condition1_key]['zscore'][wl]['mean'] - category_data[condition1_key]['zscore'][wl]['sem'],
                                       category_data[condition1_key]['zscore'][wl]['mean'] + category_data[condition1_key]['zscore'][wl]['sem'],
                                       color=day_color, alpha=0.5)
-            
             if condition2_key in category_data and wl in category_data[condition2_key]['zscore']:
                 ax_zscore.plot(time_array, category_data[condition2_key]['zscore'][wl]['mean'],
                              color=day_color, linewidth=2, linestyle='-', alpha=0.5,
@@ -3554,7 +2807,6 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
                                       category_data[condition2_key]['zscore'][wl]['mean'] - category_data[condition2_key]['zscore'][wl]['sem'],
                                       category_data[condition2_key]['zscore'][wl]['mean'] + category_data[condition2_key]['zscore'][wl]['sem'],
                                       color=day_color, alpha=0.2)
-        
         ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_zscore.set_xlim(time_array[0], time_array[-1])
         ax_zscore.set_xlabel('Time (s)')
@@ -3562,287 +2814,148 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
         ax_zscore.set_title(f'{category} - Fiber Z-score {wl}nm Comparison')
         ax_zscore.legend(fontsize=8, ncol=2)
         ax_zscore.grid(False)
-        plot_idx += 1
-    
-    ax_running_heat = fig.add_subplot(2, num_cols, plot_idx)
-    
-    all_cond1 = []
-    all_cond2 = []
-    
-    for day_name, data in results.items():
-        if category not in data:
-            continue
-            
-        category_data = data[category]
-        
-        if condition1_key in category_data and len(category_data[condition1_key]['running']['episodes']) > 0:
-            all_cond1.extend(category_data[condition1_key]['running']['episodes'])
-        
-        if condition2_key in category_data and len(category_data[condition2_key]['running']['episodes']) > 0:
-            all_cond2.extend(category_data[condition2_key]['running']['episodes'])
-    
-    if all_cond1 or all_cond2:
-        combined = []
-        if all_cond1:
-            combined.extend(all_cond1)
-        if all_cond2:
-            combined.extend(all_cond2)
-        
-        if combined:
-            combined = np.array(combined)
-            n_cond1 = len(all_cond1)
-            
-            if len(combined) == 1:
-                combined = np.vstack([combined[0], combined[0]])
-                im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
-                                          extent=[time_array[0], time_array[-1], 0, 1],
-                                          cmap='viridis', origin='lower')
-            else:
-                im = ax_running_heat.imshow(combined, aspect='auto', interpolation='nearest',
-                                          extent=[time_array[0], time_array[-1], 0, len(combined)],
-                                          cmap='viridis', origin='lower')
-                if len(combined) <= 10:
-                    ax_running_heat.set_yticks(np.arange(0, len(combined)+1, 1))
-            
-            ax_running_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            if n_cond1 > 0 and len(combined) > n_cond1:
-                ax_running_heat.axhline(y=n_cond1, color='k', linestyle='--', linewidth=1)
-            
-            ax_running_heat.set_xlabel('Time (s)')
-            ax_running_heat.set_ylabel('Trials')
-            ax_running_heat.set_title(f'{category} - Running Speed Heatmap')
-            plt.colorbar(im, ax=ax_running_heat, label='Speed (cm/s)', orientation='horizontal')
+ 
+        # Row 2: Heatmaps
+        ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
+        all_cond1 = []
+        all_cond2 = []
+        for day_name, data in results.items():
+            if category not in data:
+                continue
+            category_data = data[category]
+            if condition1_key in category_data and len(category_data[condition1_key]['running']['episodes']) > 0:
+                all_cond1.extend(category_data[condition1_key]['running']['episodes'])
+            if condition2_key in category_data and len(category_data[condition2_key]['running']['episodes']) > 0:
+                all_cond2.extend(category_data[condition2_key]['running']['episodes'])
+        if all_cond1 or all_cond2:
+            combined = np.array(all_cond1 + all_cond2) if all_cond1 + all_cond2 else None
+            if combined is not None:
+                n_cond1 = len(all_cond1)
+                draw_heatmap(ax_running_heat, combined, time_array,
+                             'viridis', 'Speed (cm/s)',
+                             extra_lines=[n_cond1] if n_cond1 > 0 and len(combined) > n_cond1 else None)
+                ax_running_heat.set_title(f'{category} - Running Speed Heatmap')
         else:
-            ax_running_heat.text(0.5, 0.5, 'No data available', 
+            ax_running_heat.text(0.5, 0.5, 'No data available',
                                ha='center', va='center', fontsize=12, color='gray')
             ax_running_heat.set_title(f'{category} - Running Speed Heatmap')
             ax_running_heat.axis('off')
-    else:
-        ax_running_heat.text(0.5, 0.5, 'No data available', 
-                           ha='center', va='center', fontsize=12, color='gray')
-        ax_running_heat.set_title(f'{category} - Running Speed Heatmap')
-        ax_running_heat.axis('off')
-    
-    plot_idx += 1
-    
-    for wl_idx, wl in enumerate(target_wavelengths):
-        # dFF
-        ax_dff_heat = fig.add_subplot(2, num_cols, plot_idx)
-        
+ 
+        ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         all_cond1_dff = []
         all_cond2_dff = []
-        
         for day_name, data in results.items():
             if category not in data:
                 continue
-                
             category_data = data[category]
-            
             if condition1_key in category_data and wl in category_data[condition1_key]['dff']:
                 all_cond1_dff.extend(category_data[condition1_key]['dff'][wl]['episodes'])
-            
             if condition2_key in category_data and wl in category_data[condition2_key]['dff']:
                 all_cond2_dff.extend(category_data[condition2_key]['dff'][wl]['episodes'])
-        
         if all_cond1_dff or all_cond2_dff:
-            combined_dff = []
-            if all_cond1_dff:
-                combined_dff.extend(all_cond1_dff)
-            if all_cond2_dff:
-                combined_dff.extend(all_cond2_dff)
-            
-            if combined_dff:
-                combined_dff = np.array(combined_dff)
+            combined_dff = np.array(all_cond1_dff + all_cond2_dff) if all_cond1_dff + all_cond2_dff else None
+            if combined_dff is not None:
                 n_cond1 = len(all_cond1_dff)
-                
-                if len(combined_dff) == 1:
-                    combined_dff = np.vstack([combined_dff[0], combined_dff[0]])
-                    im = ax_dff_heat.imshow(combined_dff, aspect='auto', interpolation='nearest',
-                                          extent=[time_array[0], time_array[-1], 0, 1],
-                                          cmap='coolwarm', origin='lower')
-                else:
-                    im = ax_dff_heat.imshow(combined_dff, aspect='auto', interpolation='nearest',
-                                          extent=[time_array[0], time_array[-1], 0, len(combined_dff)],
-                                          cmap='coolwarm', origin='lower')
-                    if len(combined_dff) <= 10:
-                        ax_dff_heat.set_yticks(np.arange(0, len(combined_dff)+1, 1))
-                
-                ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-                if n_cond1 > 0 and len(combined_dff) > n_cond1:
-                    ax_dff_heat.axhline(y=n_cond1, color='k', linestyle='--', linewidth=1)
-                
-                ax_dff_heat.set_xlabel('Time (s)')
-                ax_dff_heat.set_ylabel('Trials')
+                draw_heatmap(ax_dff_heat, combined_dff, time_array,
+                             'coolwarm', 'ΔF/F',
+                             extra_lines=[n_cond1] if n_cond1 > 0 and len(combined_dff) > n_cond1 else None)
                 ax_dff_heat.set_title(f'{category} - Fiber ΔF/F Heatmap {wl}nm')
-                plt.colorbar(im, ax=ax_dff_heat, label='ΔF/F', orientation='horizontal')
-            else:
-                ax_dff_heat.text(0.5, 0.5, 'No data available', 
-                               ha='center', va='center', fontsize=12, color='gray')
-                ax_dff_heat.set_title(f'{category} - Fiber ΔF/F Heatmap {wl}nm')
-                ax_dff_heat.axis('off')
         else:
-            ax_dff_heat.text(0.5, 0.5, 'No data available', 
+            ax_dff_heat.text(0.5, 0.5, 'No data available',
                            ha='center', va='center', fontsize=12, color='gray')
             ax_dff_heat.set_title(f'{category} - Fiber ΔF/F Heatmap {wl}nm')
             ax_dff_heat.axis('off')
-        
-        plot_idx += 1
-        
-        ax_zscore_heat = fig.add_subplot(2, num_cols, plot_idx)
-        
+ 
+        ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_cond1_zscore = []
         all_cond2_zscore = []
-        
         for day_name, data in results.items():
             if category not in data:
                 continue
-                
             category_data = data[category]
-            
             if condition1_key in category_data and wl in category_data[condition1_key]['zscore']:
                 all_cond1_zscore.extend(category_data[condition1_key]['zscore'][wl]['episodes'])
-            
             if condition2_key in category_data and wl in category_data[condition2_key]['zscore']:
                 all_cond2_zscore.extend(category_data[condition2_key]['zscore'][wl]['episodes'])
-        
         if all_cond1_zscore or all_cond2_zscore:
-            combined_zscore = []
-            if all_cond1_zscore:
-                combined_zscore.extend(all_cond1_zscore)
-            if all_cond2_zscore:
-                combined_zscore.extend(all_cond2_zscore)
-            
-            if combined_zscore:
-                combined_zscore = np.array(combined_zscore)
+            combined_zscore = np.array(all_cond1_zscore + all_cond2_zscore) if all_cond1_zscore + all_cond2_zscore else None
+            if combined_zscore is not None:
                 n_cond1 = len(all_cond1_zscore)
-                
-                if len(combined_zscore) == 1:
-                    combined_zscore = np.vstack([combined_zscore[0], combined_zscore[0]])
-                    im = ax_zscore_heat.imshow(combined_zscore, aspect='auto', interpolation='nearest',
-                                             extent=[time_array[0], time_array[-1], 0, 1],
-                                             cmap='coolwarm', origin='lower')
-                else:
-                    im = ax_zscore_heat.imshow(combined_zscore, aspect='auto', interpolation='nearest',
-                                             extent=[time_array[0], time_array[-1], 0, len(combined_zscore)],
-                                             cmap='coolwarm', origin='lower')
-                    if len(combined_zscore) <= 10:
-                        ax_zscore_heat.set_yticks(np.arange(0, len(combined_zscore)+1, 1))
-                
-                ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-                if n_cond1 > 0 and len(combined_zscore) > n_cond1:
-                    ax_zscore_heat.axhline(y=n_cond1, color='k', linestyle='--', linewidth=1)
-                
-                ax_zscore_heat.set_xlabel('Time (s)')
-                ax_zscore_heat.set_ylabel('Trials')
+                draw_heatmap(ax_zscore_heat, combined_zscore, time_array,
+                             'coolwarm', 'Z-score',
+                             extra_lines=[n_cond1] if n_cond1 > 0 and len(combined_zscore) > n_cond1 else None)
                 ax_zscore_heat.set_title(f'{category} - Fiber Z-score Heatmap {wl}nm')
-                plt.colorbar(im, ax=ax_zscore_heat, label='Z-score', orientation='horizontal')
-            else:
-                ax_zscore_heat.text(0.5, 0.5, 'No data available', 
-                                  ha='center', va='center', fontsize=12, color='gray')
-                ax_zscore_heat.set_title(f'{category} - Fiber Z-score Heatmap {wl}nm')
-                ax_zscore_heat.axis('off')
         else:
-            ax_zscore_heat.text(0.5, 0.5, 'No data available', 
+            ax_zscore_heat.text(0.5, 0.5, 'No data available',
                               ha='center', va='center', fontsize=12, color='gray')
             ax_zscore_heat.set_title(f'{category} - Fiber Z-score Heatmap {wl}nm')
             ax_zscore_heat.axis('off')
-        
-        plot_idx += 1
-    
-    fig.tight_layout()
-    
-    canvas_frame = tk.Frame(result_window, bg='#f8f8f8')
-    canvas_frame.pack(fill=tk.BOTH, expand=True)
-    
-    canvas = FigureCanvasTkAgg(fig, canvas_frame)
-    canvas.draw()
-    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-    
-    toolbar_frame = tk.Frame(canvas_frame, bg="#f5f5f5")
-    toolbar_frame.pack(fill=tk.X, padx=2, pady=(0,2))
-    toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
+ 
+        fig.tight_layout()
+        embed_figure(inner, fig, row_in_frame=wl_idx)
+ 
+    log_message(f"Comparison window created: {window_title}")
 
-def plot_comparison_window_multi_drug_categories(results, params, condition_key, 
-                                                 categories, window_title):
+def plot_comparison_window_multi_drug_categories(results, params, condition_key,
+                                                  categories, window_title):
     target_wavelengths = []
     for day_name, data in results.items():
         if 'target_wavelengths' in data:
             target_wavelengths = data['target_wavelengths']
             break
-    
     if not target_wavelengths:
         target_wavelengths = ['470']
-    
-    result_window = tk.Toplevel()
-    result_window.title(f"{window_title} - All Days")
-    result_window.state('zoomed')
-    result_window.configure(bg='#f8f8f8')
-    
-    num_wavelengths = len(target_wavelengths)
-    num_cols = 1 + 2 * num_wavelengths
-    
-    fig = Figure(figsize=(4 * num_cols, 8), dpi=100)
-    
-    plot_idx = 1
+ 
     time_array = list(results.values())[0]['time']
-    
-    ax_running = fig.add_subplot(2, num_cols, plot_idx)
-    
-    for idx, (day_name, data) in enumerate(results.items()):
-        day_color = DAY_COLORS[idx % len(DAY_COLORS)]
-        
-        for cat_idx, category in enumerate(categories):
-            if category not in data:
-                continue
-                
-            category_data = data[category]
-            
-            if condition_key in category_data and category_data[condition_key]['running']['mean'] is not None:
-                alpha = 1/len(categories) + (1/len(categories) * cat_idx)
-                
-                log_message(f"Plotting {day_name} - {category} - {cat_idx} with alpha {alpha}")
-                ax_running.plot(time_array, category_data[condition_key]['running']['mean'],
-                              color=day_color, linestyle='-', linewidth=2, 
-                              alpha=alpha, label=f"{day_name} {category}")
-                ax_running.fill_between(time_array,
-                                       category_data[condition_key]['running']['mean'] - category_data[condition_key]['running']['sem'],
-                                       category_data[condition_key]['running']['mean'] + category_data[condition_key]['running']['sem'],
-                                       color=day_color, alpha=alpha*0.5)
-    
-    ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
-    ax_running.set_xlim(time_array[0], time_array[-1])
-    ax_running.set_xlabel('Time (s)')
-    ax_running.set_ylabel('Speed (cm/s)')
-    ax_running.set_title(f'{window_title} - Running Speed')
-    ax_running.legend(fontsize=7, ncol=2)
-    ax_running.grid(False)
-    plot_idx += 1
-    
+ 
+    win, _, inner = make_scrollable_window(f"{window_title} - All Days")
+ 
     for wl_idx, wl in enumerate(target_wavelengths):
-        # dFF
-        ax_dff = fig.add_subplot(2, num_cols, plot_idx)
-        
+        color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
+        fig = make_figure(NUM_COLS)
+        fig.suptitle(f"Wavelength {wl} nm — {window_title}", fontsize=11, fontweight="bold")
+ 
+        # Row 1: Traces
+        ax_running = fig.add_subplot(2, NUM_COLS, 1)
         for idx, (day_name, data) in enumerate(results.items()):
             day_color = DAY_COLORS[idx % len(DAY_COLORS)]
-            
             for cat_idx, category in enumerate(categories):
                 if category not in data:
                     continue
-                    
                 category_data = data[category]
-                
+                if condition_key in category_data and category_data[condition_key]['running']['mean'] is not None:
+                    alpha = 1/len(categories) + (1/len(categories) * cat_idx)
+                    ax_running.plot(time_array, category_data[condition_key]['running']['mean'],
+                                  color=day_color, linestyle='-', linewidth=2,
+                                  alpha=alpha, label=f"{day_name} {category}")
+                    ax_running.fill_between(time_array,
+                                           category_data[condition_key]['running']['mean'] - category_data[condition_key]['running']['sem'],
+                                           category_data[condition_key]['running']['mean'] + category_data[condition_key]['running']['sem'],
+                                           color=day_color, alpha=alpha*0.5)
+        ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
+        ax_running.set_xlim(time_array[0], time_array[-1])
+        ax_running.set_xlabel('Time (s)')
+        ax_running.set_ylabel('Speed (cm/s)')
+        ax_running.set_title(f'{window_title} - Running Speed')
+        ax_running.legend(fontsize=7, ncol=2)
+        ax_running.grid(False)
+ 
+        ax_dff = fig.add_subplot(2, NUM_COLS, 2)
+        for idx, (day_name, data) in enumerate(results.items()):
+            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+            for cat_idx, category in enumerate(categories):
+                if category not in data:
+                    continue
+                category_data = data[category]
                 if condition_key in category_data and wl in category_data[condition_key]['dff']:
                     alpha = 1/len(categories) + (1/len(categories) * cat_idx)
-                    
-                    log_message(f"Plotting {day_name} - {category} - {cat_idx} with alpha {alpha}")
                     ax_dff.plot(time_array, category_data[condition_key]['dff'][wl]['mean'],
-                              color=day_color, linewidth=2, linestyle='-', 
+                              color=day_color, linewidth=2, linestyle='-',
                               alpha=alpha, label=f'{day_name} {category}')
                     ax_dff.fill_between(time_array,
                                        category_data[condition_key]['dff'][wl]['mean'] - category_data[condition_key]['dff'][wl]['sem'],
                                        category_data[condition_key]['dff'][wl]['mean'] + category_data[condition_key]['dff'][wl]['sem'],
                                        color=day_color, alpha=alpha*0.5)
-        
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
@@ -3850,32 +2963,23 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
         ax_dff.set_title(f'{window_title} - Fiber ΔF/F {wl}nm')
         ax_dff.legend(fontsize=7, ncol=2)
         ax_dff.grid(False)
-        plot_idx += 1
-        
-        # Z-score
-        ax_zscore = fig.add_subplot(2, num_cols, plot_idx)
-        
+ 
+        ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
         for idx, (day_name, data) in enumerate(results.items()):
             day_color = DAY_COLORS[idx % len(DAY_COLORS)]
-            
             for cat_idx, category in enumerate(categories):
                 if category not in data:
                     continue
-                    
                 category_data = data[category]
-                
                 if condition_key in category_data and wl in category_data[condition_key]['zscore']:
                     alpha = 1/len(categories) + (1/len(categories) * cat_idx)
-                    
-                    log_message(f"Plotting {day_name} - {category} - {cat_idx} with alpha {alpha}")
                     ax_zscore.plot(time_array, category_data[condition_key]['zscore'][wl]['mean'],
-                                 color=day_color, linewidth=2, linestyle='-', 
+                                 color=day_color, linewidth=2, linestyle='-',
                                  alpha=alpha, label=f'{day_name} {category}')
                     ax_zscore.fill_between(time_array,
                                           category_data[condition_key]['zscore'][wl]['mean'] - category_data[condition_key]['zscore'][wl]['sem'],
                                           category_data[condition_key]['zscore'][wl]['mean'] + category_data[condition_key]['zscore'][wl]['sem'],
                                           color=day_color, alpha=alpha*0.5)
-        
         ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_zscore.set_xlim(time_array[0], time_array[-1])
         ax_zscore.set_xlabel('Time (s)')
@@ -3883,185 +2987,90 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
         ax_zscore.set_title(f'{window_title} - Fiber Z-score {wl}nm')
         ax_zscore.legend(fontsize=7, ncol=2)
         ax_zscore.grid(False)
-        plot_idx += 1
-    
-    ax_running_heat = fig.add_subplot(2, num_cols, plot_idx)
-    
-    all_episodes = []
-    category_boundaries = []
-    
-    for category in categories:
-        category_episodes = []
-        
-        for day_name, data in results.items():
-            if category not in data:
-                continue
-                
-            category_data = data[category]
-            
-            if condition_key in category_data and len(category_data[condition_key]['running']['episodes']) > 0:
-                category_episodes.extend(category_data[condition_key]['running']['episodes'])
-        
-        if category_episodes:
-            all_episodes.extend(category_episodes)
-            if all_episodes:
-                category_boundaries.append(len(all_episodes))
-    
-    if all_episodes:
-        episodes_array = np.array(all_episodes)
-        
-        if len(episodes_array) == 1:
-            episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-            im = ax_running_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                      extent=[time_array[0], time_array[-1], 0, 1],
-                                      cmap='viridis', origin='lower')
-        else:
-            im = ax_running_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                      extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
-                                      cmap='viridis', origin='lower')
-            if len(episodes_array) <= 10:
-                ax_running_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
-        
-        ax_running_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-        
-        for boundary in category_boundaries[:-1]:
-            ax_running_heat.axhline(y=boundary, color='k', linestyle='--', linewidth=1)
-        
-        ax_running_heat.set_xlabel('Time (s)')
-        ax_running_heat.set_ylabel('Trials')
-        ax_running_heat.set_title(f'{window_title} - Running Speed Heatmap')
-        plt.colorbar(im, ax=ax_running_heat, label='Speed (cm/s)', orientation='horizontal')
-    else:
-        ax_running_heat.text(0.5, 0.5, 'No data available', 
-                           ha='center', va='center', fontsize=12, color='gray')
-        ax_running_heat.set_title(f'{window_title} - Running Speed Heatmap')
-        ax_running_heat.axis('off')
-    
-    plot_idx += 1
-    
-    for wl_idx, wl in enumerate(target_wavelengths):
-        # dFF
-        ax_dff_heat = fig.add_subplot(2, num_cols, plot_idx)
-        
+ 
+        # Row 2: Heatmaps
+        ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
         all_episodes = []
         category_boundaries = []
-        
         for category in categories:
             category_episodes = []
-            
             for day_name, data in results.items():
                 if category not in data:
                     continue
-                    
                 category_data = data[category]
-                
-                if condition_key in category_data and wl in category_data[condition_key]['dff']:
-                    category_episodes.extend(category_data[condition_key]['dff'][wl]['episodes'])
-            
+                if condition_key in category_data and len(category_data[condition_key]['running']['episodes']) > 0:
+                    category_episodes.extend(category_data[condition_key]['running']['episodes'])
             if category_episodes:
                 all_episodes.extend(category_episodes)
                 if all_episodes:
                     category_boundaries.append(len(all_episodes))
-        
         if all_episodes:
-            episodes_array = np.array(all_episodes)
-            
-            if len(episodes_array) == 1:
-                episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                      extent=[time_array[0], time_array[-1], 0, 1],
-                                      cmap='coolwarm', origin='lower')
-            else:
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                      extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
-                                      cmap='coolwarm', origin='lower')
-                if len(episodes_array) <= 10:
-                    ax_dff_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
-            
-            ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            
-            for boundary in category_boundaries[:-1]:
-                ax_dff_heat.axhline(y=boundary, color='k', linestyle='--', linewidth=1)
-            
-            ax_dff_heat.set_xlabel('Time (s)')
-            ax_dff_heat.set_ylabel('Trials')
-            ax_dff_heat.set_title(f'{window_title} - Fiber ΔF/F Heatmap {wl}nm')
-            plt.colorbar(im, ax=ax_dff_heat, label='ΔF/F', orientation='horizontal')
+            draw_heatmap(ax_running_heat, np.array(all_episodes), time_array,
+                         'viridis', 'Speed (cm/s)',
+                         extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
+            ax_running_heat.set_title(f'{window_title} - Running Speed Heatmap')
         else:
-            ax_dff_heat.text(0.5, 0.5, 'No data available', 
+            ax_running_heat.text(0.5, 0.5, 'No data available',
+                               ha='center', va='center', fontsize=12, color='gray')
+            ax_running_heat.set_title(f'{window_title} - Running Speed Heatmap')
+            ax_running_heat.axis('off')
+ 
+        ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
+        all_episodes = []
+        category_boundaries = []
+        for category in categories:
+            category_episodes = []
+            for day_name, data in results.items():
+                if category not in data:
+                    continue
+                category_data = data[category]
+                if condition_key in category_data and wl in category_data[condition_key]['dff']:
+                    category_episodes.extend(category_data[condition_key]['dff'][wl]['episodes'])
+            if category_episodes:
+                all_episodes.extend(category_episodes)
+                if all_episodes:
+                    category_boundaries.append(len(all_episodes))
+        if all_episodes:
+            draw_heatmap(ax_dff_heat, np.array(all_episodes), time_array,
+                         'coolwarm', 'ΔF/F',
+                         extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
+            ax_dff_heat.set_title(f'{window_title} - Fiber ΔF/F Heatmap {wl}nm')
+        else:
+            ax_dff_heat.text(0.5, 0.5, 'No data available',
                            ha='center', va='center', fontsize=12, color='gray')
             ax_dff_heat.set_title(f'{window_title} - Fiber ΔF/F Heatmap {wl}nm')
             ax_dff_heat.axis('off')
-        
-        plot_idx += 1
-        
-        # Z-score
-        ax_zscore_heat = fig.add_subplot(2, num_cols, plot_idx)
-        
+ 
+        ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_episodes = []
         category_boundaries = []
-        
         for category in categories:
             category_episodes = []
-            
             for day_name, data in results.items():
                 if category not in data:
                     continue
-                    
                 category_data = data[category]
-                
                 if condition_key in category_data and wl in category_data[condition_key]['zscore']:
                     category_episodes.extend(category_data[condition_key]['zscore'][wl]['episodes'])
-            
             if category_episodes:
                 all_episodes.extend(category_episodes)
                 if all_episodes:
                     category_boundaries.append(len(all_episodes))
-        
         if all_episodes:
-            episodes_array = np.array(all_episodes)
-            
-            if len(episodes_array) == 1:
-                episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                         extent=[time_array[0], time_array[-1], 0, 1],
-                                         cmap='coolwarm', origin='lower')
-            else:
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                         extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
-                                         cmap='coolwarm', origin='lower')
-                if len(episodes_array) <= 10:
-                    ax_zscore_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
-            
-            ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            
-            for boundary in category_boundaries[:-1]:
-                ax_zscore_heat.axhline(y=boundary, color='k', linestyle='--', linewidth=1)
-            
-            ax_zscore_heat.set_xlabel('Time (s)')
-            ax_zscore_heat.set_ylabel('Trials')
+            draw_heatmap(ax_zscore_heat, np.array(all_episodes), time_array,
+                         'coolwarm', 'Z-score',
+                         extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
             ax_zscore_heat.set_title(f'{window_title} - Fiber Z-score Heatmap {wl}nm')
-            plt.colorbar(im, ax=ax_zscore_heat, label='Z-score', orientation='horizontal')
         else:
-            ax_zscore_heat.text(0.5, 0.5, 'No data available', 
+            ax_zscore_heat.text(0.5, 0.5, 'No data available',
                               ha='center', va='center', fontsize=12, color='gray')
             ax_zscore_heat.set_title(f'{window_title} - Fiber Z-score Heatmap {wl}nm')
             ax_zscore_heat.axis('off')
-        
-        plot_idx += 1
-    
-    fig.tight_layout()
-    
-    canvas_frame = tk.Frame(result_window, bg='#f8f8f8')
-    canvas_frame.pack(fill=tk.BOTH, expand=True)
-    
-    canvas = FigureCanvasTkAgg(fig, canvas_frame)
-    canvas.draw()
-    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-    
-    toolbar_frame = tk.Frame(canvas_frame, bg="#f5f5f5")
-    toolbar_frame.pack(fill=tk.X, padx=2, pady=(0,2))
-    toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
+ 
+        fig.tight_layout()
+        embed_figure(inner, fig, row_in_frame=wl_idx)
+ 
+    log_message(f"Multi-drug categories window created: {window_title}")
 
 def create_individual_day_windows_running_optogenetics_drug_multi(results, params):
     """Create individual windows for each day - running+optogenetics+drug with multiple drugs"""
@@ -4087,63 +3096,43 @@ def create_single_day_category_window(day_name, data, params, category, window_t
     """Create window for one drug category showing with/without opto comparison"""
     if category not in data:
         return
-    
-    category_window = tk.Toplevel()
-    
+ 
     target_wavelengths = data.get('target_wavelengths', ['470'])
-    
-    category_window.title(window_title)
-    category_window.state("zoomed")
-    category_window.configure(bg='#f8f8f8')
-    
-    num_wavelengths = len(target_wavelengths)
-    num_cols = 1 + 2 * num_wavelengths
-    fig = Figure(figsize=(4 * num_cols, 8), dpi=100)
-    
-    plot_idx = 1
     time_array = data['time']
-    
     category_data = data[category]
-    
-    # Row 1: Traces
-    # Running trace
-    ax_running = fig.add_subplot(2, num_cols, plot_idx)
-    
-    # With opto
-    if 'with_opto' in category_data and category_data['with_opto']['running']['mean'] is not None:
-        ax_running.plot(time_array, category_data['with_opto']['running']['mean'],
-                      color="#000000", linewidth=2, linestyle='-', alpha=1, label='With Opto')
-        ax_running.fill_between(time_array,
-                               category_data['with_opto']['running']['mean'] - category_data['with_opto']['running']['sem'],
-                               category_data['with_opto']['running']['mean'] + category_data['with_opto']['running']['sem'],
-                               color="#000000", alpha=0.5)
-    
-    # Without opto
-    if 'without_opto' in category_data and category_data['without_opto']['running']['mean'] is not None:
-        ax_running.plot(time_array, category_data['without_opto']['running']['mean'],
-                      color="#000000", linewidth=2, linestyle='-', alpha=0.5, label='Without Opto')
-        ax_running.fill_between(time_array,
-                               category_data['without_opto']['running']['mean'] - category_data['without_opto']['running']['sem'],
-                               category_data['without_opto']['running']['mean'] + category_data['without_opto']['running']['sem'],
-                               color="#000000", alpha=0.3)
-    
-    ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
-    ax_running.set_xlim(time_array[0], time_array[-1])
-    ax_running.set_xlabel('Time (s)')
-    ax_running.set_ylabel('Speed (cm/s)')
-    ax_running.set_title(f'{category} - Running Speed')
-    ax_running.legend()
-    ax_running.grid(False)
-    plot_idx += 1
-    
-    # Fiber traces
+ 
+    win, _, inner = make_scrollable_window(window_title)
+ 
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
-        
-        # dFF trace
-        ax_dff = fig.add_subplot(2, num_cols, plot_idx)
-        
-        # With opto
+        fig = make_figure(NUM_COLS)
+        fig.suptitle(f"Wavelength {wl} nm — {window_title}", fontsize=11, fontweight="bold")
+ 
+        # Row 1: Traces
+        ax_running = fig.add_subplot(2, NUM_COLS, 1)
+        if 'with_opto' in category_data and category_data['with_opto']['running']['mean'] is not None:
+            ax_running.plot(time_array, category_data['with_opto']['running']['mean'],
+                          color="#000000", linewidth=2, linestyle='-', alpha=1, label='With Opto')
+            ax_running.fill_between(time_array,
+                                   category_data['with_opto']['running']['mean'] - category_data['with_opto']['running']['sem'],
+                                   category_data['with_opto']['running']['mean'] + category_data['with_opto']['running']['sem'],
+                                   color="#000000", alpha=0.5)
+        if 'without_opto' in category_data and category_data['without_opto']['running']['mean'] is not None:
+            ax_running.plot(time_array, category_data['without_opto']['running']['mean'],
+                          color="#000000", linewidth=2, linestyle='-', alpha=0.5, label='Without Opto')
+            ax_running.fill_between(time_array,
+                                   category_data['without_opto']['running']['mean'] - category_data['without_opto']['running']['sem'],
+                                   category_data['without_opto']['running']['mean'] + category_data['without_opto']['running']['sem'],
+                                   color="#000000", alpha=0.3)
+        ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
+        ax_running.set_xlim(time_array[0], time_array[-1])
+        ax_running.set_xlabel('Time (s)')
+        ax_running.set_ylabel('Speed (cm/s)')
+        ax_running.set_title(f'{category} - Running Speed')
+        ax_running.legend()
+        ax_running.grid(False)
+ 
+        ax_dff = fig.add_subplot(2, NUM_COLS, 2)
         if 'with_opto' in category_data and wl in category_data['with_opto']['dff']:
             ax_dff.plot(time_array, category_data['with_opto']['dff'][wl]['mean'],
                       color=color, linewidth=2, linestyle='-', alpha=1, label='With Opto')
@@ -4151,8 +3140,6 @@ def create_single_day_category_window(day_name, data, params, category, window_t
                                category_data['with_opto']['dff'][wl]['mean'] - category_data['with_opto']['dff'][wl]['sem'],
                                category_data['with_opto']['dff'][wl]['mean'] + category_data['with_opto']['dff'][wl]['sem'],
                                color=color, alpha=0.5)
-        
-        # Without opto
         if 'without_opto' in category_data and wl in category_data['without_opto']['dff']:
             ax_dff.plot(time_array, category_data['without_opto']['dff'][wl]['mean'],
                       color=color, linewidth=2, linestyle='-', alpha=0.5, label='Without Opto')
@@ -4160,7 +3147,6 @@ def create_single_day_category_window(day_name, data, params, category, window_t
                                category_data['without_opto']['dff'][wl]['mean'] - category_data['without_opto']['dff'][wl]['sem'],
                                category_data['without_opto']['dff'][wl]['mean'] + category_data['without_opto']['dff'][wl]['sem'],
                                color=color, alpha=0.3)
-        
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
@@ -4168,12 +3154,8 @@ def create_single_day_category_window(day_name, data, params, category, window_t
         ax_dff.set_title(f'{category} - Fiber ΔF/F {wl}nm')
         ax_dff.legend()
         ax_dff.grid(False)
-        plot_idx += 1
-        
-        # Z-score trace
-        ax_zscore = fig.add_subplot(2, num_cols, plot_idx)
-        
-        # With opto
+ 
+        ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
         if 'with_opto' in category_data and wl in category_data['with_opto']['zscore']:
             ax_zscore.plot(time_array, category_data['with_opto']['zscore'][wl]['mean'],
                          color=color, linewidth=2, linestyle='-', alpha=1, label='With Opto')
@@ -4181,8 +3163,6 @@ def create_single_day_category_window(day_name, data, params, category, window_t
                                   category_data['with_opto']['zscore'][wl]['mean'] - category_data['with_opto']['zscore'][wl]['sem'],
                                   category_data['with_opto']['zscore'][wl]['mean'] + category_data['with_opto']['zscore'][wl]['sem'],
                                   color=color, alpha=0.5)
-        
-        # Without opto
         if 'without_opto' in category_data and wl in category_data['without_opto']['zscore']:
             ax_zscore.plot(time_array, category_data['without_opto']['zscore'][wl]['mean'],
                          color=color, linewidth=2, linestyle='-', alpha=0.5, label='Without Opto')
@@ -4190,7 +3170,6 @@ def create_single_day_category_window(day_name, data, params, category, window_t
                                   category_data['without_opto']['zscore'][wl]['mean'] - category_data['without_opto']['zscore'][wl]['sem'],
                                   category_data['without_opto']['zscore'][wl]['mean'] + category_data['without_opto']['zscore'][wl]['sem'],
                                   color=color, alpha=0.3)
-        
         ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
         ax_zscore.set_xlim(time_array[0], time_array[-1])
         ax_zscore.set_xlabel('Time (s)')
@@ -4198,265 +3177,137 @@ def create_single_day_category_window(day_name, data, params, category, window_t
         ax_zscore.set_title(f'{category} - Fiber Z-score {wl}nm')
         ax_zscore.legend()
         ax_zscore.grid(False)
-        plot_idx += 1
-    
-    # Row 2: Heatmaps
-    # Running heatmap
-    ax_running_heat = fig.add_subplot(2, num_cols, plot_idx)
-    
-    with_episodes = []
-    without_episodes = []
-    
-    if 'with_opto' in category_data and len(category_data['with_opto']['running']['episodes']) > 0:
-        with_episodes = category_data['with_opto']['running']['episodes']
-    
-    if 'without_opto' in category_data and len(category_data['without_opto']['running']['episodes']) > 0:
-        without_episodes = category_data['without_opto']['running']['episodes']
-    
-    if with_episodes is not None or without_episodes is not None:
-        all_episodes = []
-        if with_episodes is not None:
-            all_episodes.extend(with_episodes)
-        if without_episodes is not None:
-            all_episodes.extend(without_episodes)
-        
-        all_episodes = np.array(all_episodes)
-        n_with = len(with_episodes) if with_episodes is not None else 0
-        
-        if len(all_episodes) == 1:
-            all_episodes = np.vstack([all_episodes[0], all_episodes[0]])
-            im = ax_running_heat.imshow(all_episodes, aspect='auto', interpolation='nearest',
-                                      extent=[time_array[0], time_array[-1], 0, 1],
-                                      cmap='viridis', origin='lower')
-        else:
-            im = ax_running_heat.imshow(all_episodes, aspect='auto', interpolation='nearest',
-                                      extent=[time_array[0], time_array[-1], 0, len(all_episodes)],
-                                      cmap='viridis', origin='lower')
-            if len(all_episodes) <= 10:
-                ax_running_heat.set_yticks(np.arange(0, len(all_episodes)+1, 1))
-        
-        ax_running_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-        if n_with > 0 and len(all_episodes) > n_with:
-            ax_running_heat.axhline(y=n_with, color='k', linestyle='--', linewidth=1, 
-                                    label='With/Without boundary')
-        
-        ax_running_heat.set_xlabel('Time (s)')
-        ax_running_heat.set_ylabel('Trials')
-        ax_running_heat.set_title(f'{category} - Running Speed Heatmap')
-        ax_running_heat.legend(loc='upper right', fontsize=8)
-        plt.colorbar(im, ax=ax_running_heat, label='Speed (cm/s)', orientation='horizontal')
-    plot_idx += 1
-    
-    # Fiber heatmaps
-    for wl_idx, wl in enumerate(target_wavelengths):
-        # dFF heatmap
-        ax_dff_heat = fig.add_subplot(2, num_cols, plot_idx)
-        
+ 
+        # Row 2: Heatmaps
+        ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
+        with_episodes = []
+        without_episodes = []
+        if 'with_opto' in category_data and len(category_data['with_opto']['running']['episodes']) > 0:
+            with_episodes = list(category_data['with_opto']['running']['episodes'])
+        if 'without_opto' in category_data and len(category_data['without_opto']['running']['episodes']) > 0:
+            without_episodes = list(category_data['without_opto']['running']['episodes'])
+        if with_episodes or without_episodes:
+            combined = np.array(with_episodes + without_episodes)
+            n_with = len(with_episodes)
+            draw_heatmap(ax_running_heat, combined, time_array,
+                         'viridis', 'Speed (cm/s)',
+                         extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
+            ax_running_heat.set_title(f'{category} - Running Speed Heatmap')
+            ax_running_heat.legend(loc='upper right', fontsize=8)
+ 
+        ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         with_dff = []
         without_dff = []
-        
         if 'with_opto' in category_data and wl in category_data['with_opto']['dff']:
-            with_dff = category_data['with_opto']['dff'][wl]['episodes']
-        
+            with_dff = list(category_data['with_opto']['dff'][wl]['episodes'])
         if 'without_opto' in category_data and wl in category_data['without_opto']['dff']:
-            without_dff = category_data['without_opto']['dff'][wl]['episodes']
-        
-        if with_dff is not None or without_dff is not None:
-            all_dff = []
-            if with_dff is not None:
-                all_dff.extend(with_dff)
-            if without_dff is not None:
-                all_dff.extend(without_dff)
-            
-            all_dff = np.array(all_dff)
-            n_with = len(with_dff) if with_dff is not None else 0
-            
-            if len(all_dff) == 1:
-                all_dff = np.vstack([all_dff[0], all_dff[0]])
-                im = ax_dff_heat.imshow(all_dff, aspect='auto', interpolation='nearest',
-                                      extent=[time_array[0], time_array[-1], 0, 1],
-                                      cmap='coolwarm', origin='lower')
-            else:
-                im = ax_dff_heat.imshow(all_dff, aspect='auto', interpolation='nearest',
-                                      extent=[time_array[0], time_array[-1], 0, len(all_dff)],
-                                      cmap='coolwarm', origin='lower')
-                if len(all_dff) <= 10:
-                    ax_dff_heat.set_yticks(np.arange(0, len(all_dff)+1, 1))
-            
-            ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            if n_with > 0 and len(all_dff) > n_with:
-                ax_dff_heat.axhline(y=n_with, color='k', linestyle='--', linewidth=1,
-                                    label='With/Without boundary')
-            
-            ax_dff_heat.set_xlabel('Time (s)')
-            ax_dff_heat.set_ylabel('Trials')
+            without_dff = list(category_data['without_opto']['dff'][wl]['episodes'])
+        if with_dff or without_dff:
+            combined = np.array(with_dff + without_dff)
+            n_with = len(with_dff)
+            draw_heatmap(ax_dff_heat, combined, time_array,
+                         'coolwarm', 'ΔF/F',
+                         extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
             ax_dff_heat.set_title(f'{category} - Fiber ΔF/F Heatmap {wl}nm')
             ax_dff_heat.legend(loc='upper right', fontsize=8)
-            plt.colorbar(im, ax=ax_dff_heat, label='ΔF/F', orientation='horizontal')
-        plot_idx += 1
-        
-        # Z-score heatmap
-        ax_zscore_heat = fig.add_subplot(2, num_cols, plot_idx)
-        
+ 
+        ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         with_zscore = []
         without_zscore = []
-        
         if 'with_opto' in category_data and wl in category_data['with_opto']['zscore']:
-            with_zscore = category_data['with_opto']['zscore'][wl]['episodes']
-        
+            with_zscore = list(category_data['with_opto']['zscore'][wl]['episodes'])
         if 'without_opto' in category_data and wl in category_data['without_opto']['zscore']:
-            without_zscore = category_data['without_opto']['zscore'][wl]['episodes']
-        
-        if with_zscore is not None or without_zscore is not None:
-            all_zscore = []
-            if with_zscore is not None:
-                all_zscore.extend(with_zscore)
-            if without_zscore is not None:
-                all_zscore.extend(without_zscore)
-            
-            all_zscore = np.array(all_zscore)
-            n_with = len(with_zscore) if with_zscore is not None else 0
-            
-            if len(all_zscore) == 1:
-                all_zscore = np.vstack([all_zscore[0], all_zscore[0]])
-                im = ax_zscore_heat.imshow(all_zscore, aspect='auto', interpolation='nearest',
-                                         extent=[time_array[0], time_array[-1], 0, 1],
-                                         cmap='coolwarm', origin='lower')
-            else:
-                im = ax_zscore_heat.imshow(all_zscore, aspect='auto', interpolation='nearest',
-                                         extent=[time_array[0], time_array[-1], 0, len(all_zscore)],
-                                         cmap='coolwarm', origin='lower')
-                if len(all_zscore) <= 10:
-                    ax_zscore_heat.set_yticks(np.arange(0, len(all_zscore)+1, 1))
-            
-            ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            if n_with > 0 and len(all_zscore) > n_with:
-                ax_zscore_heat.axhline(y=n_with, color='k', linestyle='--', linewidth=1,
-                                        label='With/Without boundary')
-            
-            ax_zscore_heat.set_xlabel('Time (s)')
-            ax_zscore_heat.set_ylabel('Trials')
+            without_zscore = list(category_data['without_opto']['zscore'][wl]['episodes'])
+        if with_zscore or without_zscore:
+            combined = np.array(with_zscore + without_zscore)
+            n_with = len(with_zscore)
+            draw_heatmap(ax_zscore_heat, combined, time_array,
+                         'coolwarm', 'Z-score',
+                         extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
             ax_zscore_heat.set_title(f'{category} - Fiber Z-score Heatmap {wl}nm')
             ax_zscore_heat.legend(loc='upper right', fontsize=8)
-            plt.colorbar(im, ax=ax_zscore_heat, label='Z-score', orientation='horizontal')
-        plot_idx += 1
-    
-    fig.tight_layout()
-    
-    canvas_frame = tk.Frame(category_window, bg='#f8f8f8')
-    canvas_frame.pack(fill=tk.BOTH, expand=True)
-    
-    canvas = FigureCanvasTkAgg(fig, canvas_frame)
-    canvas.draw()
-    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-    
-    toolbar_frame = tk.Frame(canvas_frame, bg="#f5f5f5")
-    toolbar_frame.pack(fill=tk.X, padx=2, pady=(0,2))
-    toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
-    
+ 
+        fig.tight_layout()
+        embed_figure(inner, fig, row_in_frame=wl_idx)
+ 
     log_message(f"Category window created: {window_title}")
 
 def create_single_day_all_categories_window(day_name, data, params, window_title):
     """Create window showing all categories with opto condition comparison"""
-    all_window = tk.Toplevel()
-    
     target_wavelengths = data.get('target_wavelengths', ['470'])
     drug_categories = data.get('drug_categories', [])
-    
-    all_window.title(window_title)
-    all_window.state("zoomed")
-    all_window.configure(bg='#f8f8f8')
-    
-    num_wavelengths = len(target_wavelengths)
-    num_cols = 1 + 2 * num_wavelengths
-    fig = Figure(figsize=(4 * num_cols, 8), dpi=100)
-    
-    plot_idx = 1
     time_array = data['time']
-    
-    # Row 1: Traces showing all categories
-    # Running trace
-    ax_running = fig.add_subplot(2, num_cols, plot_idx)
-    
-    for cat_idx, category in enumerate(drug_categories):
-        if category not in data:
-            continue
-        
-        category_data = data[category]
-        
-        # Plot with opto
-        if 'with_opto' in category_data and category_data['with_opto']['running']['mean'] is not None:
-            alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
-            log_message(f"Plotting {day_name} - {category} - {cat_idx} with alpha {alpha}")
-            ax_running.plot(time_array, category_data['with_opto']['running']['mean'],
-                          color=DAY_COLORS[cat_idx % len(DAY_COLORS)], 
-                          linewidth=2, linestyle='-', alpha=alpha, 
-                          label=f'{category} +Opto')
-            ax_running.fill_between(time_array,
-                                   category_data['with_opto']['running']['mean'] - category_data['with_opto']['running']['sem'],
-                                   category_data['with_opto']['running']['mean'] + category_data['with_opto']['running']['sem'],
-                                   color=DAY_COLORS[cat_idx % len(DAY_COLORS)], alpha=alpha*0.3)
-        
-        # Plot without opto
-        if 'without_opto' in category_data and category_data['without_opto']['running']['mean'] is not None:
-            alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
-            log_message(f"Plotting {day_name} - {category} - {cat_idx} without opto with alpha {alpha}")
-            ax_running.plot(time_array, category_data['without_opto']['running']['mean'],
-                          color=DAY_COLORS[cat_idx % len(DAY_COLORS)], 
-                          linewidth=2, linestyle='-', alpha=alpha, 
-                          label=f'{category} -Opto')
-            ax_running.fill_between(time_array,
-                                   category_data['without_opto']['running']['mean'] - category_data['without_opto']['running']['sem'],
-                                   category_data['without_opto']['running']['mean'] + category_data['without_opto']['running']['sem'],
-                                   color=DAY_COLORS[cat_idx % len(DAY_COLORS)], alpha=alpha*0.3)
-    
-    ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
-    ax_running.set_xlim(time_array[0], time_array[-1])
-    ax_running.set_xlabel('Time (s)')
-    ax_running.set_ylabel('Speed (cm/s)')
-    ax_running.set_title(f'{day_name} - Running Speed (All Categories)')
-    ax_running.legend(fontsize=7, ncol=2)
-    ax_running.grid(False)
-    plot_idx += 1
-    
-    # Fiber traces
+ 
+    win, _, inner = make_scrollable_window(window_title)
+ 
     for wl_idx, wl in enumerate(target_wavelengths):
-        # dFF trace
-        ax_dff = fig.add_subplot(2, num_cols, plot_idx)
-        
+        color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
+        fig = make_figure(NUM_COLS)
+        fig.suptitle(f"Wavelength {wl} nm — {window_title}", fontsize=11, fontweight="bold")
+ 
+        # Row 1: Traces
+        ax_running = fig.add_subplot(2, NUM_COLS, 1)
         for cat_idx, category in enumerate(drug_categories):
             if category not in data:
                 continue
-            
             category_data = data[category]
-            fiber_color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
-            
-            # With opto
+            if 'with_opto' in category_data and category_data['with_opto']['running']['mean'] is not None:
+                alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
+                log_message(f"Plotting {day_name} - {category} - {cat_idx} with alpha {alpha}")
+                ax_running.plot(time_array, category_data['with_opto']['running']['mean'],
+                              color=DAY_COLORS[cat_idx % len(DAY_COLORS)],
+                              linewidth=2, linestyle='-', alpha=alpha,
+                              label=f'{category} +Opto')
+                ax_running.fill_between(time_array,
+                                       category_data['with_opto']['running']['mean'] - category_data['with_opto']['running']['sem'],
+                                       category_data['with_opto']['running']['mean'] + category_data['with_opto']['running']['sem'],
+                                       color=DAY_COLORS[cat_idx % len(DAY_COLORS)], alpha=alpha*0.3)
+            if 'without_opto' in category_data and category_data['without_opto']['running']['mean'] is not None:
+                alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
+                log_message(f"Plotting {day_name} - {category} - {cat_idx} without opto with alpha {alpha}")
+                ax_running.plot(time_array, category_data['without_opto']['running']['mean'],
+                              color=DAY_COLORS[cat_idx % len(DAY_COLORS)],
+                              linewidth=2, linestyle='-', alpha=alpha,
+                              label=f'{category} -Opto')
+                ax_running.fill_between(time_array,
+                                       category_data['without_opto']['running']['mean'] - category_data['without_opto']['running']['sem'],
+                                       category_data['without_opto']['running']['mean'] + category_data['without_opto']['running']['sem'],
+                                       color=DAY_COLORS[cat_idx % len(DAY_COLORS)], alpha=alpha*0.3)
+        ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
+        ax_running.set_xlim(time_array[0], time_array[-1])
+        ax_running.set_xlabel('Time (s)')
+        ax_running.set_ylabel('Speed (cm/s)')
+        ax_running.set_title(f'{day_name} - Running Speed (All Categories)')
+        ax_running.legend(fontsize=7, ncol=2)
+        ax_running.grid(False)
+ 
+        ax_dff = fig.add_subplot(2, NUM_COLS, 2)
+        for cat_idx, category in enumerate(drug_categories):
+            if category not in data:
+                continue
+            category_data = data[category]
             if 'with_opto' in category_data and wl in category_data['with_opto']['dff']:
                 alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
                 log_message(f"Plotting {day_name} - {category} - {cat_idx} with alpha {alpha}")
                 ax_dff.plot(time_array, category_data['with_opto']['dff'][wl]['mean'],
-                          color=DAY_COLORS[cat_idx % len(DAY_COLORS)], 
+                          color=DAY_COLORS[cat_idx % len(DAY_COLORS)],
                           linewidth=2, linestyle='-', alpha=alpha,
                           label=f'{category} +Opto')
                 ax_dff.fill_between(time_array,
                                    category_data['with_opto']['dff'][wl]['mean'] - category_data['with_opto']['dff'][wl]['sem'],
                                    category_data['with_opto']['dff'][wl]['mean'] + category_data['with_opto']['dff'][wl]['sem'],
                                    color=DAY_COLORS[cat_idx % len(DAY_COLORS)], alpha=alpha*0.3)
-            
-            # Without opto
             if 'without_opto' in category_data and wl in category_data['without_opto']['dff']:
                 alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
                 log_message(f"Plotting {day_name} - {category} - {cat_idx} without opto with alpha {alpha}")
                 ax_dff.plot(time_array, category_data['without_opto']['dff'][wl]['mean'],
-                          color=DAY_COLORS[cat_idx % len(DAY_COLORS)], 
+                          color=DAY_COLORS[cat_idx % len(DAY_COLORS)],
                           linewidth=2, linestyle='-', alpha=alpha,
                           label=f'{category} -Opto')
                 ax_dff.fill_between(time_array,
                                    category_data['without_opto']['dff'][wl]['mean'] - category_data['without_opto']['dff'][wl]['sem'],
                                    category_data['without_opto']['dff'][wl]['mean'] + category_data['without_opto']['dff'][wl]['sem'],
                                    color=DAY_COLORS[cat_idx % len(DAY_COLORS)], alpha=alpha*0.3)
-        
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
@@ -4464,43 +3315,34 @@ def create_single_day_all_categories_window(day_name, data, params, window_title
         ax_dff.set_title(f'{day_name} - Fiber ΔF/F {wl}nm (All Categories)')
         ax_dff.legend(fontsize=6, ncol=2)
         ax_dff.grid(False)
-        plot_idx += 1
-        
-        # Z-score trace (similar structure)
-        ax_zscore = fig.add_subplot(2, num_cols, plot_idx)
-        
+ 
+        ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
         for cat_idx, category in enumerate(drug_categories):
             if category not in data:
                 continue
-            
             category_data = data[category]
-            
-            # With opto
             if 'with_opto' in category_data and wl in category_data['with_opto']['zscore']:
                 alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
                 log_message(f"Plotting {day_name} - {category} - {cat_idx} with alpha {alpha}")
                 ax_zscore.plot(time_array, category_data['with_opto']['zscore'][wl]['mean'],
-                             color=DAY_COLORS[cat_idx % len(DAY_COLORS)], 
+                             color=DAY_COLORS[cat_idx % len(DAY_COLORS)],
                              linewidth=2, linestyle='-', alpha=alpha,
                              label=f'{category} +Opto')
                 ax_zscore.fill_between(time_array,
                                       category_data['with_opto']['zscore'][wl]['mean'] - category_data['with_opto']['zscore'][wl]['sem'],
                                       category_data['with_opto']['zscore'][wl]['mean'] + category_data['with_opto']['zscore'][wl]['sem'],
                                       color=DAY_COLORS[cat_idx % len(DAY_COLORS)], alpha=alpha*0.3)
-            
-            # Without opto
             if 'without_opto' in category_data and wl in category_data['without_opto']['zscore']:
                 alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
                 log_message(f"Plotting {day_name} - {category} - {cat_idx} without opto with alpha {alpha}")
                 ax_zscore.plot(time_array, category_data['without_opto']['zscore'][wl]['mean'],
-                             color=DAY_COLORS[cat_idx % len(DAY_COLORS)], 
+                             color=DAY_COLORS[cat_idx % len(DAY_COLORS)],
                              linewidth=2, linestyle='-', alpha=alpha,
                              label=f'{category} -Opto')
                 ax_zscore.fill_between(time_array,
                                       category_data['without_opto']['zscore'][wl]['mean'] - category_data['without_opto']['zscore'][wl]['sem'],
                                       category_data['without_opto']['zscore'][wl]['mean'] + category_data['without_opto']['zscore'][wl]['sem'],
                                       color=DAY_COLORS[cat_idx % len(DAY_COLORS)], alpha=alpha*0.3)
-        
         ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_zscore.set_xlim(time_array[0], time_array[-1])
         ax_zscore.set_xlabel('Time (s)')
@@ -4508,306 +3350,151 @@ def create_single_day_all_categories_window(day_name, data, params, window_title
         ax_zscore.set_title(f'{day_name} - Fiber Z-score {wl}nm (All Categories)')
         ax_zscore.legend(fontsize=6, ncol=2)
         ax_zscore.grid(False)
-        plot_idx += 1
-    
-    # ############ Row 2: Heatmaps ############
-    # Running speed heatmap
-    ax_running_heat = fig.add_subplot(2, num_cols, plot_idx)
-    
-    all_running_episodes = []
-    category_boundaries = []
-    condition_boundaries = []
-    
-    for category in drug_categories:
-        if category not in data:
-            continue
-        
-        category_data = data[category]
-        category_start = len(all_running_episodes)
-        
-        # Add with opto episodes first
-        if 'with_opto' in category_data and len(category_data['with_opto']['running']['episodes']) > 0:
-            with_episodes = category_data['with_opto']['running']['episodes']
-            all_running_episodes.extend(with_episodes)
-            if all_running_episodes:
-                condition_boundaries.append(len(all_running_episodes))
-        
-        # Add without opto episodes next
-        if 'without_opto' in category_data and len(category_data['without_opto']['running']['episodes']) > 0:
-            without_episodes = category_data['without_opto']['running']['episodes']
-            all_running_episodes.extend(without_episodes)
-            if all_running_episodes:
-                category_boundaries.append(len(all_running_episodes))
-    
-    if all_running_episodes:
-        episodes_array = np.array(all_running_episodes)
-        
-        if len(episodes_array) == 1:
-            episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-            im = ax_running_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                      extent=[time_array[0], time_array[-1], 0, 1],
-                                      cmap='viridis', origin='lower')
-        else:
-            im = ax_running_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                      extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
-                                      cmap='viridis', origin='lower')
-            if len(episodes_array) <= 10:
-                ax_running_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
-        
-        # Draw vertical event line
-        ax_running_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-        
-        # Draw condition boundaries (light lines for with/without opto separation)
-        for boundary in condition_boundaries[:-1]:
-            ax_running_heat.axhline(y=boundary, color='gray', linestyle='-', linewidth=1, alpha=0.5)
-        
-        # Draw category boundaries (dark lines for category separation)
-        for boundary in category_boundaries[:-1]:
-            ax_running_heat.axhline(y=boundary, color='k', linestyle='--', linewidth=2, alpha=0.8)
-        
-        # Add labels for categories
-        y_positions = []
-        current_y = 0
-        for i, category in enumerate(drug_categories):
-            if category not in data:
-                continue
-            
-            category_data = data[category]
-            category_height = 0
-            
-            if 'with_opto' in category_data:
-                category_height += len(category_data['with_opto']['running']['episodes'])
-            if 'without_opto' in category_data:
-                category_height += len(category_data['without_opto']['running']['episodes'])
-            
-            if category_height > 0:
-                mid_y = current_y + category_height / 2
-                y_positions.append((mid_y, category))
-                current_y += category_height
-        
-        # Set y-tick labels for categories
-        if y_positions:
-            y_pos, y_labels = zip(*y_positions)
-            ax_running_heat.set_yticks(y_pos)
-            ax_running_heat.set_yticklabels(y_labels, fontsize=7)
-        
-        ax_running_heat.set_xlabel('Time (s)')
-        ax_running_heat.set_ylabel('Trials')
-        ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap (All Categories)')
-        plt.colorbar(im, ax=ax_running_heat, label='Speed (cm/s)', orientation='horizontal')
-    else:
-        # Show message if no data
-        ax_running_heat.text(0.5, 0.5, 'No running data available',
-                           ha='center', va='center', transform=ax_running_heat.transAxes,
-                           fontsize=12, color='#666666')
-        ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap (All Categories)')
-        ax_running_heat.axis('off')
-    
-    plot_idx += 1
-    
-    # Fiber heatmaps
-    for wl_idx, wl in enumerate(target_wavelengths):
-        color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
-        
-        # dFF heatmap
-        ax_dff_heat = fig.add_subplot(2, num_cols, plot_idx)
-        
-        all_dff_episodes = []
-        category_boundaries_dff = []
-        condition_boundaries_dff = []
-        
+ 
+        # Row 2: Heatmaps
+        ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
+        all_running_episodes = []
+        category_boundaries = []
+        condition_boundaries = []
         for category in drug_categories:
             if category not in data:
                 continue
-            
             category_data = data[category]
-            category_start = len(all_dff_episodes)
-            
-            # Add with opto episodes first
-            if 'with_opto' in category_data and wl in category_data['with_opto']['dff']:
-                with_episodes = category_data['with_opto']['dff'][wl]['episodes']
-                all_dff_episodes.extend(with_episodes)
-                if all_dff_episodes:
-                    condition_boundaries_dff.append(len(all_dff_episodes))
-            
-            # Add without opto episodes next
-            if 'without_opto' in category_data and wl in category_data['without_opto']['dff']:
-                without_episodes = category_data['without_opto']['dff'][wl]['episodes']
-                all_dff_episodes.extend(without_episodes)
-                if all_dff_episodes:
-                    category_boundaries_dff.append(len(all_dff_episodes))
-        
-        if all_dff_episodes is not None and len(all_dff_episodes) > 0:
-            episodes_array = np.array(all_dff_episodes)
-            
-            if len(episodes_array) == 1:
-                episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                      extent=[time_array[0], time_array[-1], 0, 1],
-                                      cmap='coolwarm', origin='lower')
-            else:
-                im = ax_dff_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                      extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
-                                      cmap='coolwarm', origin='lower')
-                if len(episodes_array) <= 10:
-                    ax_dff_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
-            
-            # Draw vertical event line
-            ax_dff_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            
-            # Draw condition boundaries
-            for boundary in condition_boundaries_dff[:-1]:
-                ax_dff_heat.axhline(y=boundary, color='gray', linestyle='-', linewidth=1, alpha=0.5)
-            
-            # Draw category boundaries
-            for boundary in category_boundaries_dff[:-1]:
-                ax_dff_heat.axhline(y=boundary, color='k', linestyle='--', linewidth=2, alpha=0.8)
-            
-            # Add category labels
+            if 'with_opto' in category_data and len(category_data['with_opto']['running']['episodes']) > 0:
+                all_running_episodes.extend(category_data['with_opto']['running']['episodes'])
+                if all_running_episodes:
+                    condition_boundaries.append(len(all_running_episodes))
+            if 'without_opto' in category_data and len(category_data['without_opto']['running']['episodes']) > 0:
+                all_running_episodes.extend(category_data['without_opto']['running']['episodes'])
+                if all_running_episodes:
+                    category_boundaries.append(len(all_running_episodes))
+        if all_running_episodes:
+            extra = []
+            extra += [b for b in condition_boundaries[:-1]]
+            extra += [b for b in category_boundaries[:-1]]
+            extra = sorted(set(extra)) if extra else None
+            draw_heatmap(ax_running_heat, np.array(all_running_episodes), time_array,
+                         'viridis', 'Speed (cm/s)', extra_lines=extra if extra else None)
+            # category label ticks
             y_positions = []
             current_y = 0
             for i, category in enumerate(drug_categories):
                 if category not in data:
                     continue
-                
                 category_data = data[category]
-                category_height = 0
-                
+                h = 0
+                if 'with_opto' in category_data:
+                    h += len(category_data['with_opto']['running']['episodes'])
+                if 'without_opto' in category_data:
+                    h += len(category_data['without_opto']['running']['episodes'])
+                if h > 0:
+                    y_positions.append((current_y + h / 2, category))
+                    current_y += h
+            if y_positions:
+                y_pos, y_labels = zip(*y_positions)
+                ax_running_heat.set_yticks(y_pos)
+                ax_running_heat.set_yticklabels(y_labels, fontsize=7)
+            ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap (All Categories)')
+        else:
+            ax_running_heat.text(0.5, 0.5, 'No running data available',
+                               ha='center', va='center', transform=ax_running_heat.transAxes,
+                               fontsize=12, color='#666666')
+            ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap (All Categories)')
+            ax_running_heat.axis('off')
+ 
+        ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
+        all_dff_episodes = []
+        category_boundaries_dff = []
+        condition_boundaries_dff = []
+        for category in drug_categories:
+            if category not in data:
+                continue
+            category_data = data[category]
+            if 'with_opto' in category_data and wl in category_data['with_opto']['dff']:
+                all_dff_episodes.extend(category_data['with_opto']['dff'][wl]['episodes'])
+                if all_dff_episodes:
+                    condition_boundaries_dff.append(len(all_dff_episodes))
+            if 'without_opto' in category_data and wl in category_data['without_opto']['dff']:
+                all_dff_episodes.extend(category_data['without_opto']['dff'][wl]['episodes'])
+                if all_dff_episodes:
+                    category_boundaries_dff.append(len(all_dff_episodes))
+        if all_dff_episodes:
+            extra = sorted(set(condition_boundaries_dff[:-1] + category_boundaries_dff[:-1])) if (condition_boundaries_dff[:-1] + category_boundaries_dff[:-1]) else None
+            draw_heatmap(ax_dff_heat, np.array(all_dff_episodes), time_array,
+                         'coolwarm', 'ΔF/F', extra_lines=extra)
+            y_positions = []
+            current_y = 0
+            for i, category in enumerate(drug_categories):
+                if category not in data:
+                    continue
+                category_data = data[category]
+                h = 0
                 if 'with_opto' in category_data and wl in category_data['with_opto']['dff']:
-                    category_height += len(category_data['with_opto']['dff'][wl]['episodes'])
+                    h += len(category_data['with_opto']['dff'][wl]['episodes'])
                 if 'without_opto' in category_data and wl in category_data['without_opto']['dff']:
-                    category_height += len(category_data['without_opto']['dff'][wl]['episodes'])
-                
-                if category_height > 0:
-                    mid_y = current_y + category_height / 2
-                    y_positions.append((mid_y, category))
-                    current_y += category_height
-            
-            # Set y-tick labels for categories
+                    h += len(category_data['without_opto']['dff'][wl]['episodes'])
+                if h > 0:
+                    y_positions.append((current_y + h / 2, category))
+                    current_y += h
             if y_positions:
                 y_pos, y_labels = zip(*y_positions)
                 ax_dff_heat.set_yticks(y_pos)
                 ax_dff_heat.set_yticklabels(y_labels, fontsize=7)
-            
-            ax_dff_heat.set_xlabel('Time (s)')
-            ax_dff_heat.set_ylabel('Trials')
             ax_dff_heat.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm (All Categories)')
-            plt.colorbar(im, ax=ax_dff_heat, label='ΔF/F', orientation='horizontal')
         else:
-            # Show message if no data
             ax_dff_heat.text(0.5, 0.5, f'No dFF data for {wl}nm',
                            ha='center', va='center', transform=ax_dff_heat.transAxes,
                            fontsize=12, color='#666666')
             ax_dff_heat.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm (All Categories)')
             ax_dff_heat.axis('off')
-        
-        plot_idx += 1
-        
-        # Z-score heatmap
-        ax_zscore_heat = fig.add_subplot(2, num_cols, plot_idx)
-        
+ 
+        ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_zscore_episodes = []
         category_boundaries_zscore = []
         condition_boundaries_zscore = []
-        
         for category in drug_categories:
             if category not in data:
                 continue
-            
             category_data = data[category]
-            category_start = len(all_zscore_episodes)
-            
-            # Add with opto episodes first
             if 'with_opto' in category_data and wl in category_data['with_opto']['zscore']:
-                with_episodes = category_data['with_opto']['zscore'][wl]['episodes']
-                all_zscore_episodes.extend(with_episodes)
+                all_zscore_episodes.extend(category_data['with_opto']['zscore'][wl]['episodes'])
                 if all_zscore_episodes:
                     condition_boundaries_zscore.append(len(all_zscore_episodes))
-            
-            # Add without opto episodes next
             if 'without_opto' in category_data and wl in category_data['without_opto']['zscore']:
-                without_episodes = category_data['without_opto']['zscore'][wl]['episodes']
-                all_zscore_episodes.extend(without_episodes)
+                all_zscore_episodes.extend(category_data['without_opto']['zscore'][wl]['episodes'])
                 if all_zscore_episodes:
                     category_boundaries_zscore.append(len(all_zscore_episodes))
-        
         if all_zscore_episodes:
-            episodes_array = np.array(all_zscore_episodes)
-            
-            if len(episodes_array) == 1:
-                episodes_array = np.vstack([episodes_array[0], episodes_array[0]])
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                         extent=[time_array[0], time_array[-1], 0, 1],
-                                         cmap='coolwarm', origin='lower')
-            else:
-                im = ax_zscore_heat.imshow(episodes_array, aspect='auto', interpolation='nearest',
-                                         extent=[time_array[0], time_array[-1], 0, len(episodes_array)],
-                                         cmap='coolwarm', origin='lower')
-                if len(episodes_array) <= 10:
-                    ax_zscore_heat.set_yticks(np.arange(0, len(episodes_array)+1, 1))
-            
-            # Draw vertical event line
-            ax_zscore_heat.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            
-            # Draw condition boundaries
-            for boundary in condition_boundaries_zscore[:-1]:
-                ax_zscore_heat.axhline(y=boundary, color='gray', linestyle='-', linewidth=1, alpha=0.5)
-            
-            # Draw category boundaries
-            for boundary in category_boundaries_zscore[:-1]:
-                ax_zscore_heat.axhline(y=boundary, color='k', linestyle='--', linewidth=2, alpha=0.8)
-            
-            # Add category labels
+            extra = sorted(set(condition_boundaries_zscore[:-1] + category_boundaries_zscore[:-1])) if (condition_boundaries_zscore[:-1] + category_boundaries_zscore[:-1]) else None
+            draw_heatmap(ax_zscore_heat, np.array(all_zscore_episodes), time_array,
+                         'coolwarm', 'Z-score', extra_lines=extra)
             y_positions = []
             current_y = 0
             for i, category in enumerate(drug_categories):
                 if category not in data:
                     continue
-                
                 category_data = data[category]
-                category_height = 0
-                
+                h = 0
                 if 'with_opto' in category_data and wl in category_data['with_opto']['zscore']:
-                    category_height += len(category_data['with_opto']['zscore'][wl]['episodes'])
+                    h += len(category_data['with_opto']['zscore'][wl]['episodes'])
                 if 'without_opto' in category_data and wl in category_data['without_opto']['zscore']:
-                    category_height += len(category_data['without_opto']['zscore'][wl]['episodes'])
-                
-                if category_height > 0:
-                    mid_y = current_y + category_height / 2
-                    y_positions.append((mid_y, category))
-                    current_y += category_height
-            
-            # Set y-tick labels for categories
+                    h += len(category_data['without_opto']['zscore'][wl]['episodes'])
+                if h > 0:
+                    y_positions.append((current_y + h / 2, category))
+                    current_y += h
             if y_positions:
                 y_pos, y_labels = zip(*y_positions)
                 ax_zscore_heat.set_yticks(y_pos)
                 ax_zscore_heat.set_yticklabels(y_labels, fontsize=7)
-            
-            ax_zscore_heat.set_xlabel('Time (s)')
-            ax_zscore_heat.set_ylabel('Trials')
             ax_zscore_heat.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm (All Categories)')
-            plt.colorbar(im, ax=ax_zscore_heat, label='Z-score', orientation='horizontal')
         else:
-            # Show message if no data
             ax_zscore_heat.text(0.5, 0.5, f'No z-score data for {wl}nm',
                               ha='center', va='center', transform=ax_zscore_heat.transAxes,
                               fontsize=12, color='#666666')
             ax_zscore_heat.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm (All Categories)')
             ax_zscore_heat.axis('off')
-        
-        plot_idx += 1
-    
-    fig.tight_layout()
-    
-    canvas_frame = tk.Frame(all_window, bg='#f8f8f8')
-    canvas_frame.pack(fill=tk.BOTH, expand=True)
-    
-    canvas = FigureCanvasTkAgg(fig, canvas_frame)
-    canvas.draw()
-    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-    
-    toolbar_frame = tk.Frame(canvas_frame, bg="#f5f5f5")
-    toolbar_frame.pack(fill=tk.X, padx=2, pady=(0,2))
-    toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
-    
+ 
+        fig.tight_layout()
+        embed_figure(inner, fig, row_in_frame=wl_idx)
+ 
     log_message(f"All categories window created: {window_title}")

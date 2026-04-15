@@ -1145,9 +1145,10 @@ class FiberVisualizationWindow:
         
         # Color scheme for wavelengths
         wavelength_colors = {
-            '410': {'main': "#0019fd", 'light': '#5dade2', 'lighter': '#85c1e9'},  # Blue family
-            '470': {'main': "#06b720", 'light': '#58d68d', 'lighter': '#82e0aa'},  # Green family
-            '560': {'main': "#f3b312", 'light': '#f8b24c', 'lighter': '#fad7a0'}   # Yellow family
+            '410': {'main': "#285DFF", 'light': '#5dade2', 'lighter': '#85c1e9'},  # Blue family
+            '470': {'main': "#44B444", 'light': '#58d68d', 'lighter': '#82e0aa'},  # Green family
+            '560': {'main': "#FF0000", 'light': "#d55858", 'lighter': "#faa0a0"},  # Red family
+            '640': {'main': "#FF9900", 'light': '#e59866', 'lighter': '#f5cba7'}   # Orange family
         }
         
         all_time_data = []
@@ -2196,7 +2197,7 @@ def load_fiber_data(file_path=None):
                 wavelength = int(match.group(2))
                 
                 if channel_num not in channel_data:
-                    channel_data[channel_num] = {'410': None, '470': None, '560': None}
+                    channel_data[channel_num] = {'410': None, '470': None, '560': None, '640': None}
                 
                 if wavelength == 410:
                     channel_data[channel_num]['410'] = col
@@ -2204,7 +2205,9 @@ def load_fiber_data(file_path=None):
                     channel_data[channel_num]['470'] = col
                 elif wavelength == 560:
                     channel_data[channel_num]['560'] = col
-        
+                elif wavelength == 640:
+                    channel_data[channel_num]['640'] = col
+                    
         log_message(f"Fiber data loaded, {len(channel_data)} channels detected", "INFO")
         
         return {
@@ -2526,14 +2529,14 @@ def align_data(animal_data=None):
             drug_event_names = [str(drug_event_names)]
 
         # Find Input2 events (running markers) - running start time
-        input2_events = fiber_data[fiber_data[events_col].str.contains(running_start_name, na=False)]
+        input2_events = fiber_data[fiber_data[events_col].str.startswith(running_start_name, na=False)]
         if len(input2_events) < 1:
             log_message("Could not find Input2 events for running start", "ERROR")
             return False
         
         global input3_events, drug_events
 
-        input3_events = fiber_data[fiber_data[events_col].str.contains(opto_event_name, na=False)]
+        input3_events = fiber_data[fiber_data[events_col].str.startswith(opto_event_name, na=False)]
         if len(input3_events) < 1:
             multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="disabled")
             log_message("Could not find Input3 events for optogenetic analysis", "INFO")
@@ -3886,7 +3889,7 @@ def detect_wavelengths_and_generate_combinations(channel_data):
     all_wavelengths = set()
     for channel_num, wavelengths in channel_data.items():
         for wl in wavelengths.keys():
-            if wl not in ['410', '415']:  # Exclude reference wavelengths
+            if wl not in ['410', '415'] and channel_data[channel_num][wl] is not None:  # Exclude reference wavelengths
                 all_wavelengths.add(wl)
     
     all_wavelengths = sorted(list(all_wavelengths))
@@ -3895,7 +3898,6 @@ def detect_wavelengths_and_generate_combinations(channel_data):
         return []
     
     # Generate all combinations
-    
     combinations_list = []
     # Single wavelengths
     for wl in all_wavelengths:
@@ -4785,7 +4787,7 @@ def show_opto_power_config_dialog():
                 freq, pulse_width, duration = calculate_optogenetic_pulse_info(session, animal_id)
                 
                 # Create unique ID (without power)
-                base_id = f"{animal_id}_Session{session_idx+1}_{freq:.1f}Hz_{pulse_width*1000:.0f}ms_{duration:.1f}s"
+                base_id = f"{animal_id}+Session{session_idx+1}+{freq:.1f}Hz+{pulse_width*1000:.0f}ms+{duration:.1f}s"
                 
                 # Session info labels
                 tk.Label(scrollable_frame, text=f"Session{session_idx+1}", 
@@ -4822,7 +4824,7 @@ def show_opto_power_config_dialog():
                     raise ValueError(f"Power must be positive for {base_id}")
                 
                 # Create final ID with power
-                final_id = f"{base_id}_{power:.1f}mW"
+                final_id = f"{base_id}+{power:.1f}mW"
                 new_config[final_id] = power
             
             # Remove old entries that match any base_id
