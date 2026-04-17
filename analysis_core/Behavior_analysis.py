@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
-from logger import log_message
+from infrastructure.logger import log_message
 
 def position_analysis(parsed_data, selected_bodyparts, root):
     """Position analysis function"""

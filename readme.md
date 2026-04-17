@@ -6,15 +6,48 @@ conda activate data_analysis
 ```
 ## 1.2 Installation
 ```
-pip install numpy
-pip install pandas
-pip install matplotlib
-pip install opencv-python
-pip install spicy
-pip install scikit-learn
+pip install -r requirements.txt
 ```
 # 2 How to run fiber-running analysis?
-###  You can run Main_analysis.py to start-up analysis UI
+###  You can run main.py to start-up analysis UI
+- To start the app, run `python main.py` in this directory.
+- If startup fails due to missing packages, run `pip install -r requirements.txt`.
+
+## 2.1 Project Structure
+```
+FTA/
+  main.py
+  analysis_core/
+    Behavior_analysis.py
+    Fiber_analysis.py
+    Running_analysis.py
+  analysis_multimodal/
+    Multimodal_analysis.py
+    Running_induced_activity_analysis.py
+    Drug_induced_activity_analysis.py
+    Optogenetic_induced_activity_analysis.py
+  infrastructure/
+    logger.py
+  core/
+    config_store.py
+    io.py
+    analysis_results.py
+  workflows/
+    data_workflows.py
+    analysis_workflows.py
+  ui/
+    bodypart_controller.py
+    view_controller.py
+    settings_dialogs.py
+    windows/
+      visualization_windows.py
+  config/
+    event_config.json
+    opto_power_config.json
+    drug_name_config.json
+  memory/
+    channel_memory.json
+```
 # 3 The introduction of analysis UI
 ## 3.1 Setting
 > You can select experiment type, configure event label, configure drug name and configure optogenetics power in setting.

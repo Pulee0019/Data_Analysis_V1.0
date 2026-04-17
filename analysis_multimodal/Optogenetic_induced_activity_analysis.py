@@ -7,12 +7,12 @@ import json
 import tkinter as tk
 import numpy as np
 
-from logger import log_message
-from Multimodal_analysis import (
+from infrastructure.logger import log_message
+from analysis_multimodal.Multimodal_analysis import (
     export_results, identify_optogenetic_events, calculate_optogenetic_pulse_info,
     identify_drug_sessions, group_optogenetic_sessions, create_control_panel,
     create_parameter_panel, get_parameters_from_ui, calculate_running_episodes,
-    create_table_window, initialize_table, FIBER_COLORS, DAY_COLORS,
+    create_table_window, initialize_table, FIBER_COLORS, ROW_COLORS,
     make_scrollable_window, make_figure, draw_heatmap, embed_figure
 )
 
@@ -64,7 +64,7 @@ def show_optogenetic_induced_analysis(root, multi_animal_data, analysis_mode="op
         log_message("No drug events found in any animal for optogenetics+drug mode", "ERROR")
         return
     
-    config_path = os.path.join(os.path.dirname(__file__), 'opto_power_config.json')
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'opto_power_config.json')
     with open(config_path, 'r', encoding='utf-8') as f:
         opto_config = json.load(f)
     
@@ -396,7 +396,7 @@ class TableManager:
             return 'baseline'
         
         # Load drug config
-        config_path = os.path.join(os.path.dirname(__file__), 'drug_name_config.json')
+        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'drug_name_config.json')
         if os.path.exists(config_path):
             with open(config_path, 'r') as f:
                 drug_config = json.load(f)
@@ -811,7 +811,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
         ax_run = fig.add_subplot(2, NUM_COLS, 1)
         if analysis_mode == "optogenetics+drug":
             for param_idx, (param_name, param_data) in enumerate(results.items()):
-                day_color = DAY_COLORS[param_idx % len(DAY_COLORS)]
+                row_color = ROW_COLORS[param_idx % len(ROW_COLORS)]
                 timing_names = list(param_data.keys())
                 n = max(len(timing_names), 1)
                 for timing_name in timing_names:
@@ -825,10 +825,10 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                         sem = np.nanstd(arr, axis=0) / np.sqrt(arr.shape[0])
                         timing_idx = timing_names.index(timing_name)
                         alpha = (1 / n) if timing_name == "baseline" else (1 / n) + (1 / n * timing_idx)
-                        ax_run.plot(time_array, mean, color=day_color, linewidth=2,
+                        ax_run.plot(time_array, mean, color=row_color, linewidth=2,
                                     label=f"{param_name} {timing_name}", alpha=alpha)
                         ax_run.fill_between(time_array, mean - sem, mean + sem,
-                                            color=day_color, alpha=alpha * 0.3)
+                                            color=row_color, alpha=alpha * 0.3)
         else:
             for param_idx, (param_name, param_data) in enumerate(results.items()):
                 data = param_data.get("optogenetics", {})
@@ -839,11 +839,11 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                         arr = arr[np.newaxis, :]
                     mean = np.nanmean(arr, axis=0)
                     sem = np.nanstd(arr, axis=0) / np.sqrt(arr.shape[0])
-                    day_color = DAY_COLORS[param_idx % len(DAY_COLORS)]
-                    ax_run.plot(time_array, mean, color=day_color, linewidth=2,
+                    row_color = ROW_COLORS[param_idx % len(ROW_COLORS)]
+                    ax_run.plot(time_array, mean, color=row_color, linewidth=2,
                                 label=param_name)
                     ax_run.fill_between(time_array, mean - sem, mean + sem,
-                                        color=day_color, alpha=0.5)
+                                        color=row_color, alpha=0.5)
         ax_run.axvline(x=0, color="#808080", linestyle="--", alpha=0.8, label="Opto Stim")
         ax_run.set_xlim(time_array[0], time_array[-1])
         ax_run.set_xlabel("Time (s)")
@@ -855,7 +855,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
         if analysis_mode == "optogenetics+drug":
             for param_idx, (param_name, param_data) in enumerate(results.items()):
-                day_color = DAY_COLORS[param_idx % len(DAY_COLORS)]
+                row_color = ROW_COLORS[param_idx % len(ROW_COLORS)]
                 timing_names = list(param_data.keys())
                 n = max(len(timing_names), 1)
                 for timing_name in timing_names:
@@ -869,10 +869,10 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                         sem = np.nanstd(arr, axis=0) / np.sqrt(arr.shape[0])
                         timing_idx = timing_names.index(timing_name)
                         alpha = (1 / n) if timing_name == "baseline" else (1 / n) + (1 / n * timing_idx)
-                        ax_dff.plot(time_array, mean, color=day_color, linewidth=2,
+                        ax_dff.plot(time_array, mean, color=row_color, linewidth=2,
                                     label=f"{param_name} {timing_name}", alpha=alpha)
                         ax_dff.fill_between(time_array, mean - sem, mean + sem,
-                                            color=day_color, alpha=alpha * 0.3)
+                                            color=row_color, alpha=alpha * 0.3)
         else:
             for param_idx, (param_name, param_data) in enumerate(results.items()):
                 data = param_data.get("optogenetics", {})
@@ -883,11 +883,11 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                         arr = arr[np.newaxis, :]
                     mean = np.nanmean(arr, axis=0)
                     sem = np.nanstd(arr, axis=0) / np.sqrt(arr.shape[0])
-                    day_color = DAY_COLORS[param_idx % len(DAY_COLORS)]
-                    ax_dff.plot(time_array, mean, color=day_color, linewidth=2,
+                    row_color = ROW_COLORS[param_idx % len(ROW_COLORS)]
+                    ax_dff.plot(time_array, mean, color=row_color, linewidth=2,
                                 label=param_name)
                     ax_dff.fill_between(time_array, mean - sem, mean + sem,
-                                        color=day_color, alpha=0.5)
+                                        color=row_color, alpha=0.5)
         ax_dff.axvline(x=0, color="#808080", linestyle="--", alpha=0.8, label="Opto Stim")
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel("Time (s)")
@@ -899,7 +899,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
         ax_zs = fig.add_subplot(2, NUM_COLS, 3)
         if analysis_mode == "optogenetics+drug":
             for param_idx, (param_name, param_data) in enumerate(results.items()):
-                day_color = DAY_COLORS[param_idx % len(DAY_COLORS)]
+                row_color = ROW_COLORS[param_idx % len(ROW_COLORS)]
                 timing_names = list(param_data.keys())
                 n = max(len(timing_names), 1)
                 for timing_name in timing_names:
@@ -913,10 +913,10 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                         sem = np.nanstd(arr, axis=0) / np.sqrt(arr.shape[0])
                         timing_idx = timing_names.index(timing_name)
                         alpha = (1 / n) if timing_name == "baseline" else (1 / n) + (1 / n * timing_idx)
-                        ax_zs.plot(time_array, mean, color=day_color, linewidth=2,
+                        ax_zs.plot(time_array, mean, color=row_color, linewidth=2,
                                    label=f"{param_name} {timing_name}", alpha=alpha)
                         ax_zs.fill_between(time_array, mean - sem, mean + sem,
-                                           color=day_color, alpha=alpha * 0.3)
+                                           color=row_color, alpha=alpha * 0.3)
         else:
             for param_idx, (param_name, param_data) in enumerate(results.items()):
                 data = param_data.get("optogenetics", {})
@@ -927,11 +927,11 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                         arr = arr[np.newaxis, :]
                     mean = np.nanmean(arr, axis=0)
                     sem = np.nanstd(arr, axis=0) / np.sqrt(arr.shape[0])
-                    day_color = DAY_COLORS[param_idx % len(DAY_COLORS)]
-                    ax_zs.plot(time_array, mean, color=day_color, linewidth=2,
+                    row_color = ROW_COLORS[param_idx % len(ROW_COLORS)]
+                    ax_zs.plot(time_array, mean, color=row_color, linewidth=2,
                                label=param_name)
                     ax_zs.fill_between(time_array, mean - sem, mean + sem,
-                                       color=day_color, alpha=0.5)
+                                       color=row_color, alpha=0.5)
         ax_zs.axvline(x=0, color="#808080", linestyle="--", alpha=0.8, label="Opto Stim")
         ax_zs.set_xlim(time_array[0], time_array[-1])
         ax_zs.set_xlabel("Time (s)")

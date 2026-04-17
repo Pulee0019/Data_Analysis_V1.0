@@ -7,13 +7,13 @@ import json
 import tkinter as tk
 import numpy as np
 
-from logger import log_message
-from Multimodal_analysis import (
+from infrastructure.logger import log_message
+from analysis_multimodal.Multimodal_analysis import (
     get_events_from_bouts, calculate_running_episodes, export_results,
     create_table_window, initialize_table, create_control_panel, identify_optogenetic_events, 
     identify_drug_sessions, calculate_optogenetic_pulse_info, get_events_within_optogenetic, 
     create_opto_parameter_string, group_optogenetic_sessions, create_parameter_panel, 
-    get_parameters_from_ui, FIBER_COLORS, DAY_COLORS,
+    get_parameters_from_ui, FIBER_COLORS, ROW_COLORS,
     make_scrollable_window, make_figure, draw_heatmap, embed_figure
 )
 
@@ -136,7 +136,7 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
 
     # Initialize table manager
     if analysis_mode == "running+optogenetics" or analysis_mode == "running+optogenetics+drug":
-        config_path = os.path.join(os.path.dirname(__file__), 'opto_power_config.json')
+        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'opto_power_config.json')
         with open(config_path, 'r', encoding='utf-8') as f:
             opto_config = json.load(f)
             
@@ -341,33 +341,33 @@ class TableManager:
     
     def run_analysis(self, params, analysis_mode):
         """Run analysis with current table configuration"""
-        # Group animals by day
-        day_data = {}
+        # Group animals by row
+        row_data = {}
         for i in range(self.num_rows):
-            day_name = self.row_headers.get(i, f"Day{i+1}")
-            day_animals = []
+            row_name = self.row_headers.get(i, f"Row{i+1}")
+            row_animals = []
             
             for j in range(self.num_cols):
                 if (i, j) in self.table_data:
                     animal_id = self.table_data[(i, j)]
                     for animal_data in self.multi_animal_data:
                         if animal_data.get('animal_single_channel_id') == animal_id:
-                            day_animals.append(animal_data)
+                            row_animals.append(animal_data)
                             break
             
-            if day_animals:
-                day_data[day_name] = day_animals
+            if row_animals:
+                row_data[row_name] = row_animals
         
-        if not day_data:
+        if not row_data:
             log_message("No valid data in table", "WARNING")
             return
         
         if analysis_mode == "running":
-            run_running_only_analysis(day_data, params)
+            run_running_only_analysis(row_data, params)
         elif analysis_mode == "running+drug":
-            run_running_drug_analysis(day_data, params)
+            run_running_drug_analysis(row_data, params)
         elif analysis_mode == "running+optogenetics":
-            run_running_optogenetics_analysis(day_data, params)
+            run_running_optogenetics_analysis(row_data, params)
 
 class OptogeneticTableManager:
     """Manage table for running+optogenetics configuration"""
@@ -564,46 +564,46 @@ class OptogeneticTableManager:
     
     def run_analysis(self, params, analysis_mode):
         """Run running+optogenetics analysis"""
-        # Group animals by day
-        day_data = {}
+        # Group animals by row
+        row_data = {}
         for i in range(self.num_rows):
-            day_name = self.row_headers.get(i, f"Row{i+1}")
-            day_animals = []
+            row_name = self.row_headers.get(i, f"Row{i+1}")
+            row_animals = []
             
             for j in range(self.num_cols):
                 if (i, j) in self.table_data:
                     animal_id = self.table_data[(i, j)]
                     for animal_data in self.multi_animal_data:
                         if animal_data.get('animal_single_channel_id') == animal_id:
-                            day_animals.append(animal_data)
+                            row_animals.append(animal_data)
                             break
             
-            if day_animals:
-                day_data[day_name] = day_animals
+            if row_animals:
+                row_data[row_name] = row_animals
         
-        if not day_data:
+        if not row_data:
             log_message("No valid data in table", "WARNING")
             return
         
-        run_running_optogenetics_analysis(day_data, params, 
+        run_running_optogenetics_analysis(row_data, params, 
                                          self.all_optogenetic_events, 
                                          self.power_values, self.all_drug_events, self.analysis_mode)
 
-def run_running_only_analysis(day_data, params):
+def run_running_only_analysis(row_data, params):
     """Run running-only analysis"""
-    log_message(f"Starting running-induced analysis for {len(day_data)} day(s)...")
+    log_message(f"Starting running-induced analysis for {len(row_data)} row(s)...")
     
     results = {}
     all_statistics = []
     
-    for day_name, animals in day_data.items():
-        log_message(f"Analyzing {day_name} with {len(animals)} animal(s)...")
-        day_result, day_stats = analyze_day_running(day_name, animals, params)
+    for row_name, animals in row_data.items():
+        log_message(f"Analyzing {row_name} with {len(animals)} animal(s)...")
+        row_result, row_stats = analyze_row_running(row_name, animals, params)
         
-        if day_result:
-            results[day_name] = day_result
-        if day_stats:
-            all_statistics.extend(day_stats)
+        if row_result:
+            results[row_name] = row_result
+        if row_stats:
+            all_statistics.extend(row_stats)
     
     if params['export_stats'] and all_statistics:
         export_results(results, all_statistics, "running_induced", params['full_event_type'])
@@ -614,21 +614,21 @@ def run_running_only_analysis(day_data, params):
     else:
         log_message("No valid results", "ERROR")
 
-def run_running_drug_analysis(day_data, params):
+def run_running_drug_analysis(row_data, params):
     """Run running+drug analysis"""
-    log_message(f"Starting running+drug analysis for {len(day_data)} day(s)...")
+    log_message(f"Starting running+drug analysis for {len(row_data)} row(s)...")
     
     results = {}
     all_statistics = []
     
-    for day_name, animals in day_data.items():
-        log_message(f"Analyzing {day_name} with {len(animals)} animal(s)...")
-        day_result, day_stats = analyze_day_running_drug(day_name, animals, params)
+    for row_name, animals in row_data.items():
+        log_message(f"Analyzing {row_name} with {len(animals)} animal(s)...")
+        row_result, row_stats = analyze_row_running_drug(row_name, animals, params)
         
-        if day_result:
-            results[day_name] = day_result
-        if day_stats:
-            all_statistics.extend(day_stats)
+        if row_result:
+            results[row_name] = row_result
+        if row_stats:
+            all_statistics.extend(row_stats)
     
     if params['export_stats'] and all_statistics:
         export_results(results, all_statistics, "running_drug_induced", params['full_event_type'])
@@ -639,8 +639,8 @@ def run_running_drug_analysis(day_data, params):
     else:
         log_message("No valid results", "ERROR")
         
-def analyze_day_running(day_name, animals, params):
-    """Analyze one day for running-only mode"""
+def analyze_row_running(row_name, animals, params):
+    """Analyze one row for running-only mode"""
     time_array = np.linspace(-params['pre_time'], params['post_time'], 
                             int((params['pre_time'] + params['post_time']) * 10))
     
@@ -715,7 +715,7 @@ def analyze_day_running(day_name, animals, params):
             # Collect statistics if requested
             if params['export_stats']:
                 statistics_rows.extend(collect_statistics(
-                    day_name, animal_id, params['full_event_type'],
+                    row_name, animal_id, params['full_event_type'],
                     result, time_array, params, target_wavelengths, active_channels
                 ))
                 
@@ -758,8 +758,8 @@ def analyze_day_running(day_name, animals, params):
     
     return result, statistics_rows if params['export_stats'] else None
 
-def analyze_day_running_drug(day_name, animals, params):
-    """Analyze one day for running+drug mode with multiple drugs
+def analyze_row_running_drug(row_name, animals, params):
+    """Analyze one row for running+drug mode with multiple drugs
     Modified to use drug onset/offset times from configuration
     """
     time_array = np.linspace(-params['pre_time'], params['post_time'], 
@@ -778,7 +778,7 @@ def analyze_day_running_drug(day_name, animals, params):
         target_wavelengths = ['470']
     
     # Load drug config
-    config_path = os.path.join(os.path.dirname(__file__), 'drug_name_config.json')
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'drug_name_config.json')
     if os.path.exists(config_path):
         with open(config_path, 'r') as f:
             drug_config = json.load(f)
@@ -955,7 +955,7 @@ def analyze_day_running_drug(day_name, animals, params):
                 # Collect statistics
                 if params['export_stats']:
                     statistics_rows.extend(collect_statistics(
-                        day_name, animal_id, category, category_result,
+                        row_name, animal_id, category, category_result,
                         time_array, params, target_wavelengths, active_channels
                     ))
         
@@ -1004,8 +1004,8 @@ def analyze_day_running_drug(day_name, animals, params):
     
     return result, statistics_rows if params['export_stats'] else None
 
-def analyze_day_running_optogenetics(day_name, animals, params, all_optogenetic_events, power_values):
-    """Analyze one day for running+optogenetics mode"""
+def analyze_row_running_optogenetics(row_name, animals, params, all_optogenetic_events, power_values):
+    """Analyze one row for running+optogenetics mode"""
     time_array = np.linspace(-params['pre_time'], params['post_time'], 
                             int((params['pre_time'] + params['post_time']) * 10))
     
@@ -1125,7 +1125,7 @@ def analyze_day_running_optogenetics(day_name, animals, params, all_optogenetic_
                                 if wl in with_result['dff'] and episode_idx < len(with_result['dff'][wl]):
                                     # Add statistics for with-opto events
                                     statistics_rows.append({
-                                        'day': day_name,
+                                        'row': row_name,
                                         'animal_single_channel_id': with_opto_id,
                                         'event_type': params['full_event_type'],
                                         'channel': channel,
@@ -1162,7 +1162,7 @@ def analyze_day_running_optogenetics(day_name, animals, params, all_optogenetic_
                                 if wl in without_result['dff'] and episode_idx < len(without_result['dff'][wl]):
                                     # Add statistics for without-opto events
                                     statistics_rows.append({
-                                        'day': day_name,
+                                        'row': row_name,
                                         'animal_single_channel_id': without_opto_id,
                                         'event_type': params['full_event_type'],
                                         'channel': channel,
@@ -1235,7 +1235,7 @@ def analyze_day_running_optogenetics(day_name, animals, params, all_optogenetic_
     
     return result, statistics_rows if params['export_stats'] else None
 
-def collect_statistics(day_name, animal_id, event_type, result, time_array, params, 
+def collect_statistics(row_name, animal_id, event_type, result, time_array, params, 
                        target_wavelengths, active_channels):
     """Collect statistics for export"""
     rows = []
@@ -1248,7 +1248,7 @@ def collect_statistics(day_name, animal_id, event_type, result, time_array, para
         post_data = episode_data[post_mask]
         
         rows.append({
-            'day': day_name,
+            'row': row_name,
             'animal_single_channel_id': animal_id,
             'event_type': event_type,
             'trial': trial_idx + 1,
@@ -1275,7 +1275,7 @@ def collect_statistics(day_name, animal_id, event_type, result, time_array, para
                     post_data = episode_data[post_mask]
                     
                     rows.append({
-                        'day': day_name,
+                        'row': row_name,
                         'animal_single_channel_id': animal_id,
                         'event_type': event_type,
                         'channel': channel,
@@ -1301,7 +1301,7 @@ def collect_statistics(day_name, animal_id, event_type, result, time_array, para
                     post_data = episode_data[post_mask]
                     
                     rows.append({
-                        'day': day_name,
+                        'row': row_name,
                         'animal_single_channel_id': animal_id,
                         'event_type': event_type,
                         'channel': channel,
@@ -1323,7 +1323,7 @@ def collect_statistics(day_name, animal_id, event_type, result, time_array, para
     return rows
 
 def plot_running_results(results, params):
-    """Plot running-only results — all days overlaid."""
+    """Plot running-only results — all rows overlaid."""
     target_wavelengths = []
     for data in results.values():
         if "target_wavelengths" in data:
@@ -1336,23 +1336,23 @@ def plot_running_results(results, params):
     time_array = list(results.values())[0]["time"]
  
     win, _, inner = make_scrollable_window(
-        f"Running-Induced Activity - All Days ({wavelength_label}nm)"
+        f"Running-Induced Activity - All Rows ({wavelength_label}nm)"
     )
  
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
         fig = make_figure(NUM_COLS)
-        fig.suptitle(f"Wavelength {wl} nm — All Days",
+        fig.suptitle(f"Wavelength {wl} nm — All Rows",
                      fontsize=12, fontweight="bold")
  
         # Row 1: Traces
         ax_run = fig.add_subplot(2, NUM_COLS, 1)
-        for idx, (day_name, data) in enumerate(results.items()):
-            dc = DAY_COLORS[idx % len(DAY_COLORS)]
+        for idx, (row_name, data) in enumerate(results.items()):
+            dc = ROW_COLORS[idx % len(ROW_COLORS)]
             if "running" in data and data["running"]["mean"] is not None:
                 t = data["time"]
                 ax_run.plot(t, data["running"]["mean"],
-                            color=dc, linewidth=2, label=day_name)
+                            color=dc, linewidth=2, label=row_name)
                 ax_run.fill_between(
                     t,
                     data["running"]["mean"] - data["running"]["sem"],
@@ -1362,17 +1362,17 @@ def plot_running_results(results, params):
         ax_run.set_xlim(time_array[0], time_array[-1])
         ax_run.set_xlabel("Time (s)")
         ax_run.set_ylabel("Speed (cm/s)")
-        ax_run.set_title("Running Speed - All Days")
+        ax_run.set_title("Running Speed - All Rows")
         ax_run.legend(fontsize=7)
         ax_run.grid(False)
  
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
-        for idx, (day_name, data) in enumerate(results.items()):
-            dc = DAY_COLORS[idx % len(DAY_COLORS)]
+        for idx, (row_name, data) in enumerate(results.items()):
+            dc = ROW_COLORS[idx % len(ROW_COLORS)]
             if wl in data["dff"]:
                 t = data["time"]
                 ax_dff.plot(t, data["dff"][wl]["mean"],
-                            color=dc, linewidth=2, label=day_name)
+                            color=dc, linewidth=2, label=row_name)
                 ax_dff.fill_between(
                     t,
                     data["dff"][wl]["mean"] - data["dff"][wl]["sem"],
@@ -1382,17 +1382,17 @@ def plot_running_results(results, params):
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel("Time (s)")
         ax_dff.set_ylabel("ΔF/F")
-        ax_dff.set_title(f"Fiber ΔF/F {wl}nm - All Days")
+        ax_dff.set_title(f"Fiber ΔF/F {wl}nm - All Rows")
         ax_dff.legend(fontsize=7)
         ax_dff.grid(False)
  
         ax_zs = fig.add_subplot(2, NUM_COLS, 3)
-        for idx, (day_name, data) in enumerate(results.items()):
-            dc = DAY_COLORS[idx % len(DAY_COLORS)]
+        for idx, (row_name, data) in enumerate(results.items()):
+            dc = ROW_COLORS[idx % len(ROW_COLORS)]
             if wl in data["zscore"]:
                 t = data["time"]
                 ax_zs.plot(t, data["zscore"][wl]["mean"],
-                           color=dc, linewidth=2, label=day_name)
+                           color=dc, linewidth=2, label=row_name)
                 ax_zs.fill_between(
                     t,
                     data["zscore"][wl]["mean"] - data["zscore"][wl]["sem"],
@@ -1402,7 +1402,7 @@ def plot_running_results(results, params):
         ax_zs.set_xlim(time_array[0], time_array[-1])
         ax_zs.set_xlabel("Time (s)")
         ax_zs.set_ylabel("Z-score")
-        ax_zs.set_title(f"Fiber Z-score {wl}nm - All Days")
+        ax_zs.set_title(f"Fiber Z-score {wl}nm - All Rows")
         ax_zs.legend(fontsize=7)
         ax_zs.grid(False)
  
@@ -1472,30 +1472,30 @@ def plot_running_results(results, params):
         fig.tight_layout(rect=[0, 0, 1, 0.96])
         embed_figure(inner, fig, row_in_frame=wl_idx)
  
-    create_individual_day_windows_running(results, params)
+    create_individual_row_windows_running(results, params)
     log_message("Running results plotted.")
 
-def create_individual_day_windows_running(results, params):
-    """Create individual windows for each day - running only"""
-    for day_name, data in results.items():
-        create_single_day_window_running(day_name, data, params)
+def create_individual_row_windows_running(results, params):
+    """Create individual windows for each row - running only"""
+    for row_name, data in results.items():
+        create_single_row_window_running(row_name, data, params)
 
-def create_single_day_window_running(day_name, data, params):
-    """Create window for a single day — running only."""
-    from Multimodal_analysis import FIBER_COLORS
-    from logger import log_message
+def create_single_row_window_running(row_name, data, params):
+    """Create window for a single row — running only."""
+    from analysis_multimodal.Multimodal_analysis import FIBER_COLORS
+    from infrastructure.logger import log_message
  
     target_wavelengths = data.get("target_wavelengths", ["470"])
     time_array = data["time"]
  
     win, _, inner = make_scrollable_window(
-        f"Running-Induced Activity - {day_name} - {params['full_event_type']}"
+        f"Running-Induced Activity - {row_name} - {params['full_event_type']}"
     )
  
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
         fig = make_figure(NUM_COLS)
-        fig.suptitle(f"{day_name} — Wavelength {wl} nm",
+        fig.suptitle(f"{row_name} — Wavelength {wl} nm",
                      fontsize=12, fontweight="bold")
  
         # Row 1: Traces
@@ -1516,7 +1516,7 @@ def create_single_day_window_running(day_name, data, params):
             ax_run.legend()
             ax_run.grid(False)
         ax_run.set_title(
-            f"{day_name} - Running Speed - {params['full_event_type']}")
+            f"{row_name} - Running Speed - {params['full_event_type']}")
  
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
         if wl in data["dff"]:
@@ -1534,7 +1534,7 @@ def create_single_day_window_running(day_name, data, params):
             ax_dff.set_ylabel("ΔF/F")
             ax_dff.legend()
             ax_dff.grid(False)
-        ax_dff.set_title(f"{day_name} - Fiber ΔF/F {wl}nm")
+        ax_dff.set_title(f"{row_name} - Fiber ΔF/F {wl}nm")
  
         ax_zs = fig.add_subplot(2, NUM_COLS, 3)
         if wl in data["zscore"]:
@@ -1552,45 +1552,45 @@ def create_single_day_window_running(day_name, data, params):
             ax_zs.set_ylabel("Z-score")
             ax_zs.legend()
             ax_zs.grid(False)
-        ax_zs.set_title(f"{day_name} - Fiber Z-score {wl}nm")
+        ax_zs.set_title(f"{row_name} - Fiber Z-score {wl}nm")
  
         # Row 2: Heatmaps
         ax_run_heat = fig.add_subplot(2, NUM_COLS, 4)
         if "running" in data and len(data["running"]["episodes"]) > 0:
             draw_heatmap(ax_run_heat, data["running"]["episodes"],
                           time_array, "viridis", "Speed (cm/s)")
-            ax_run_heat.set_title(f"{day_name} - Running Speed Heatmap")
+            ax_run_heat.set_title(f"{row_name} - Running Speed Heatmap")
         else:
             ax_run_heat.axis("off")
-            ax_run_heat.set_title(f"{day_name} - Running Speed Heatmap")
+            ax_run_heat.set_title(f"{row_name} - Running Speed Heatmap")
  
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         if wl in data["dff"]:
             draw_heatmap(ax_dff_heat, data["dff"][wl]["episodes"],
                           time_array, "coolwarm", "ΔF/F")
-            ax_dff_heat.set_title(f"{day_name} - Fiber ΔF/F Heatmap {wl}nm")
+            ax_dff_heat.set_title(f"{row_name} - Fiber ΔF/F Heatmap {wl}nm")
         else:
             ax_dff_heat.axis("off")
-            ax_dff_heat.set_title(f"{day_name} - Fiber ΔF/F Heatmap {wl}nm")
+            ax_dff_heat.set_title(f"{row_name} - Fiber ΔF/F Heatmap {wl}nm")
  
         ax_zs_heat = fig.add_subplot(2, NUM_COLS, 6)
         if wl in data["zscore"]:
             draw_heatmap(ax_zs_heat, data["zscore"][wl]["episodes"],
                           time_array, "coolwarm", "Z-score")
-            ax_zs_heat.set_title(f"{day_name} - Fiber Z-score Heatmap {wl}nm")
+            ax_zs_heat.set_title(f"{row_name} - Fiber Z-score Heatmap {wl}nm")
         else:
             ax_zs_heat.axis("off")
-            ax_zs_heat.set_title(f"{day_name} - Fiber Z-score Heatmap {wl}nm")
+            ax_zs_heat.set_title(f"{row_name} - Fiber Z-score Heatmap {wl}nm")
  
         fig.tight_layout(rect=[0, 0, 1, 0.96])
         embed_figure(inner, fig, row_in_frame=wl_idx)
  
-    log_message(f"Individual day plot created for {day_name}")
+    log_message(f"Individual row plot created for {row_name}")
 
 def plot_running_drug_results(results, params):
     """Plot running+drug results with multiple drug categories"""
     target_wavelengths = []
-    for day_name, data in results.items():
+    for row_name, data in results.items():
         if 'target_wavelengths' in data:
             target_wavelengths = data['target_wavelengths']
             break
@@ -1619,8 +1619,8 @@ def plot_running_drug_results(results, params):
  
         # ── Row 1: Traces ──────────────────────────────────────────────
         ax_running = fig.add_subplot(2, NUM_COLS, 1)
-        for idx, (day_name, data) in enumerate(results.items()):
-            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+        for idx, (row_name, data) in enumerate(results.items()):
+            row_color = ROW_COLORS[idx % len(ROW_COLORS)]
             for cat_idx, category in enumerate(all_categories):
                 if category in data and data[category]['running']['mean'] is not None:
                     if category == 'baseline':
@@ -1630,12 +1630,12 @@ def plot_running_drug_results(results, params):
                         alpha = 1/len(all_categories) + (1/len(all_categories) * cat_idx)
                         linestyle = '-'
                     ax_running.plot(time_array, data[category]['running']['mean'],
-                                  color=day_color, linestyle=linestyle, linewidth=2, alpha=alpha,
-                                  label=f"{day_name} {category}")
+                                  color=row_color, linestyle=linestyle, linewidth=2, alpha=alpha,
+                                  label=f"{row_name} {category}")
                     ax_running.fill_between(time_array,
                                            data[category]['running']['mean'] - data[category]['running']['sem'],
                                            data[category]['running']['mean'] + data[category]['running']['sem'],
-                                           color=day_color, alpha=alpha*0.3)
+                                           color=row_color, alpha=alpha*0.3)
         ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_running.set_xlim(time_array[0], time_array[-1])
         ax_running.set_xlabel('Time (s)')
@@ -1645,8 +1645,8 @@ def plot_running_drug_results(results, params):
         ax_running.grid(False)
  
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
-        for idx, (day_name, data) in enumerate(results.items()):
-            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+        for idx, (row_name, data) in enumerate(results.items()):
+            row_color = ROW_COLORS[idx % len(ROW_COLORS)]
             for cat_idx, category in enumerate(all_categories):
                 if category in data and wl in data[category]['dff']:
                     if category == 'baseline':
@@ -1656,12 +1656,12 @@ def plot_running_drug_results(results, params):
                         alpha = 1/len(all_categories) + (1/len(all_categories) * cat_idx)
                         linestyle = '-'
                     ax_dff.plot(time_array, data[category]['dff'][wl]['mean'],
-                              color=day_color, linewidth=2, linestyle=linestyle, alpha=alpha,
-                              label=f'{day_name} {category}')
+                              color=row_color, linewidth=2, linestyle=linestyle, alpha=alpha,
+                              label=f'{row_name} {category}')
                     ax_dff.fill_between(time_array,
                                        data[category]['dff'][wl]['mean'] - data[category]['dff'][wl]['sem'],
                                        data[category]['dff'][wl]['mean'] + data[category]['dff'][wl]['sem'],
-                                       color=day_color, alpha=alpha*0.3)
+                                       color=row_color, alpha=alpha*0.3)
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
@@ -1671,8 +1671,8 @@ def plot_running_drug_results(results, params):
         ax_dff.grid(False)
  
         ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
-        for idx, (day_name, data) in enumerate(results.items()):
-            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+        for idx, (row_name, data) in enumerate(results.items()):
+            row_color = ROW_COLORS[idx % len(ROW_COLORS)]
             for cat_idx, category in enumerate(all_categories):
                 if category in data and wl in data[category]['zscore']:
                     if category == 'baseline':
@@ -1682,12 +1682,12 @@ def plot_running_drug_results(results, params):
                         alpha = 1/len(all_categories) + (1/len(all_categories) * cat_idx)
                         linestyle = '-'
                     ax_zscore.plot(time_array, data[category]['zscore'][wl]['mean'],
-                                 color=day_color, linewidth=2, linestyle=linestyle, alpha=alpha,
-                                 label=f'{day_name} {category}')
+                                 color=row_color, linewidth=2, linestyle=linestyle, alpha=alpha,
+                                 label=f'{row_name} {category}')
                     ax_zscore.fill_between(time_array,
                                           data[category]['zscore'][wl]['mean'] - data[category]['zscore'][wl]['sem'],
                                           data[category]['zscore'][wl]['mean'] + data[category]['zscore'][wl]['sem'],
-                                          color=day_color, alpha=alpha*0.3)
+                                          color=row_color, alpha=alpha*0.3)
         ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_zscore.set_xlim(time_array[0], time_array[-1])
         ax_zscore.set_xlabel('Time (s)')
@@ -1702,7 +1702,7 @@ def plot_running_drug_results(results, params):
         category_boundaries = []
         for category in all_categories:
             category_episodes = []
-            for day_name, data in results.items():
+            for row_name, data in results.items():
                 if category in data and len(data[category]['running']['episodes']) > 0:
                     category_episodes.extend(data[category]['running']['episodes'])
             if category_episodes:
@@ -1723,7 +1723,7 @@ def plot_running_drug_results(results, params):
         category_boundaries = []
         for category in all_categories:
             category_episodes = []
-            for day_name, data in results.items():
+            for row_name, data in results.items():
                 if category in data and wl in data[category]['dff']:
                     category_episodes.extend(data[category]['dff'][wl]['episodes'])
             if category_episodes:
@@ -1744,7 +1744,7 @@ def plot_running_drug_results(results, params):
         category_boundaries = []
         for category in all_categories:
             category_episodes = []
-            for day_name, data in results.items():
+            for row_name, data in results.items():
                 if category in data and wl in data[category]['zscore']:
                     category_episodes.extend(data[category]['zscore'][wl]['episodes'])
             if category_episodes:
@@ -1763,27 +1763,27 @@ def plot_running_drug_results(results, params):
         fig.tight_layout()
         embed_figure(inner, fig, row_in_frame=wl_idx)
  
-    create_individual_day_windows_running_drug(results, params)
+    create_individual_row_windows_running_drug(results, params)
 
-def create_individual_day_windows_running_drug(results, params):
-    """Create individual windows for each day - running+drug"""
-    for day_name, data in results.items():
-        create_single_day_window_running_drug(day_name, data, params)
+def create_individual_row_windows_running_drug(results, params):
+    """Create individual windows for each row - running+drug"""
+    for row_name, data in results.items():
+        create_single_row_window_running_drug(row_name, data, params)
 
-def create_single_day_window_running_drug(day_name, data, params):
-    """Create window for a single day - running+drug with multiple categories"""
+def create_single_row_window_running_drug(row_name, data, params):
+    """Create window for a single row - running+drug with multiple categories"""
     target_wavelengths = data.get('target_wavelengths', ['470'])
     drug_categories = data.get('drug_categories', [])
     time_array = data['time']
  
     win, _, inner = make_scrollable_window(
-        f"Running+Drug Analysis - {day_name} - {params['full_event_type']}"
+        f"Running+Drug Analysis - {row_name} - {params['full_event_type']}"
     )
  
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
         fig = make_figure(NUM_COLS)
-        fig.suptitle(f"{day_name} — Wavelength {wl} nm (Running+Drug)",
+        fig.suptitle(f"{row_name} — Wavelength {wl} nm (Running+Drug)",
                      fontsize=12, fontweight="bold")
  
         # Row 1: Traces
@@ -1796,7 +1796,7 @@ def create_single_day_window_running_drug(day_name, data, params):
                 else:
                     alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
                     linestyle = '-'
-                log_message(f"Plotting {day_name} - {category} - {cat_idx} running trace with alpha {alpha:.2f}")
+                log_message(f"Plotting {row_name} - {category} - {cat_idx} running trace with alpha {alpha:.2f}")
                 ax_running.plot(time_array, data[category]['running']['mean'],
                               color="#000000", linewidth=2, linestyle=linestyle,
                               alpha=alpha, label=category)
@@ -1808,7 +1808,7 @@ def create_single_day_window_running_drug(day_name, data, params):
         ax_running.set_xlim(time_array[0], time_array[-1])
         ax_running.set_xlabel('Time (s)')
         ax_running.set_ylabel('Speed (cm/s)')
-        ax_running.set_title(f'{day_name} - Running Speed (Multi-Drug)')
+        ax_running.set_title(f'{row_name} - Running Speed (Multi-Drug)')
         ax_running.legend(fontsize=8)
         ax_running.grid(False)
  
@@ -1821,7 +1821,7 @@ def create_single_day_window_running_drug(day_name, data, params):
                 else:
                     alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
                     linestyle = '-'
-                log_message(f"Plotting {day_name} - {category} - {cat_idx} dFF trace at {wl}nm with alpha {alpha:.2f}")
+                log_message(f"Plotting {row_name} - {category} - {cat_idx} dFF trace at {wl}nm with alpha {alpha:.2f}")
                 ax_dff.plot(time_array, data[category]['dff'][wl]['mean'],
                           color=color, linewidth=2, linestyle=linestyle,
                           alpha=alpha, label=category)
@@ -1833,7 +1833,7 @@ def create_single_day_window_running_drug(day_name, data, params):
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
         ax_dff.set_ylabel('ΔF/F')
-        ax_dff.set_title(f'{day_name} - Fiber ΔF/F {wl}nm (Multi-Drug)')
+        ax_dff.set_title(f'{row_name} - Fiber ΔF/F {wl}nm (Multi-Drug)')
         ax_dff.legend(fontsize=8)
         ax_dff.grid(False)
  
@@ -1846,7 +1846,7 @@ def create_single_day_window_running_drug(day_name, data, params):
                 else:
                     alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
                     linestyle = '-'
-                log_message(f"Plotting {day_name} - {category} - {cat_idx} z-score trace at {wl}nm with alpha {alpha:.2f}")
+                log_message(f"Plotting {row_name} - {category} - {cat_idx} z-score trace at {wl}nm with alpha {alpha:.2f}")
                 ax_zscore.plot(time_array, data[category]['zscore'][wl]['mean'],
                              color=color, linewidth=2, linestyle=linestyle,
                              alpha=alpha, label=category)
@@ -1858,7 +1858,7 @@ def create_single_day_window_running_drug(day_name, data, params):
         ax_zscore.set_xlim(time_array[0], time_array[-1])
         ax_zscore.set_xlabel('Time (s)')
         ax_zscore.set_ylabel('Z-score')
-        ax_zscore.set_title(f'{day_name} - Fiber Z-score {wl}nm (Multi-Drug)')
+        ax_zscore.set_title(f'{row_name} - Fiber Z-score {wl}nm (Multi-Drug)')
         ax_zscore.legend(fontsize=8)
         ax_zscore.grid(False)
  
@@ -1875,10 +1875,10 @@ def create_single_day_window_running_drug(day_name, data, params):
             draw_heatmap(ax_running_heat, np.array(all_running_episodes), time_array,
                          'viridis', 'Speed (cm/s)',
                          extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
-            ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap (Multi-Drug)')
+            ax_running_heat.set_title(f'{row_name} - Running Speed Heatmap (Multi-Drug)')
         else:
             ax_running_heat.axis('off')
-            ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap (Multi-Drug)')
+            ax_running_heat.set_title(f'{row_name} - Running Speed Heatmap (Multi-Drug)')
  
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         all_dff_episodes = []
@@ -1892,10 +1892,10 @@ def create_single_day_window_running_drug(day_name, data, params):
             draw_heatmap(ax_dff_heat, np.array(all_dff_episodes), time_array,
                          'coolwarm', 'ΔF/F',
                          extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
-            ax_dff_heat.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm (Multi-Drug)')
+            ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm (Multi-Drug)')
         else:
             ax_dff_heat.axis('off')
-            ax_dff_heat.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm (Multi-Drug)')
+            ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm (Multi-Drug)')
  
         ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_zscore_episodes = []
@@ -1909,20 +1909,20 @@ def create_single_day_window_running_drug(day_name, data, params):
             draw_heatmap(ax_zscore_heat, np.array(all_zscore_episodes), time_array,
                          'coolwarm', 'Z-score',
                          extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
-            ax_zscore_heat.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm (Multi-Drug)')
+            ax_zscore_heat.set_title(f'{row_name} - Fiber Z-score Heatmap {wl}nm (Multi-Drug)')
         else:
             ax_zscore_heat.axis('off')
-            ax_zscore_heat.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm (Multi-Drug)')
+            ax_zscore_heat.set_title(f'{row_name} - Fiber Z-score Heatmap {wl}nm (Multi-Drug)')
  
         fig.tight_layout()
         embed_figure(inner, fig, row_in_frame=wl_idx)
  
-    log_message(f"Individual day plot created for {day_name} with {len(drug_categories)} drug categories")
+    log_message(f"Individual row plot created for {row_name} with {len(drug_categories)} drug categories")
 
 def plot_running_optogenetics_results(results, params):
     """Plot running+optogenetics results with with/without comparison"""
     target_wavelengths = []
-    for day_name, data in results.items():
+    for row_name, data in results.items():
         if 'target_wavelengths' in data:
             target_wavelengths = data['target_wavelengths']
             break
@@ -1944,24 +1944,24 @@ def plot_running_optogenetics_results(results, params):
  
         # ── Row 1: Traces ──────────────────────────────────────────────
         ax_running = fig.add_subplot(2, NUM_COLS, 1)
-        for idx, (day_name, data) in enumerate(results.items()):
-            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+        for idx, (row_name, data) in enumerate(results.items()):
+            row_color = ROW_COLORS[idx % len(ROW_COLORS)]
             if data['with_opto']['running']['mean'] is not None:
                 ax_running.plot(time_array, data['with_opto']['running']['mean'],
-                              color=day_color, linestyle='-', linewidth=2, alpha=1,
-                              label=f"{day_name} With Opto")
+                              color=row_color, linestyle='-', linewidth=2, alpha=1,
+                              label=f"{row_name} With Opto")
                 ax_running.fill_between(time_array,
                                        data['with_opto']['running']['mean'] - data['with_opto']['running']['sem'],
                                        data['with_opto']['running']['mean'] + data['with_opto']['running']['sem'],
-                                       color=day_color, alpha=0.5)
+                                       color=row_color, alpha=0.5)
             if data['without_opto']['running']['mean'] is not None:
                 ax_running.plot(time_array, data['without_opto']['running']['mean'],
-                              color=day_color, linestyle='-', linewidth=2, alpha=0.5,
-                              label=f"{day_name} Without Opto")
+                              color=row_color, linestyle='-', linewidth=2, alpha=0.5,
+                              label=f"{row_name} Without Opto")
                 ax_running.fill_between(time_array,
                                        data['without_opto']['running']['mean'] - data['without_opto']['running']['sem'],
                                        data['without_opto']['running']['mean'] + data['without_opto']['running']['sem'],
-                                       color=day_color, alpha=0.2)
+                                       color=row_color, alpha=0.2)
         ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_running.set_xlim(time_array[0], time_array[-1])
         ax_running.set_xlabel('Time (s)')
@@ -1971,24 +1971,24 @@ def plot_running_optogenetics_results(results, params):
         ax_running.grid(False)
  
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
-        for idx, (day_name, data) in enumerate(results.items()):
-            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+        for idx, (row_name, data) in enumerate(results.items()):
+            row_color = ROW_COLORS[idx % len(ROW_COLORS)]
             if wl in data['with_opto']['dff']:
                 ax_dff.plot(time_array, data['with_opto']['dff'][wl]['mean'],
-                          color=day_color, linewidth=2, linestyle='-', alpha=1,
-                          label=f'{day_name} With Opto')
+                          color=row_color, linewidth=2, linestyle='-', alpha=1,
+                          label=f'{row_name} With Opto')
                 ax_dff.fill_between(time_array,
                                    data['with_opto']['dff'][wl]['mean'] - data['with_opto']['dff'][wl]['sem'],
                                    data['with_opto']['dff'][wl]['mean'] + data['with_opto']['dff'][wl]['sem'],
-                                   color=day_color, alpha=0.5)
+                                   color=row_color, alpha=0.5)
             if wl in data['without_opto']['dff']:
                 ax_dff.plot(time_array, data['without_opto']['dff'][wl]['mean'],
-                          color=day_color, linewidth=2, linestyle='-', alpha=0.5,
-                          label=f'{day_name} Without Opto')
+                          color=row_color, linewidth=2, linestyle='-', alpha=0.5,
+                          label=f'{row_name} Without Opto')
                 ax_dff.fill_between(time_array,
                                    data['without_opto']['dff'][wl]['mean'] - data['without_opto']['dff'][wl]['sem'],
                                    data['without_opto']['dff'][wl]['mean'] + data['without_opto']['dff'][wl]['sem'],
-                                   color=day_color, alpha=0.2)
+                                   color=row_color, alpha=0.2)
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
@@ -1998,24 +1998,24 @@ def plot_running_optogenetics_results(results, params):
         ax_dff.grid(False)
  
         ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
-        for idx, (day_name, data) in enumerate(results.items()):
-            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+        for idx, (row_name, data) in enumerate(results.items()):
+            row_color = ROW_COLORS[idx % len(ROW_COLORS)]
             if wl in data['with_opto']['zscore']:
                 ax_zscore.plot(time_array, data['with_opto']['zscore'][wl]['mean'],
-                             color=day_color, linewidth=2, linestyle='-', alpha=1,
-                             label=f'{day_name} With Opto')
+                             color=row_color, linewidth=2, linestyle='-', alpha=1,
+                             label=f'{row_name} With Opto')
                 ax_zscore.fill_between(time_array,
                                       data['with_opto']['zscore'][wl]['mean'] - data['with_opto']['zscore'][wl]['sem'],
                                       data['with_opto']['zscore'][wl]['mean'] + data['with_opto']['zscore'][wl]['sem'],
-                                      color=day_color, alpha=0.5)
+                                      color=row_color, alpha=0.5)
             if wl in data['without_opto']['zscore']:
                 ax_zscore.plot(time_array, data['without_opto']['zscore'][wl]['mean'],
-                             color=day_color, linewidth=2, linestyle='-', alpha=0.5,
-                             label=f'{day_name} Without Opto')
+                             color=row_color, linewidth=2, linestyle='-', alpha=0.5,
+                             label=f'{row_name} Without Opto')
                 ax_zscore.fill_between(time_array,
                                       data['without_opto']['zscore'][wl]['mean'] - data['without_opto']['zscore'][wl]['sem'],
                                       data['without_opto']['zscore'][wl]['mean'] + data['without_opto']['zscore'][wl]['sem'],
-                                      color=day_color, alpha=0.2)
+                                      color=row_color, alpha=0.2)
         ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_zscore.set_xlim(time_array[0], time_array[-1])
         ax_zscore.set_xlabel('Time (s)')
@@ -2028,7 +2028,7 @@ def plot_running_optogenetics_results(results, params):
         ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
         all_with_opto = []
         all_without_opto = []
-        for day_name, data in results.items():
+        for row_name, data in results.items():
             if len(data['with_opto']['running']['episodes']) > 0:
                 all_with_opto.extend(data['with_opto']['running']['episodes'])
             if len(data['without_opto']['running']['episodes']) > 0:
@@ -2055,7 +2055,7 @@ def plot_running_optogenetics_results(results, params):
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         all_with_opto_dff = []
         all_without_opto_dff = []
-        for day_name, data in results.items():
+        for row_name, data in results.items():
             if wl in data['with_opto']['dff']:
                 all_with_opto_dff.extend(data['with_opto']['dff'][wl]['episodes'])
             if wl in data['without_opto']['dff']:
@@ -2082,7 +2082,7 @@ def plot_running_optogenetics_results(results, params):
         ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_with_opto_zscore = []
         all_without_opto_zscore = []
-        for day_name, data in results.items():
+        for row_name, data in results.items():
             if wl in data['with_opto']['zscore']:
                 all_with_opto_zscore.extend(data['with_opto']['zscore'][wl]['episodes'])
             if wl in data['without_opto']['zscore']:
@@ -2109,26 +2109,26 @@ def plot_running_optogenetics_results(results, params):
         fig.tight_layout()
         embed_figure(inner, fig, row_in_frame=wl_idx)
         
-    create_individual_day_windows_running_optogenetics(results, params)
+    create_individual_row_windows_running_optogenetics(results, params)
 
-def create_individual_day_windows_running_optogenetics(results, params):
-    """Create individual windows for each day - running+optogenetics"""
-    for day_name, data in results.items():
-        create_single_day_window_running_optogenetics(day_name, data, params)
+def create_individual_row_windows_running_optogenetics(results, params):
+    """Create individual windows for each row - running+optogenetics"""
+    for row_name, data in results.items():
+        create_single_row_window_running_optogenetics(row_name, data, params)
 
-def create_single_day_window_running_optogenetics(day_name, data, params):
-    """Create window for a single day - running+optogenetics"""
+def create_single_row_window_running_optogenetics(row_name, data, params):
+    """Create window for a single row - running+optogenetics"""
     target_wavelengths = data.get('target_wavelengths', ['470'])
     time_array = data['time']
  
     win, _, inner = make_scrollable_window(
-        f"Running+Optogenetics Analysis - {day_name} - {params['full_event_type']}"
+        f"Running+Optogenetics Analysis - {row_name} - {params['full_event_type']}"
     )
  
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
         fig = make_figure(NUM_COLS)
-        fig.suptitle(f"{day_name} — Wavelength {wl} nm (Running+Optogenetics)",
+        fig.suptitle(f"{row_name} — Wavelength {wl} nm (Running+Optogenetics)",
                      fontsize=12, fontweight="bold")
  
         # Row 1: Traces
@@ -2151,7 +2151,7 @@ def create_single_day_window_running_optogenetics(day_name, data, params):
         ax_running.set_xlim(time_array[0], time_array[-1])
         ax_running.set_xlabel('Time (s)')
         ax_running.set_ylabel('Speed (cm/s)')
-        ax_running.set_title(f'{day_name} - Running Speed')
+        ax_running.set_title(f'{row_name} - Running Speed')
         ax_running.legend()
         ax_running.grid(False)
  
@@ -2174,7 +2174,7 @@ def create_single_day_window_running_optogenetics(day_name, data, params):
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
         ax_dff.set_ylabel('ΔF/F')
-        ax_dff.set_title(f'{day_name} - Fiber ΔF/F {wl}nm')
+        ax_dff.set_title(f'{row_name} - Fiber ΔF/F {wl}nm')
         ax_dff.legend()
         ax_dff.grid(False)
  
@@ -2197,7 +2197,7 @@ def create_single_day_window_running_optogenetics(day_name, data, params):
         ax_zscore.set_xlim(time_array[0], time_array[-1])
         ax_zscore.set_xlabel('Time (s)')
         ax_zscore.set_ylabel('Z-score')
-        ax_zscore.set_title(f'{day_name} - Fiber Z-score {wl}nm')
+        ax_zscore.set_title(f'{row_name} - Fiber Z-score {wl}nm')
         ax_zscore.legend()
         ax_zscore.grid(False)
  
@@ -2211,18 +2211,18 @@ def create_single_day_window_running_optogenetics(day_name, data, params):
             draw_heatmap(ax_running_heat, combined, time_array,
                          'viridis', 'Speed (cm/s)',
                          extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
-            ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap')
+            ax_running_heat.set_title(f'{row_name} - Running Speed Heatmap')
         elif len(with_run) > 0:
             draw_heatmap(ax_running_heat, with_run, time_array, 'viridis', 'Speed (cm/s)')
-            ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap')
+            ax_running_heat.set_title(f'{row_name} - Running Speed Heatmap')
         elif len(without_run) > 0:
             draw_heatmap(ax_running_heat, without_run, time_array, 'viridis', 'Speed (cm/s)')
-            ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap')
+            ax_running_heat.set_title(f'{row_name} - Running Speed Heatmap')
         else:
             ax_running_heat.text(0.5, 0.5, 'No running data available',
                                ha='center', va='center', transform=ax_running_heat.transAxes,
                                fontsize=12, color='#666666')
-            ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap')
+            ax_running_heat.set_title(f'{row_name} - Running Speed Heatmap')
             ax_running_heat.axis('off')
  
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
@@ -2235,20 +2235,20 @@ def create_single_day_window_running_optogenetics(day_name, data, params):
             draw_heatmap(ax_dff_heat, combined, time_array,
                          'coolwarm', 'ΔF/F',
                          extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
-            ax_dff_heat.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm')
+            ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm')
         elif wl in data['with_opto']['dff'] and len(data['with_opto']['dff'][wl]['episodes']) > 0:
             draw_heatmap(ax_dff_heat, data['with_opto']['dff'][wl]['episodes'],
                          time_array, 'coolwarm', 'ΔF/F')
-            ax_dff_heat.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm')
+            ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm')
         elif wl in data['without_opto']['dff'] and len(data['without_opto']['dff'][wl]['episodes']) > 0:
             draw_heatmap(ax_dff_heat, data['without_opto']['dff'][wl]['episodes'],
                          time_array, 'coolwarm', 'ΔF/F')
-            ax_dff_heat.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm')
+            ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm')
         else:
             ax_dff_heat.text(0.5, 0.5, f'No dFF data for {wl}nm',
                            ha='center', va='center', transform=ax_dff_heat.transAxes,
                            fontsize=12, color='#666666')
-            ax_dff_heat.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm')
+            ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm')
             ax_dff_heat.axis('off')
  
         ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
@@ -2261,54 +2261,54 @@ def create_single_day_window_running_optogenetics(day_name, data, params):
             draw_heatmap(ax_zscore_heat, combined, time_array,
                          'coolwarm', 'Z-score',
                          extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
-            ax_zscore_heat.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm')
+            ax_zscore_heat.set_title(f'{row_name} - Fiber Z-score Heatmap {wl}nm')
         elif wl in data['with_opto']['zscore'] and len(data['with_opto']['zscore'][wl]['episodes']) > 0:
             draw_heatmap(ax_zscore_heat, data['with_opto']['zscore'][wl]['episodes'],
                          time_array, 'coolwarm', 'Z-score')
-            ax_zscore_heat.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm')
+            ax_zscore_heat.set_title(f'{row_name} - Fiber Z-score Heatmap {wl}nm')
         elif wl in data['without_opto']['zscore'] and len(data['without_opto']['zscore'][wl]['episodes']) > 0:
             draw_heatmap(ax_zscore_heat, data['without_opto']['zscore'][wl]['episodes'],
                          time_array, 'coolwarm', 'Z-score')
-            ax_zscore_heat.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm')
+            ax_zscore_heat.set_title(f'{row_name} - Fiber Z-score Heatmap {wl}nm')
         else:
             ax_zscore_heat.text(0.5, 0.5, f'No z-score data for {wl}nm',
                               ha='center', va='center', transform=ax_zscore_heat.transAxes,
                               fontsize=12, color='#666666')
-            ax_zscore_heat.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm')
+            ax_zscore_heat.set_title(f'{row_name} - Fiber Z-score Heatmap {wl}nm')
             ax_zscore_heat.axis('off')
  
         fig.tight_layout()
         embed_figure(inner, fig, row_in_frame=wl_idx)
  
-    log_message(f"Individual day plot created for {day_name} (with/without optogenetics)")
+    log_message(f"Individual row plot created for {row_name} (with/without optogenetics)")
 
-def run_running_optogenetics_analysis(day_data, params, all_optogenetic_events, 
+def run_running_optogenetics_analysis(row_data, params, all_optogenetic_events, 
                                      power_values, all_drug_events, analysis_mode):
     """Run running+optogenetics analysis"""
-    log_message(f"Starting running+optogenetics analysis for {len(day_data)} day(s)...")
+    log_message(f"Starting running+optogenetics analysis for {len(row_data)} row(s)...")
     
     results = {}
     all_statistics = []
     
-    for day_name, animals in day_data.items():
-        log_message(f"Analyzing {day_name} with {len(animals)} animal(s)...")
+    for row_name, animals in row_data.items():
+        log_message(f"Analyzing {row_name} with {len(animals)} animal(s)...")
         
         if analysis_mode == "running+optogenetics+drug":
             # Drug mode
-            day_result, day_stats = analyze_day_running_optogenetics_drug(
-                day_name, animals, params, all_optogenetic_events, 
+            row_result, row_stats = analyze_row_running_optogenetics_drug(
+                row_name, animals, params, all_optogenetic_events, 
                 power_values, all_drug_events
             )
         else:
             # No drug mode
-            day_result, day_stats = analyze_day_running_optogenetics(
-                day_name, animals, params, all_optogenetic_events, power_values
+            row_result, row_stats = analyze_row_running_optogenetics(
+                row_name, animals, params, all_optogenetic_events, power_values
             )
         
-        if day_result:
-            results[day_name] = day_result
-        if day_stats:
-            all_statistics.extend(day_stats)
+        if row_result:
+            results[row_name] = row_result
+        if row_stats:
+            all_statistics.extend(row_stats)
     
     if params['export_stats'] and all_statistics:
         export_type = "running_opto_drug_induced" if analysis_mode == "running+optogenetics+drug" else "running_opto_induced"
@@ -2323,9 +2323,9 @@ def run_running_optogenetics_analysis(day_data, params, all_optogenetic_events,
     else:
         log_message("No valid results", "ERROR")
 
-def analyze_day_running_optogenetics_drug(day_name, animals, params, 
+def analyze_row_running_optogenetics_drug(row_name, animals, params, 
                                           all_optogenetic_events, power_values, all_drug_events):
-    """Analyze one day for running+optogenetics+drug mode with multiple drugs"""
+    """Analyze one row for running+optogenetics+drug mode with multiple drugs"""
     time_array = np.linspace(-params['pre_time'], params['post_time'], 
                             int((params['pre_time'] + params['post_time']) * 10))
     
@@ -2342,7 +2342,7 @@ def analyze_day_running_optogenetics_drug(day_name, animals, params,
         target_wavelengths = ['470']
     
     # Load drug name config
-    config_path = os.path.join(os.path.dirname(__file__), 'drug_name_config.json')
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'drug_name_config.json')
     if os.path.exists(config_path):
         with open(config_path, 'r') as f:
             drug_name_config = json.load(f)
@@ -2488,7 +2488,7 @@ def analyze_day_running_optogenetics_drug(day_name, animals, params,
                     # Collect statistics
                     if params['export_stats'] and len(with_result['running']) > 0:
                         stats = collect_statistics_with_condition(
-                            day_name, f"{animal_id}_{category}_with_opto", 
+                            row_name, f"{animal_id}_{category}_with_opto", 
                             params['full_event_type'],
                             with_result, time_array, params, target_wavelengths, 
                             active_channels, f"{category}_with_opto"
@@ -2517,7 +2517,7 @@ def analyze_day_running_optogenetics_drug(day_name, animals, params,
                     # Collect statistics
                     if params['export_stats'] and len(without_result['running']) > 0:
                         stats = collect_statistics_with_condition(
-                            day_name, f"{animal_id}_{category}_without_opto",
+                            row_name, f"{animal_id}_{category}_without_opto",
                             params['full_event_type'],
                             without_result, time_array, params, target_wavelengths, 
                             active_channels, f"{category}_without_opto"
@@ -2572,7 +2572,7 @@ def analyze_day_running_optogenetics_drug(day_name, animals, params,
     
     return result, statistics_rows if params['export_stats'] else None
 
-def collect_statistics_with_condition(day_name, animal_id, event_type, result, 
+def collect_statistics_with_condition(row_name, animal_id, event_type, result, 
                                       time_array, params, target_wavelengths, 
                                       active_channels, condition):
     """Collect statistics with condition label"""
@@ -2586,7 +2586,7 @@ def collect_statistics_with_condition(day_name, animal_id, event_type, result,
         post_data = episode_data[post_mask]
         
         rows.append({
-            'day': day_name,
+            'row': row_name,
             'animal_single_channel_id': animal_id,
             'event_type': event_type,
             'channel': 'running_speed',
@@ -2616,7 +2616,7 @@ def collect_statistics_with_condition(day_name, animal_id, event_type, result,
                     post_data = episode_data[post_mask]
                     
                     rows.append({
-                        'day': day_name,
+                        'row': row_name,
                         'animal_single_channel_id': animal_id,
                         'event_type': event_type,
                         'channel': channel,
@@ -2642,7 +2642,7 @@ def collect_statistics_with_condition(day_name, animal_id, event_type, result,
                     post_data = episode_data[post_mask]
                     
                     rows.append({
-                        'day': day_name,
+                        'row': row_name,
                         'animal_single_channel_id': animal_id,
                         'event_type': event_type,
                         'channel': channel,
@@ -2669,7 +2669,7 @@ def plot_running_optogenetics_drug_results(results, params):
     
     # Get all drug categories
     all_categories = set()
-    for day_name, data in results.items():
+    for row_name, data in results.items():
         if 'drug_categories' in data:
             all_categories.update(data['drug_categories'])
     all_categories = list(all_categories)
@@ -2698,13 +2698,13 @@ def plot_running_optogenetics_drug_results(results, params):
         'Without Optogenetics: Across Drug Categories'
     )
     
-    # Create individual day windows
-    create_individual_day_windows_running_optogenetics_drug_multi(results, params)
+    # Create individual row windows
+    create_individual_row_windows_running_optogenetics_drug_multi(results, params)
 
 def plot_comparison_window_multi_drug(results, params, category, condition1_key, condition2_key,
                                       window_title, label1, label2):
     target_wavelengths = []
-    for day_name, data in results.items():
+    for row_name, data in results.items():
         if 'target_wavelengths' in data:
             target_wavelengths = data['target_wavelengths']
             break
@@ -2713,7 +2713,7 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
  
     time_array = list(results.values())[0]['time']
  
-    win, _, inner = make_scrollable_window(f"{window_title} - All Days")
+    win, _, inner = make_scrollable_window(f"{window_title} - All Rows")
  
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
@@ -2722,27 +2722,27 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
  
         # Row 1: Traces
         ax_running = fig.add_subplot(2, NUM_COLS, 1)
-        for idx, (day_name, data) in enumerate(results.items()):
+        for idx, (row_name, data) in enumerate(results.items()):
             if category not in data:
                 continue
-            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+            row_color = ROW_COLORS[idx % len(ROW_COLORS)]
             category_data = data[category]
             if condition1_key in category_data and category_data[condition1_key]['running']['mean'] is not None:
                 ax_running.plot(time_array, category_data[condition1_key]['running']['mean'],
-                              color=day_color, linestyle='-', linewidth=2, alpha=1,
-                              label=f"{day_name} {label1}")
+                              color=row_color, linestyle='-', linewidth=2, alpha=1,
+                              label=f"{row_name} {label1}")
                 ax_running.fill_between(time_array,
                                        category_data[condition1_key]['running']['mean'] - category_data[condition1_key]['running']['sem'],
                                        category_data[condition1_key]['running']['mean'] + category_data[condition1_key]['running']['sem'],
-                                       color=day_color, alpha=0.5)
+                                       color=row_color, alpha=0.5)
             if condition2_key in category_data and category_data[condition2_key]['running']['mean'] is not None:
                 ax_running.plot(time_array, category_data[condition2_key]['running']['mean'],
-                              color=day_color, linestyle='-', linewidth=2, alpha=0.5,
-                              label=f"{day_name} {label2}")
+                              color=row_color, linestyle='-', linewidth=2, alpha=0.5,
+                              label=f"{row_name} {label2}")
                 ax_running.fill_between(time_array,
                                        category_data[condition2_key]['running']['mean'] - category_data[condition2_key]['running']['sem'],
                                        category_data[condition2_key]['running']['mean'] + category_data[condition2_key]['running']['sem'],
-                                       color=day_color, alpha=0.2)
+                                       color=row_color, alpha=0.2)
         ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_running.set_xlim(time_array[0], time_array[-1])
         ax_running.set_xlabel('Time (s)')
@@ -2752,27 +2752,27 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
         ax_running.grid(False)
  
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
-        for idx, (day_name, data) in enumerate(results.items()):
+        for idx, (row_name, data) in enumerate(results.items()):
             if category not in data:
                 continue
-            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+            row_color = ROW_COLORS[idx % len(ROW_COLORS)]
             category_data = data[category]
             if condition1_key in category_data and wl in category_data[condition1_key]['dff']:
                 ax_dff.plot(time_array, category_data[condition1_key]['dff'][wl]['mean'],
-                          color=day_color, linewidth=2, linestyle='-', alpha=1,
-                          label=f'{day_name} {label1}')
+                          color=row_color, linewidth=2, linestyle='-', alpha=1,
+                          label=f'{row_name} {label1}')
                 ax_dff.fill_between(time_array,
                                    category_data[condition1_key]['dff'][wl]['mean'] - category_data[condition1_key]['dff'][wl]['sem'],
                                    category_data[condition1_key]['dff'][wl]['mean'] + category_data[condition1_key]['dff'][wl]['sem'],
-                                   color=day_color, alpha=0.5)
+                                   color=row_color, alpha=0.5)
             if condition2_key in category_data and wl in category_data[condition2_key]['dff']:
                 ax_dff.plot(time_array, category_data[condition2_key]['dff'][wl]['mean'],
-                          color=day_color, linewidth=2, linestyle='-', alpha=0.5,
-                          label=f'{day_name} {label2}')
+                          color=row_color, linewidth=2, linestyle='-', alpha=0.5,
+                          label=f'{row_name} {label2}')
                 ax_dff.fill_between(time_array,
                                    category_data[condition2_key]['dff'][wl]['mean'] - category_data[condition2_key]['dff'][wl]['sem'],
                                    category_data[condition2_key]['dff'][wl]['mean'] + category_data[condition2_key]['dff'][wl]['sem'],
-                                   color=day_color, alpha=0.2)
+                                   color=row_color, alpha=0.2)
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
@@ -2782,27 +2782,27 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
         ax_dff.grid(False)
  
         ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
-        for idx, (day_name, data) in enumerate(results.items()):
+        for idx, (row_name, data) in enumerate(results.items()):
             if category not in data:
                 continue
-            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+            row_color = ROW_COLORS[idx % len(ROW_COLORS)]
             category_data = data[category]
             if condition1_key in category_data and wl in category_data[condition1_key]['zscore']:
                 ax_zscore.plot(time_array, category_data[condition1_key]['zscore'][wl]['mean'],
-                             color=day_color, linewidth=2, linestyle='-', alpha=1,
-                             label=f'{day_name} {label1}')
+                             color=row_color, linewidth=2, linestyle='-', alpha=1,
+                             label=f'{row_name} {label1}')
                 ax_zscore.fill_between(time_array,
                                       category_data[condition1_key]['zscore'][wl]['mean'] - category_data[condition1_key]['zscore'][wl]['sem'],
                                       category_data[condition1_key]['zscore'][wl]['mean'] + category_data[condition1_key]['zscore'][wl]['sem'],
-                                      color=day_color, alpha=0.5)
+                                      color=row_color, alpha=0.5)
             if condition2_key in category_data and wl in category_data[condition2_key]['zscore']:
                 ax_zscore.plot(time_array, category_data[condition2_key]['zscore'][wl]['mean'],
-                             color=day_color, linewidth=2, linestyle='-', alpha=0.5,
-                             label=f'{day_name} {label2}')
+                             color=row_color, linewidth=2, linestyle='-', alpha=0.5,
+                             label=f'{row_name} {label2}')
                 ax_zscore.fill_between(time_array,
                                       category_data[condition2_key]['zscore'][wl]['mean'] - category_data[condition2_key]['zscore'][wl]['sem'],
                                       category_data[condition2_key]['zscore'][wl]['mean'] + category_data[condition2_key]['zscore'][wl]['sem'],
-                                      color=day_color, alpha=0.2)
+                                      color=row_color, alpha=0.2)
         ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_zscore.set_xlim(time_array[0], time_array[-1])
         ax_zscore.set_xlabel('Time (s)')
@@ -2815,7 +2815,7 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
         ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
         all_cond1 = []
         all_cond2 = []
-        for day_name, data in results.items():
+        for row_name, data in results.items():
             if category not in data:
                 continue
             category_data = data[category]
@@ -2840,7 +2840,7 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         all_cond1_dff = []
         all_cond2_dff = []
-        for day_name, data in results.items():
+        for row_name, data in results.items():
             if category not in data:
                 continue
             category_data = data[category]
@@ -2865,7 +2865,7 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
         ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_cond1_zscore = []
         all_cond2_zscore = []
-        for day_name, data in results.items():
+        for row_name, data in results.items():
             if category not in data:
                 continue
             category_data = data[category]
@@ -2895,7 +2895,7 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
 def plot_comparison_window_multi_drug_categories(results, params, condition_key,
                                                   categories, window_title):
     target_wavelengths = []
-    for day_name, data in results.items():
+    for row_name, data in results.items():
         if 'target_wavelengths' in data:
             target_wavelengths = data['target_wavelengths']
             break
@@ -2904,7 +2904,7 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
  
     time_array = list(results.values())[0]['time']
  
-    win, _, inner = make_scrollable_window(f"{window_title} - All Days")
+    win, _, inner = make_scrollable_window(f"{window_title} - All Rows")
  
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
@@ -2913,8 +2913,8 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
  
         # Row 1: Traces
         ax_running = fig.add_subplot(2, NUM_COLS, 1)
-        for idx, (day_name, data) in enumerate(results.items()):
-            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+        for idx, (row_name, data) in enumerate(results.items()):
+            row_color = ROW_COLORS[idx % len(ROW_COLORS)]
             for cat_idx, category in enumerate(categories):
                 if category not in data:
                     continue
@@ -2922,12 +2922,12 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
                 if condition_key in category_data and category_data[condition_key]['running']['mean'] is not None:
                     alpha = 1/len(categories) + (1/len(categories) * cat_idx)
                     ax_running.plot(time_array, category_data[condition_key]['running']['mean'],
-                                  color=day_color, linestyle='-', linewidth=2,
-                                  alpha=alpha, label=f"{day_name} {category}")
+                                  color=row_color, linestyle='-', linewidth=2,
+                                  alpha=alpha, label=f"{row_name} {category}")
                     ax_running.fill_between(time_array,
                                            category_data[condition_key]['running']['mean'] - category_data[condition_key]['running']['sem'],
                                            category_data[condition_key]['running']['mean'] + category_data[condition_key]['running']['sem'],
-                                           color=day_color, alpha=alpha*0.5)
+                                           color=row_color, alpha=alpha*0.5)
         ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_running.set_xlim(time_array[0], time_array[-1])
         ax_running.set_xlabel('Time (s)')
@@ -2937,8 +2937,8 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
         ax_running.grid(False)
  
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
-        for idx, (day_name, data) in enumerate(results.items()):
-            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+        for idx, (row_name, data) in enumerate(results.items()):
+            row_color = ROW_COLORS[idx % len(ROW_COLORS)]
             for cat_idx, category in enumerate(categories):
                 if category not in data:
                     continue
@@ -2946,12 +2946,12 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
                 if condition_key in category_data and wl in category_data[condition_key]['dff']:
                     alpha = 1/len(categories) + (1/len(categories) * cat_idx)
                     ax_dff.plot(time_array, category_data[condition_key]['dff'][wl]['mean'],
-                              color=day_color, linewidth=2, linestyle='-',
-                              alpha=alpha, label=f'{day_name} {category}')
+                              color=row_color, linewidth=2, linestyle='-',
+                              alpha=alpha, label=f'{row_name} {category}')
                     ax_dff.fill_between(time_array,
                                        category_data[condition_key]['dff'][wl]['mean'] - category_data[condition_key]['dff'][wl]['sem'],
                                        category_data[condition_key]['dff'][wl]['mean'] + category_data[condition_key]['dff'][wl]['sem'],
-                                       color=day_color, alpha=alpha*0.5)
+                                       color=row_color, alpha=alpha*0.5)
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
@@ -2961,8 +2961,8 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
         ax_dff.grid(False)
  
         ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
-        for idx, (day_name, data) in enumerate(results.items()):
-            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+        for idx, (row_name, data) in enumerate(results.items()):
+            row_color = ROW_COLORS[idx % len(ROW_COLORS)]
             for cat_idx, category in enumerate(categories):
                 if category not in data:
                     continue
@@ -2970,12 +2970,12 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
                 if condition_key in category_data and wl in category_data[condition_key]['zscore']:
                     alpha = 1/len(categories) + (1/len(categories) * cat_idx)
                     ax_zscore.plot(time_array, category_data[condition_key]['zscore'][wl]['mean'],
-                                 color=day_color, linewidth=2, linestyle='-',
-                                 alpha=alpha, label=f'{day_name} {category}')
+                                 color=row_color, linewidth=2, linestyle='-',
+                                 alpha=alpha, label=f'{row_name} {category}')
                     ax_zscore.fill_between(time_array,
                                           category_data[condition_key]['zscore'][wl]['mean'] - category_data[condition_key]['zscore'][wl]['sem'],
                                           category_data[condition_key]['zscore'][wl]['mean'] + category_data[condition_key]['zscore'][wl]['sem'],
-                                          color=day_color, alpha=alpha*0.5)
+                                          color=row_color, alpha=alpha*0.5)
         ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_zscore.set_xlim(time_array[0], time_array[-1])
         ax_zscore.set_xlabel('Time (s)')
@@ -2990,7 +2990,7 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
         category_boundaries = []
         for category in categories:
             category_episodes = []
-            for day_name, data in results.items():
+            for row_name, data in results.items():
                 if category not in data:
                     continue
                 category_data = data[category]
@@ -3016,7 +3016,7 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
         category_boundaries = []
         for category in categories:
             category_episodes = []
-            for day_name, data in results.items():
+            for row_name, data in results.items():
                 if category not in data:
                     continue
                 category_data = data[category]
@@ -3042,7 +3042,7 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
         category_boundaries = []
         for category in categories:
             category_episodes = []
-            for day_name, data in results.items():
+            for row_name, data in results.items():
                 if category not in data:
                     continue
                 category_data = data[category]
@@ -3068,27 +3068,27 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
  
     log_message(f"Multi-drug categories window created: {window_title}")
 
-def create_individual_day_windows_running_optogenetics_drug_multi(results, params):
-    """Create individual windows for each day - running+optogenetics+drug with multiple drugs"""
-    for day_name, data in results.items():
+def create_individual_row_windows_running_optogenetics_drug_multi(results, params):
+    """Create individual windows for each row - running+optogenetics+drug with multiple drugs"""
+    for row_name, data in results.items():
         # Get all drug categories
         drug_categories = data.get('drug_categories', [])
         
-        # Create multiple comparison windows for this day
+        # Create multiple comparison windows for this row
         # 1. For each category: with vs without opto
         for category in drug_categories:
-            create_single_day_category_window(
-                day_name, data, params, category,
-                f'Running+Optogenetics+Drug - {day_name} - {category}: With vs Without Opto'
+            create_single_row_category_window(
+                row_name, data, params, category,
+                f'Running+Optogenetics+Drug - {row_name} - {category}: With vs Without Opto'
             )
         
         # 2. Overall comparison across categories
-        create_single_day_all_categories_window(
-            day_name, data, params,
-            f'Running+Optogenetics+Drug - {day_name} - All Categories'
+        create_single_row_all_categories_window(
+            row_name, data, params,
+            f'Running+Optogenetics+Drug - {row_name} - All Categories'
         )
 
-def create_single_day_category_window(day_name, data, params, category, window_title):
+def create_single_row_category_window(row_name, data, params, category, window_title):
     """Create window for one drug category showing with/without opto comparison"""
     if category not in data:
         return
@@ -3228,7 +3228,7 @@ def create_single_day_category_window(day_name, data, params, category, window_t
  
     log_message(f"Category window created: {window_title}")
 
-def create_single_day_all_categories_window(day_name, data, params, window_title):
+def create_single_row_all_categories_window(row_name, data, params, window_title):
     """Create window showing all categories with opto condition comparison"""
     target_wavelengths = data.get('target_wavelengths', ['470'])
     drug_categories = data.get('drug_categories', [])
@@ -3249,31 +3249,31 @@ def create_single_day_all_categories_window(day_name, data, params, window_title
             category_data = data[category]
             if 'with_opto' in category_data and category_data['with_opto']['running']['mean'] is not None:
                 alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
-                log_message(f"Plotting {day_name} - {category} - {cat_idx} with alpha {alpha}")
+                log_message(f"Plotting {row_name} - {category} - {cat_idx} with alpha {alpha}")
                 ax_running.plot(time_array, category_data['with_opto']['running']['mean'],
-                              color=DAY_COLORS[cat_idx % len(DAY_COLORS)],
+                              color=ROW_COLORS[cat_idx % len(ROW_COLORS)],
                               linewidth=2, linestyle='-', alpha=alpha,
                               label=f'{category} +Opto')
                 ax_running.fill_between(time_array,
                                        category_data['with_opto']['running']['mean'] - category_data['with_opto']['running']['sem'],
                                        category_data['with_opto']['running']['mean'] + category_data['with_opto']['running']['sem'],
-                                       color=DAY_COLORS[cat_idx % len(DAY_COLORS)], alpha=alpha*0.3)
+                                       color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=alpha*0.3)
             if 'without_opto' in category_data and category_data['without_opto']['running']['mean'] is not None:
                 alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
-                log_message(f"Plotting {day_name} - {category} - {cat_idx} without opto with alpha {alpha}")
+                log_message(f"Plotting {row_name} - {category} - {cat_idx} without opto with alpha {alpha}")
                 ax_running.plot(time_array, category_data['without_opto']['running']['mean'],
-                              color=DAY_COLORS[cat_idx % len(DAY_COLORS)],
+                              color=ROW_COLORS[cat_idx % len(ROW_COLORS)],
                               linewidth=2, linestyle='-', alpha=alpha,
                               label=f'{category} -Opto')
                 ax_running.fill_between(time_array,
                                        category_data['without_opto']['running']['mean'] - category_data['without_opto']['running']['sem'],
                                        category_data['without_opto']['running']['mean'] + category_data['without_opto']['running']['sem'],
-                                       color=DAY_COLORS[cat_idx % len(DAY_COLORS)], alpha=alpha*0.3)
+                                       color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=alpha*0.3)
         ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_running.set_xlim(time_array[0], time_array[-1])
         ax_running.set_xlabel('Time (s)')
         ax_running.set_ylabel('Speed (cm/s)')
-        ax_running.set_title(f'{day_name} - Running Speed (All Categories)')
+        ax_running.set_title(f'{row_name} - Running Speed (All Categories)')
         ax_running.legend(fontsize=7, ncol=2)
         ax_running.grid(False)
  
@@ -3284,31 +3284,31 @@ def create_single_day_all_categories_window(day_name, data, params, window_title
             category_data = data[category]
             if 'with_opto' in category_data and wl in category_data['with_opto']['dff']:
                 alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
-                log_message(f"Plotting {day_name} - {category} - {cat_idx} with alpha {alpha}")
+                log_message(f"Plotting {row_name} - {category} - {cat_idx} with alpha {alpha}")
                 ax_dff.plot(time_array, category_data['with_opto']['dff'][wl]['mean'],
-                          color=DAY_COLORS[cat_idx % len(DAY_COLORS)],
+                          color=ROW_COLORS[cat_idx % len(ROW_COLORS)],
                           linewidth=2, linestyle='-', alpha=alpha,
                           label=f'{category} +Opto')
                 ax_dff.fill_between(time_array,
                                    category_data['with_opto']['dff'][wl]['mean'] - category_data['with_opto']['dff'][wl]['sem'],
                                    category_data['with_opto']['dff'][wl]['mean'] + category_data['with_opto']['dff'][wl]['sem'],
-                                   color=DAY_COLORS[cat_idx % len(DAY_COLORS)], alpha=alpha*0.3)
+                                   color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=alpha*0.3)
             if 'without_opto' in category_data and wl in category_data['without_opto']['dff']:
                 alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
-                log_message(f"Plotting {day_name} - {category} - {cat_idx} without opto with alpha {alpha}")
+                log_message(f"Plotting {row_name} - {category} - {cat_idx} without opto with alpha {alpha}")
                 ax_dff.plot(time_array, category_data['without_opto']['dff'][wl]['mean'],
-                          color=DAY_COLORS[cat_idx % len(DAY_COLORS)],
+                          color=ROW_COLORS[cat_idx % len(ROW_COLORS)],
                           linewidth=2, linestyle='-', alpha=alpha,
                           label=f'{category} -Opto')
                 ax_dff.fill_between(time_array,
                                    category_data['without_opto']['dff'][wl]['mean'] - category_data['without_opto']['dff'][wl]['sem'],
                                    category_data['without_opto']['dff'][wl]['mean'] + category_data['without_opto']['dff'][wl]['sem'],
-                                   color=DAY_COLORS[cat_idx % len(DAY_COLORS)], alpha=alpha*0.3)
+                                   color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=alpha*0.3)
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
         ax_dff.set_ylabel('ΔF/F')
-        ax_dff.set_title(f'{day_name} - Fiber ΔF/F {wl}nm (All Categories)')
+        ax_dff.set_title(f'{row_name} - Fiber ΔF/F {wl}nm (All Categories)')
         ax_dff.legend(fontsize=6, ncol=2)
         ax_dff.grid(False)
  
@@ -3319,31 +3319,31 @@ def create_single_day_all_categories_window(day_name, data, params, window_title
             category_data = data[category]
             if 'with_opto' in category_data and wl in category_data['with_opto']['zscore']:
                 alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
-                log_message(f"Plotting {day_name} - {category} - {cat_idx} with alpha {alpha}")
+                log_message(f"Plotting {row_name} - {category} - {cat_idx} with alpha {alpha}")
                 ax_zscore.plot(time_array, category_data['with_opto']['zscore'][wl]['mean'],
-                             color=DAY_COLORS[cat_idx % len(DAY_COLORS)],
+                             color=ROW_COLORS[cat_idx % len(ROW_COLORS)],
                              linewidth=2, linestyle='-', alpha=alpha,
                              label=f'{category} +Opto')
                 ax_zscore.fill_between(time_array,
                                       category_data['with_opto']['zscore'][wl]['mean'] - category_data['with_opto']['zscore'][wl]['sem'],
                                       category_data['with_opto']['zscore'][wl]['mean'] + category_data['with_opto']['zscore'][wl]['sem'],
-                                      color=DAY_COLORS[cat_idx % len(DAY_COLORS)], alpha=alpha*0.3)
+                                      color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=alpha*0.3)
             if 'without_opto' in category_data and wl in category_data['without_opto']['zscore']:
                 alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
-                log_message(f"Plotting {day_name} - {category} - {cat_idx} without opto with alpha {alpha}")
+                log_message(f"Plotting {row_name} - {category} - {cat_idx} without opto with alpha {alpha}")
                 ax_zscore.plot(time_array, category_data['without_opto']['zscore'][wl]['mean'],
-                             color=DAY_COLORS[cat_idx % len(DAY_COLORS)],
+                             color=ROW_COLORS[cat_idx % len(ROW_COLORS)],
                              linewidth=2, linestyle='-', alpha=alpha,
                              label=f'{category} -Opto')
                 ax_zscore.fill_between(time_array,
                                       category_data['without_opto']['zscore'][wl]['mean'] - category_data['without_opto']['zscore'][wl]['sem'],
                                       category_data['without_opto']['zscore'][wl]['mean'] + category_data['without_opto']['zscore'][wl]['sem'],
-                                      color=DAY_COLORS[cat_idx % len(DAY_COLORS)], alpha=alpha*0.3)
+                                      color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=alpha*0.3)
         ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_zscore.set_xlim(time_array[0], time_array[-1])
         ax_zscore.set_xlabel('Time (s)')
         ax_zscore.set_ylabel('Z-score')
-        ax_zscore.set_title(f'{day_name} - Fiber Z-score {wl}nm (All Categories)')
+        ax_zscore.set_title(f'{row_name} - Fiber Z-score {wl}nm (All Categories)')
         ax_zscore.legend(fontsize=6, ncol=2)
         ax_zscore.grid(False)
  
@@ -3390,12 +3390,12 @@ def create_single_day_all_categories_window(day_name, data, params, window_title
                 y_pos, y_labels = zip(*y_positions)
                 ax_running_heat.set_yticks(y_pos)
                 ax_running_heat.set_yticklabels(y_labels, fontsize=7)
-            ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap (All Categories)')
+            ax_running_heat.set_title(f'{row_name} - Running Speed Heatmap (All Categories)')
         else:
             ax_running_heat.text(0.5, 0.5, 'No running data available',
                                ha='center', va='center', transform=ax_running_heat.transAxes,
                                fontsize=12, color='#666666')
-            ax_running_heat.set_title(f'{day_name} - Running Speed Heatmap (All Categories)')
+            ax_running_heat.set_title(f'{row_name} - Running Speed Heatmap (All Categories)')
             ax_running_heat.axis('off')
  
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
@@ -3436,12 +3436,12 @@ def create_single_day_all_categories_window(day_name, data, params, window_title
                 y_pos, y_labels = zip(*y_positions)
                 ax_dff_heat.set_yticks(y_pos)
                 ax_dff_heat.set_yticklabels(y_labels, fontsize=7)
-            ax_dff_heat.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm (All Categories)')
+            ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm (All Categories)')
         else:
             ax_dff_heat.text(0.5, 0.5, f'No dFF data for {wl}nm',
                            ha='center', va='center', transform=ax_dff_heat.transAxes,
                            fontsize=12, color='#666666')
-            ax_dff_heat.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm (All Categories)')
+            ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm (All Categories)')
             ax_dff_heat.axis('off')
  
         ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
@@ -3482,12 +3482,12 @@ def create_single_day_all_categories_window(day_name, data, params, window_title
                 y_pos, y_labels = zip(*y_positions)
                 ax_zscore_heat.set_yticks(y_pos)
                 ax_zscore_heat.set_yticklabels(y_labels, fontsize=7)
-            ax_zscore_heat.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm (All Categories)')
+            ax_zscore_heat.set_title(f'{row_name} - Fiber Z-score Heatmap {wl}nm (All Categories)')
         else:
             ax_zscore_heat.text(0.5, 0.5, f'No z-score data for {wl}nm',
                               ha='center', va='center', transform=ax_zscore_heat.transAxes,
                               fontsize=12, color='#666666')
-            ax_zscore_heat.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm (All Categories)')
+            ax_zscore_heat.set_title(f'{row_name} - Fiber Z-score Heatmap {wl}nm (All Categories)')
             ax_zscore_heat.axis('off')
  
         fig.tight_layout()

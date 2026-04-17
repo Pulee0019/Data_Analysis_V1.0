@@ -1,5 +1,5 @@
 import numpy as np
-from logger import log_message
+from infrastructure.logger import log_message
 from itertools import groupby
 from scipy.stats import scoreatpercentile
 

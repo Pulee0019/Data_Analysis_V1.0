@@ -7,11 +7,11 @@ import json
 import tkinter as tk
 import numpy as np
 
-from logger import log_message
-from Multimodal_analysis import (
+from infrastructure.logger import log_message
+from analysis_multimodal.Multimodal_analysis import (
     export_results, identify_drug_sessions, calculate_running_episodes,
     create_control_panel, create_table_window, initialize_table, create_parameter_panel,
-    get_parameters_from_ui, FIBER_COLORS, DAY_COLORS,
+    get_parameters_from_ui, FIBER_COLORS, ROW_COLORS,
     make_scrollable_window, make_figure, draw_heatmap, embed_figure
 )
 
@@ -210,7 +210,7 @@ class TableManager:
         available_sessions = []
         
         # Load drug name config
-        config_path = os.path.join(os.path.dirname(__file__), 'drug_name_config.json')
+        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'drug_name_config.json')
         if os.path.exists(config_path):
             with open(config_path, 'r') as f:
                 drug_name_config = json.load(f)
@@ -295,11 +295,11 @@ class TableManager:
     
     def run_analysis(self, params):
         """Run drug-induced analysis with current table configuration"""
-        # Group animals by day
-        day_data = {}
+        # Group animals by row
+        row_data = {}
         for i in range(self.num_rows):
-            day_name = self.row_headers.get(i, f"Day{i+1}")
-            day_animals = []
+            row_name = self.row_headers.get(i, f"Row{i+1}")
+            row_animals = []
             
             for j in range(self.num_cols):
                 if (i, j) in self.table_data:
@@ -332,7 +332,7 @@ class TableManager:
                             
                             # Load drug timing from config
                             session_id = f"{animal_id}_Session{session_idx+1}"
-                            config_path = os.path.join(os.path.dirname(__file__), 'drug_name_config.json')
+                            config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'drug_name_config.json')
                             if os.path.exists(config_path):
                                 with open(config_path, 'r') as f:
                                     drug_config = json.load(f)
@@ -343,45 +343,45 @@ class TableManager:
                                         animal_data_with_drug['drug_onset_time'] = drug_info.get('onset_time')
                                         animal_data_with_drug['drug_offset_time'] = drug_info.get('offset_time')
                             
-                            day_animals.append(animal_data_with_drug)
+                            row_animals.append(animal_data_with_drug)
                             break
             
-            if day_animals:
-                day_data[day_name] = day_animals
+            if row_animals:
+                row_data[row_name] = row_animals
         
-        if not day_data:
+        if not row_data:
             log_message("No valid data in table", "WARNING")
             return
         
-        run_drug_induced_analysis(day_data, params)
+        run_drug_induced_analysis(row_data, params)
 
-def run_drug_induced_analysis(day_data, params):
-    """Run drug-induced analysis for multiple days"""
-    log_message(f"Starting drug-induced analysis for {len(day_data)} day(s)...")
+def run_drug_induced_analysis(row_data, params):
+    """Run drug-induced analysis for multiple rows"""
+    log_message(f"Starting drug-induced analysis for {len(row_data)} row(s)...")
     
     results = {}
     all_statistics = []
     
-    for day_name, animals in day_data.items():
-        log_message(f"Analyzing {day_name} with {len(animals)} animal(s)...")
-        day_result, day_stats = analyze_day_drug_induced(day_name, animals, params)
+    for row_name, animals in row_data.items():
+        log_message(f"Analyzing {row_name} with {len(animals)} animal(s)...")
+        row_result, row_stats = analyze_row_drug_induced(row_name, animals, params)
         
-        if day_result:
-            results[day_name] = day_result
-        if day_stats:
-            all_statistics.extend(day_stats)
+        if row_result:
+            results[row_name] = row_result
+        if row_stats:
+            all_statistics.extend(row_stats)
     
     if params['export_stats'] and all_statistics:
         export_results(results, all_statistics, "drug_induced")
     
     if results:
         plot_drug_induced_results(results, params)
-        create_individual_day_windows(results, params)
+        create_individual_row_windows(results, params)
         log_message("Analysis completed successfully")
     else:
         log_message("No valid results", "ERROR")
 
-def collect_statistics(day_name, animal_id, session_idx, drug_name, result,
+def collect_statistics(row_name, animal_id, session_idx, drug_name, result,
                            time_array, params, target_wavelengths, active_channels):
     """Collect statistics for drug-induced running and fiber analysis"""
     rows = []
@@ -396,7 +396,7 @@ def collect_statistics(day_name, animal_id, session_idx, drug_name, result,
         post_data = episode_data[post_mask]
 
         rows.append({
-            'day': day_name,
+            'row': row_name,
             'animal_single_channel_id': full_id,
             'analysis_type': 'drug_induced',
             'channel': 'running_speed',
@@ -426,7 +426,7 @@ def collect_statistics(day_name, animal_id, session_idx, drug_name, result,
                     post_data = episode_data[post_mask]
 
                     rows.append({
-                        'day': day_name,
+                        'row': row_name,
                         'animal_single_channel_id': full_id,
                         'analysis_type': 'drug_induced',
                         'channel': channel,
@@ -453,7 +453,7 @@ def collect_statistics(day_name, animal_id, session_idx, drug_name, result,
                     post_data = episode_data[post_mask]
 
                     rows.append({
-                        'day': day_name,
+                        'row': row_name,
                         'animal_single_channel_id': full_id,
                         'analysis_type': 'drug_induced',
                         'channel': channel,
@@ -475,8 +475,8 @@ def collect_statistics(day_name, animal_id, session_idx, drug_name, result,
 
     return rows
 
-def analyze_day_drug_induced(day_name, animals, params):
-    """Analyze drug-induced effects for one day (multiple animals combined)"""
+def analyze_row_drug_induced(row_name, animals, params):
+    """Analyze drug-induced effects for one row (multiple animals combined)"""
     time_array = np.linspace(-params['pre_time'], params['post_time'], 
                             int((params['pre_time'] + params['post_time']) * 10))
     
@@ -580,7 +580,7 @@ def analyze_day_drug_induced(day_name, animals, params):
             # Collect statistics
             if params['export_stats']:
                 statistics_rows.extend(collect_statistics(
-                    day_name, animal_id, session_idx, drug_name, result,
+                    row_name, animal_id, session_idx, drug_name, result,
                     time_array, params, target_wavelengths, active_channels
                 ))
         
@@ -590,7 +590,7 @@ def analyze_day_drug_induced(day_name, animals, params):
             traceback.print_exc()
     
     if not combined_running and not any(combined_dff.values()) and not any(combined_zscore.values()):
-        log_message(f"No valid episodes for {day_name}", "WARNING")
+        log_message(f"No valid episodes for {row_name}", "WARNING")
         return None, []
     
     result = {
@@ -604,7 +604,7 @@ def analyze_day_drug_induced(day_name, animals, params):
     return result, statistics_rows
 
 def plot_drug_induced_results(results, params):
-    """Plot multi-animal drug-induced running and fiber results with all days overlaid."""
+    """Plot multi-animal drug-induced running and fiber results with all rows overlaid."""
     target_wavelengths = []
     for data in results.values():
         if "target_wavelengths" in data:
@@ -617,19 +617,19 @@ def plot_drug_induced_results(results, params):
     time_array = list(results.values())[0]["time"]
 
     win, _, inner = make_scrollable_window(
-        f"Drug-Induced Activity - All Days ({wavelength_label}nm)"
+        f"Drug-Induced Activity - All Rows ({wavelength_label}nm)"
     )
 
     for wl_idx, wavelength in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
         fig = make_figure(NUM_COLS)
-        fig.suptitle(f"Wavelength {wavelength} nm — All Days",
+        fig.suptitle(f"Wavelength {wavelength} nm — All Rows",
                      fontsize=12, fontweight="bold")
 
         # Row 1: Traces
         ax_run = fig.add_subplot(2, NUM_COLS, 1)
-        for idx, (day_name, data) in enumerate(results.items()):
-            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+        for idx, (row_name, data) in enumerate(results.items()):
+            row_color = ROW_COLORS[idx % len(ROW_COLORS)]
             episodes = data.get("running", [])
             if len(episodes) > 0:
                 arr = np.array(episodes)
@@ -637,22 +637,22 @@ def plot_drug_induced_results(results, params):
                     arr = arr[np.newaxis, :]
                 mean = np.nanmean(arr, axis=0)
                 sem = np.nanstd(arr, axis=0) / np.sqrt(arr.shape[0])
-                ax_run.plot(time_array, mean, color=day_color,
-                            linewidth=2, label=day_name)
+                ax_run.plot(time_array, mean, color=row_color,
+                            linewidth=2, label=row_name)
                 ax_run.fill_between(time_array, mean - sem, mean + sem,
-                                    color=day_color, alpha=0.3)
+                                    color=row_color, alpha=0.3)
         ax_run.axvline(x=0, color="#808080", linestyle="--",
                        alpha=0.8, label="Drug")
         ax_run.set_xlim(time_array[0], time_array[-1])
         ax_run.set_xlabel("Time (s)")
         ax_run.set_ylabel("Speed (cm/s)")
-        ax_run.set_title("Running Speed - All Days")
+        ax_run.set_title("Running Speed - All Rows")
         ax_run.legend(fontsize=7)
         ax_run.grid(False)
 
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
-        for idx, (day_name, data) in enumerate(results.items()):
-            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+        for idx, (row_name, data) in enumerate(results.items()):
+            row_color = ROW_COLORS[idx % len(ROW_COLORS)]
             episodes = data["dff"].get(wavelength, [])
             if len(episodes) > 0:
                 arr = np.array(episodes)
@@ -660,22 +660,22 @@ def plot_drug_induced_results(results, params):
                     arr = arr[np.newaxis, :]
                 mean = np.nanmean(arr, axis=0)
                 sem = np.nanstd(arr, axis=0) / np.sqrt(arr.shape[0])
-                ax_dff.plot(time_array, mean, color=day_color,
-                            linewidth=2, label=day_name)
+                ax_dff.plot(time_array, mean, color=row_color,
+                            linewidth=2, label=row_name)
                 ax_dff.fill_between(time_array, mean - sem, mean + sem,
-                                    color=day_color, alpha=0.3)
+                                    color=row_color, alpha=0.3)
         ax_dff.axvline(x=0, color="#808080", linestyle="--",
                        alpha=0.8, label="Drug")
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel("Time (s)")
         ax_dff.set_ylabel("ΔF/F")
-        ax_dff.set_title(f"Fiber ΔF/F {wavelength}nm - All Days")
+        ax_dff.set_title(f"Fiber ΔF/F {wavelength}nm - All Rows")
         ax_dff.legend(fontsize=7)
         ax_dff.grid(False)
 
         ax_zs = fig.add_subplot(2, NUM_COLS, 3)
-        for idx, (day_name, data) in enumerate(results.items()):
-            day_color = DAY_COLORS[idx % len(DAY_COLORS)]
+        for idx, (row_name, data) in enumerate(results.items()):
+            row_color = ROW_COLORS[idx % len(ROW_COLORS)]
             episodes = data["zscore"].get(wavelength, [])
             if len(episodes) > 0:
                 arr = np.array(episodes)
@@ -683,16 +683,16 @@ def plot_drug_induced_results(results, params):
                     arr = arr[np.newaxis, :]
                 mean = np.nanmean(arr, axis=0)
                 sem = np.nanstd(arr, axis=0) / np.sqrt(arr.shape[0])
-                ax_zs.plot(time_array, mean, color=day_color,
-                           linewidth=2, label=day_name)
+                ax_zs.plot(time_array, mean, color=row_color,
+                           linewidth=2, label=row_name)
                 ax_zs.fill_between(time_array, mean - sem, mean + sem,
-                                   color=day_color, alpha=0.3)
+                                   color=row_color, alpha=0.3)
         ax_zs.axvline(x=0, color="#808080", linestyle="--",
                       alpha=0.8, label="Drug")
         ax_zs.set_xlim(time_array[0], time_array[-1])
         ax_zs.set_xlabel("Time (s)")
         ax_zs.set_ylabel("Z-score")
-        ax_zs.set_title(f"Fiber Z-score {wavelength}nm - All Days")
+        ax_zs.set_title(f"Fiber Z-score {wavelength}nm - All Rows")
         ax_zs.legend(fontsize=7)
         ax_zs.grid(False)
 
@@ -775,22 +775,22 @@ def plot_drug_induced_results(results, params):
         fig.tight_layout(rect=[0, 0, 1, 0.96])
         embed_figure(inner, fig, row_in_frame=wl_idx)
 
-    log_message(f"Drug-induced results plotted for {len(results)} days")
+    log_message(f"Drug-induced results plotted for {len(results)} rows")
 
-def create_single_day_window(day_name, data, params):
-    """Create window for a single day with running and fiber plots."""
+def create_single_row_window(row_name, data, params):
+    """Create window for a single row with running and fiber plots."""
     target_wavelengths = data.get("target_wavelengths", ["470"])
     wavelength_label = "+".join(target_wavelengths)
     time_array = data["time"]
 
     win, _, inner = make_scrollable_window(
-        f"Drug-Induced Activity - {day_name} ({wavelength_label}nm)"
+        f"Drug-Induced Activity - {row_name} ({wavelength_label}nm)"
     )
 
     for wl_idx, wavelength in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
         fig = make_figure(NUM_COLS)
-        fig.suptitle(f"{day_name} — Wavelength {wavelength} nm",
+        fig.suptitle(f"{row_name} — Wavelength {wavelength} nm",
                      fontsize=12, fontweight="bold")
 
         # Row 1: Traces
@@ -818,7 +818,7 @@ def create_single_day_window(day_name, data, params):
                         transform=ax_run.transAxes,
                         fontsize=12, color="#666666")
             ax_run.axis("off")
-        ax_run.set_title(f"{day_name} - Running Speed")
+        ax_run.set_title(f"{row_name} - Running Speed")
 
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
         episodes = data["dff"].get(wavelength, [])
@@ -844,7 +844,7 @@ def create_single_day_window(day_name, data, params):
                         transform=ax_dff.transAxes,
                         fontsize=12, color="#666666")
             ax_dff.axis("off")
-        ax_dff.set_title(f"{day_name} - Fiber ΔF/F {wavelength}nm")
+        ax_dff.set_title(f"{row_name} - Fiber ΔF/F {wavelength}nm")
 
         ax_zs = fig.add_subplot(2, NUM_COLS, 3)
         episodes = data["zscore"].get(wavelength, [])
@@ -870,20 +870,20 @@ def create_single_day_window(day_name, data, params):
                        transform=ax_zs.transAxes,
                        fontsize=12, color="#666666")
             ax_zs.axis("off")
-        ax_zs.set_title(f"{day_name} - Fiber Z-score {wavelength}nm")
+        ax_zs.set_title(f"{row_name} - Fiber Z-score {wavelength}nm")
 
         # Row 2: Heatmaps
         ax_run_heat = fig.add_subplot(2, NUM_COLS, 4)
         if len(run_episodes) > 0:
             draw_heatmap(ax_run_heat, np.array(run_episodes),
                          time_array, "viridis", "Speed (cm/s)")
-            ax_run_heat.set_title(f"{day_name} - Running Speed Heatmap")
+            ax_run_heat.set_title(f"{row_name} - Running Speed Heatmap")
         else:
             ax_run_heat.text(0.5, 0.5, "No running data",
                              ha="center", va="center",
                              transform=ax_run_heat.transAxes,
                              fontsize=12, color="#666666")
-            ax_run_heat.set_title(f"{day_name} - Running Speed Heatmap")
+            ax_run_heat.set_title(f"{row_name} - Running Speed Heatmap")
             ax_run_heat.axis("off")
 
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
@@ -892,14 +892,14 @@ def create_single_day_window(day_name, data, params):
             draw_heatmap(ax_dff_heat, np.array(episodes),
                           time_array, "coolwarm", "ΔF/F")
             ax_dff_heat.set_title(
-                f"{day_name} - Fiber ΔF/F Heatmap {wavelength}nm")
+                f"{row_name} - Fiber ΔF/F Heatmap {wavelength}nm")
         else:
             ax_dff_heat.text(0.5, 0.5, f"No dFF data for {wavelength}nm",
                              ha="center", va="center",
                              transform=ax_dff_heat.transAxes,
                              fontsize=12, color="#666666")
             ax_dff_heat.set_title(
-                f"{day_name} - Fiber ΔF/F Heatmap {wavelength}nm")
+                f"{row_name} - Fiber ΔF/F Heatmap {wavelength}nm")
             ax_dff_heat.axis("off")
 
         ax_zs_heat = fig.add_subplot(2, NUM_COLS, 6)
@@ -908,25 +908,25 @@ def create_single_day_window(day_name, data, params):
             draw_heatmap(ax_zs_heat, np.array(episodes),
                           time_array, "coolwarm", "Z-score")
             ax_zs_heat.set_title(
-                f"{day_name} - Fiber Z-score Heatmap {wavelength}nm")
+                f"{row_name} - Fiber Z-score Heatmap {wavelength}nm")
         else:
             ax_zs_heat.text(0.5, 0.5, f"No z-score data for {wavelength}nm",
                             ha="center", va="center",
                             transform=ax_zs_heat.transAxes,
                             fontsize=12, color="#666666")
             ax_zs_heat.set_title(
-                f"{day_name} - Fiber Z-score Heatmap {wavelength}nm")
+                f"{row_name} - Fiber Z-score Heatmap {wavelength}nm")
             ax_zs_heat.axis("off")
  
         fig.tight_layout(rect=[0, 0, 1, 0.96])
         embed_figure(inner, fig, row_in_frame=wl_idx)
  
     log_message(
-        f"Individual day plot created for {day_name} "
+        f"Individual row plot created for {row_name} "
         f"with {len(target_wavelengths)} wavelength(s)"
     )
  
-def create_individual_day_windows(results, params):
-    """Create individual windows for each day"""
-    for day_name, data in results.items():
-        create_single_day_window(day_name, data, params)
+def create_individual_row_windows(results, params):
+    """Create individual windows for each row"""
+    for row_name, data in results.items():
+        create_single_row_window(row_name, data, params)

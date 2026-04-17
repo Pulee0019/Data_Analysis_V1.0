@@ -5,7 +5,7 @@ import pandas as pd
 from scipy.signal import savgol_filter
 from sklearn.linear_model import LinearRegression
 from scipy.optimize import curve_fit
-from logger import log_message
+from infrastructure.logger import log_message
 
 def smooth_data(animal_data=None, window_size=11, poly_order=3, target_signal="470", reference_signal="410"):
     """Apply smoothing to target signals + reference signal"""
@@ -135,7 +135,7 @@ def baseline_correction(animal_data=None, model_type="Polynomial", target_signal
                     
                     events_col = channels.get('events')
                     if events_col and events_col in fiber_data.columns:
-                        config_path = os.path.join(os.path.dirname(__file__), 'event_config.json')
+                        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'event_config.json')
                         with open(config_path, 'r', encoding='utf-8') as f:
                             event_config = json.load(f)
                         

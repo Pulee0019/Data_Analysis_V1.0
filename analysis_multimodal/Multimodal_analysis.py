@@ -12,10 +12,10 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
-from logger import log_message
+from infrastructure.logger import log_message
 
-# Colors for different days and fiber channels
-DAY_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', 
+# Colors for different rows and fiber channels
+ROW_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', 
               '#1abc9c', '#e67e22', '#34495e', '#f1c40f', '#95a5a6']
 FIBER_COLORS = ['#44B444', '#FF0000', '#FF9900']
 
@@ -70,7 +70,7 @@ def identify_optogenetic_events(fiber_events):
     """
     Identify optogenetic events from fiber data
     """
-    config_path = os.path.join(os.path.dirname(__file__), 'event_config.json')
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'event_config.json')
     with open(config_path, 'r', encoding='utf-8') as f:
         event_config = json.load(f)
         
@@ -142,7 +142,7 @@ def identify_drug_sessions(fiber_events):
     Identify multiple drug administration sessions from fiber data
     Returns list of dict with {time, event_name}
     """
-    config_path = os.path.join(os.path.dirname(__file__), 'event_config.json')
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'event_config.json')
     with open(config_path, 'r', encoding='utf-8') as f:
         event_config = json.load(f)
     
@@ -188,7 +188,7 @@ def get_drug_session_info(animal_id):
     Returns list of {'session_id', 'drug_name', 'event_name'}
     """
     # Load drug name config
-    config_path = os.path.join(os.path.dirname(__file__), 'drug_name_config.json')
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'drug_name_config.json')
     if os.path.exists(config_path):
         with open(config_path, 'r') as f:
             drug_name_config = json.load(f)
@@ -428,6 +428,7 @@ def calculate_running_episodes(events, running_timestamps, running_speed,
 def rebuild_results(results):
     all_rows = []
     counters = {}
+    counter = 0
 
     def extract_trials(value):
         """Extract a list of trial arrays from a value that may be a list or a dict with 'episodes'."""
@@ -451,8 +452,10 @@ def rebuild_results(results):
         else:
             # Nested structure: param_data itself is a dict of groups
             groups = param_data
-
         for group_name, group_data in groups.items():
+            if 'time' in group_data and counter == 0:  # Only add time column once
+                all_rows.append((f"time", group_data['time']))
+                counter += 1
             # Process dFF signals
             if 'dff' in group_data:
                 dff_dict = group_data['dff']
@@ -753,7 +756,7 @@ def initialize_table(table_frame, num_rows, num_cols, row_headers, col_headers, 
     # Create row headers and cells
     for i in range(num_rows):
         # Row header
-        header_text = row_headers.get(i, f"Day{i+1}")
+        header_text = row_headers.get(i, f"Row{i+1}")
         header = tk.Label(table_frame, text=header_text,
                         bg="#ffffff", fg="#000000",
                         font=("Microsoft YaHei", 10, "bold"),
