@@ -104,7 +104,7 @@ def h_calibrateVoltageRange(rawData):
     if len(peakValue) > 0 and len(valleyValue) > 0:
         voltageRange = [np.mean(valleyValue), np.mean(peakValue)]
         if np.diff(voltageRange) > 3:
-            print(f"Calibrated voltage range is {voltageRange}")
+            # print(f"Calibrated voltage range is {voltageRange}")
             log_message(f"Calibrated voltage range is {voltageRange}")
         else:
             log_message("Calibration error. Range too small")

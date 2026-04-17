@@ -85,6 +85,7 @@ def bootstrap_globals(root):
         "selected_bodyparts": set(),
         "visualization_window": None,
         "disp_var": tk.StringVar(),
+        "direction_var": tk.StringVar(),
         "skeleton_connections": [],
         "skeleton_building": False,
         "skeleton_sequence": [],

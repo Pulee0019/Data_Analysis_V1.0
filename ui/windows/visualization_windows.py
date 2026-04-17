@@ -1357,10 +1357,11 @@ class FiberVisualizationWindow:
     def _plot_running_analysis_markers(self):
         """Plot different types of analysis data"""
         analysis_type = disp_var.get()
+        bout_direction = direction_var.get()
         ast2_data = self.animal_data.get('ast2_data_adjusted')
         fs = ast2_data['header']['inputRate']/ast2_data['header']['saveEvery']
-        for idx, (start, end) in enumerate(self.animal_data['running_bouts'][analysis_type]):
-            lbl = analysis_type if idx == 0 else '_nolegend_'
+        for idx, (start, end) in enumerate(self.animal_data['bouts_with_direction'][analysis_type][bout_direction]):
+            lbl = f"{analysis_type}-{bout_direction}" if idx == 0 else '_nolegend_'
             self.ax.axvspan(start/fs, end/fs,
                             color='orange',
                             alpha=0.3,
@@ -1669,7 +1670,7 @@ class RunningVisualizationWindow:
             
             # Set title based on current analysis
             if self.animal_data.get('running_processed_data'):
-                title = f"Running Data - {disp_var.get()}"
+                title = f"Running Data - {disp_var.get()} - {direction_var.get()}"
             else:
                 title = f"Running Data"
                 
@@ -1704,10 +1705,11 @@ class RunningVisualizationWindow:
     def plot_analysis_data(self):
         """Plot different types of analysis data"""
         analysis_type = disp_var.get()
+        bout_direction = direction_var.get()
         ast2_data = self.animal_data.get('ast2_data_adjusted')
         fs = ast2_data['header']['inputRate']/ast2_data['header']['saveEvery']
-        for idx, (start, end) in enumerate(self.animal_data['running_bouts'][analysis_type]):
-            lbl = analysis_type if idx == 0 else '_nolegend_'
+        for idx, (start, end) in enumerate(self.animal_data['bouts_with_direction'][analysis_type][bout_direction]):
+            lbl = f"{analysis_type}-{bout_direction}" if idx == 0 else '_nolegend_'
             self.ax.axvspan(start/fs, end/fs,
                             color='orange',
                             alpha=0.3,

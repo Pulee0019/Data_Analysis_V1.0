@@ -29,40 +29,45 @@ def get_events_from_bouts(animal_data, event_type, duration = False):
     if 'running_bouts' not in animal_data:
         return events
     
-    bouts_data = animal_data['running_bouts']
+    # bouts_data = animal_data['running_bouts']
+    bouts_with_direction = animal_data['bouts_with_direction']
     
     # Parse event type to get bout type and event kind
     if event_type.endswith('_onsets'):
-        bout_type = event_type.replace('_onsets', '_bouts')
+        bout_direction_with_type = event_type.replace('_onsets', '')
         event_kind = 'onset'
+        bout_direction = bout_direction_with_type.split('_')[-1]  # Extract direction (e.g., 'forward' or 'backward')
+        bout_type = bout_direction_with_type.replace(f"_{bout_direction}", '_bouts')  # Get bout type (e.g., 'general_bouts')
+        
     elif event_type.endswith('_offsets'):
-        bout_type = event_type.replace('_offsets', '_bouts')
+        bout_direction_with_type = event_type.replace('_offsets', '')
+        bout_direction = bout_direction_with_type.split('_')[-1]  # Extract direction (e.g., 'forward' or 'backward')
+        bout_type = bout_direction_with_type.replace(f"_{bout_direction}", '_bouts')  # Get bout type (e.g., 'general_bouts')
         event_kind = 'offset'
     else:
         return events
     
     # Get bout data
-    if bout_type in bouts_data:
-        bouts = bouts_data[bout_type]
+    bouts = bouts_with_direction[bout_type][bout_direction]
+    
+    # Get timestamps from AST2 data
+    ast2_data = animal_data.get('ast2_data_adjusted')
+    if ast2_data is None:
+        return events
         
-        # Get timestamps from AST2 data
-        ast2_data = animal_data.get('ast2_data_adjusted')
-        if ast2_data is None:
-            return events
+    timestamps = ast2_data['data']['timestamps']
+    
+    for bout in bouts:
+        if len(bout) >= 2:
+            start_idx, end_idx = bout[0], bout[1]
             
-        timestamps = ast2_data['data']['timestamps']
-        
-        for bout in bouts:
-            if len(bout) >= 2:
-                start_idx, end_idx = bout[0], bout[1]
-                
-                if start_idx < len(timestamps) and end_idx < len(timestamps):
-                    if event_kind == 'onset' and not duration:  # onset
-                        events.append(timestamps[start_idx])
-                    elif event_kind == 'offset' and not duration:  # offset
-                        events.append(timestamps[end_idx])
-                    elif duration:  # duration
-                        events.append((timestamps[start_idx], timestamps[end_idx]))
+            if start_idx < len(timestamps) and end_idx < len(timestamps):
+                if event_kind == 'onset' and not duration:  # onset
+                    events.append(timestamps[start_idx])
+                elif event_kind == 'offset' and not duration:  # offset
+                    events.append(timestamps[end_idx])
+                elif duration:  # duration
+                    events.append((timestamps[start_idx], timestamps[end_idx]))
     
     return events
 
@@ -315,10 +320,14 @@ def get_events_within_optogenetic(session_events, running_events, event_type):
     
     # Parse event type to get bout type and event kind
     if event_type.endswith('_onsets'):
-        bout_type = event_type.replace('_onsets', '_bouts')
+        bout_direction_with_type = event_type.replace('_onsets', '')
+        bout_direction = bout_direction_with_type.split('_')[-1]  # Extract direction (e.g., 'forward' or 'backward')
+        bout_type = bout_direction_with_type.replace(f"_{bout_direction}", '_bouts')  # Get bout type (e.g., 'general_bouts')
         event_kind = 'onset'
     elif event_type.endswith('_offsets'):
-        bout_type = event_type.replace('_offsets', '_bouts')
+        bout_direction_with_type = event_type.replace('_offsets', '')
+        bout_direction = bout_direction_with_type.split('_')[-1]  # Extract direction (e.g., 'forward' or 'backward')
+        bout_type = bout_direction_with_type.replace(f"_{bout_direction}", '_bouts')  # Get bout type (e.g., 'general_bouts')
         event_kind = 'offset'
 
     # Check each running event
@@ -556,6 +565,8 @@ def create_parameter_panel(parent, param_config):
         'baseline_end': "0",
         'show_bout_type': False,
         'bout_types': [],
+        'show_bout_directions': False,
+        'bout_directions': [],
         'show_event_type': False,
         'show_export': True,
     }
@@ -598,7 +609,25 @@ def create_parameter_panel(parent, param_config):
                       value="offset", bg="#f8f8f8", font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=20)
         
         param_frame.event_type_var = event_type_var
-    
+        
+    if config['show_bout_directions'] and config['bout_directions']:
+        bout_direction_frame = tk.LabelFrame(param_frame, text="Bout Directions", 
+                                             font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
+        bout_direction_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        tk.Label(bout_direction_frame, text="Select Direction:", bg="#f8f8f8", 
+                font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=10, pady=(5,2))
+        
+        bout_direction_var = tk.StringVar()
+        bout_direction_combo = ttk.Combobox(bout_direction_frame, textvariable=bout_direction_var,
+                                             values=config['bout_directions'], state="readonly",
+                                      font=("Microsoft YaHei", 8))
+        bout_direction_combo.pack(padx=10, pady=5, fill=tk.X)
+        if config['bout_directions']:
+            bout_direction_combo.set(config['bout_directions'][0])
+        
+        param_frame.bout_direction_var = bout_direction_var
+
     # Plot window settings
     time_frame = tk.LabelFrame(param_frame, text="Plot Window (seconds)", 
                               font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
@@ -662,7 +691,7 @@ def create_parameter_panel(parent, param_config):
     
     return param_frame
 
-def get_parameters_from_ui(param_frame, require_bout_type=False, require_event_type=False):
+def get_parameters_from_ui(param_frame, require_bout_type=False, require_bout_direction=False, require_event_type=False):
     """Extract parameters from UI"""
     try:
         start_time = float(param_frame.start_time_var.get())
@@ -693,6 +722,9 @@ def get_parameters_from_ui(param_frame, require_bout_type=False, require_event_t
         # Add optional parameters
         if hasattr(param_frame, 'bout_type_var') and require_bout_type:
             params['bout_type'] = param_frame.bout_type_var.get()
+            
+        if hasattr(param_frame, 'bout_direction_var') and require_bout_direction:
+            params['bout_direction'] = param_frame.bout_direction_var.get()
         
         if hasattr(param_frame, 'event_type_var') and require_event_type:
             params['event_type'] = param_frame.event_type_var.get()

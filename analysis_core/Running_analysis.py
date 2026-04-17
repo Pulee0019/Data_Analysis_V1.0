@@ -9,7 +9,9 @@ def running_bout_analysis_classify(running_speed,
                                    rest_min_duration=4, 
                                    pre_locomotion_buffer=5, 
                                    post_locomotion_buffer=5, 
-                                   locomotion_duration=2):
+                                   locomotion_duration=2,
+                                   move_direction_threshold=0.2,
+                                   only_running=False):
     """Analyze running bouts based on locomotion criteria"""
     if running_speed['filtered_speed'] is None:
         speed = running_speed['original_speed']
@@ -47,7 +49,10 @@ def running_bout_analysis_classify(running_speed,
     combined_bouts = combine_bouts(general_bouts, speed, general_threshold)
     extended_bouts = extend_bouts(combined_bouts, speed, general_threshold)
     final_bouts = combine_bouts(extended_bouts, speed, general_threshold)
-    final_bouts_without_edges = exclude_bout_edges(final_bouts, len(speed))
+    if only_running:
+        final_bouts_without_edges = final_bouts
+    else:
+        final_bouts_without_edges = exclude_bout_edges(final_bouts, len(speed))
     
     rest_flag = abs(speed) < threshold
     groups = groupby(enumerate(rest_flag), key=lambda x: x[1])
@@ -59,12 +64,19 @@ def running_bout_analysis_classify(running_speed,
             bout_info = [idxs[0], idxs[-1]+2]
             rest.append(bout_info)
             
-    locomotion, reset, jerk, other = running_bout_classify(final_bouts_without_edges, speed, timestamps, general_threshold, pre_locomotion_buffer, post_locomotion_buffer, locomotion_duration, sample_rate)
-    locomotion = exclude_bout_edges(locomotion, len(speed))
-    reset = exclude_bout_edges(reset, len(speed))
-    jerk = exclude_bout_edges(jerk, len(speed))
-    other = exclude_bout_edges(other, len(speed))
-    rest = exclude_bout_edges(rest, len(speed))
+    if only_running:
+        locomotion, jerk = running_bout_classify_for_only_running(final_bouts_without_edges, locomotion_duration, sample_rate)
+        reset = []
+        other = []
+    else:
+        locomotion, reset, jerk, other = running_bout_classify(final_bouts_without_edges, speed, timestamps, general_threshold, pre_locomotion_buffer, post_locomotion_buffer, locomotion_duration, sample_rate)
+    
+    if not only_running:
+        locomotion = exclude_bout_edges(locomotion, len(speed))
+        reset = exclude_bout_edges(reset, len(speed))
+        jerk = exclude_bout_edges(jerk, len(speed))
+        other = exclude_bout_edges(other, len(speed))
+        rest = exclude_bout_edges(rest, len(speed))
     
     bouts = {
         'general_bouts': final_bouts_without_edges,
@@ -74,10 +86,62 @@ def running_bout_analysis_classify(running_speed,
         'other_bouts': other,
         'rest_bouts': rest
     }
-
-    log_message(f"Identified {len(final_bouts_without_edges)} general bouts. Locomotion: {len(locomotion)}, Reset: {len(reset)}, Jerk: {len(jerk)}, Other: {len(other)}, Rest: {len(rest)}")
     
-    return bouts
+    log_message(f"Detected {len(general_bouts)} general bouts, {len(locomotion)} locomotion bouts, {len(reset)} reset bouts, {len(jerk)} jerk bouts, {len(other)} other bouts, and {len(rest)} rest bouts.")
+    
+    bouts_with_direction = {}
+    for i, key in enumerate(bouts):
+        if bouts[key]:
+            if i == 5:  # For rest bouts, we don't classify direction
+                bouts_i_with_all_direction = {
+                    'general': bouts[key],
+                    'forward': [],
+                    'backward': [],
+                    'balanced': []
+                    }
+            else:
+                bouts_i_with_direction = bout_direction_classify(bouts[key], speed, move_direction_threshold)
+                bouts_i_with_all_direction = {
+                    'general': bouts[key],
+                    'forward': bouts_i_with_direction[0],
+                    'backward': bouts_i_with_direction[1],
+                    'balanced': bouts_i_with_direction[2]
+                }
+                log_message(f"Classified {len(bouts[key])} {key} into {len(bouts_i_with_direction[0])} forward, {len(bouts_i_with_direction[1])} backward, and {len(bouts_i_with_direction[2])} balanced bouts.")
+                
+            bouts_with_direction[key] = bouts_i_with_all_direction
+            
+        else:
+            bouts_with_direction[key] = {
+                'general': [],
+                'forward': [],
+                'backward': [],
+                'balanced': []
+            }
+            log_message(f"No {key} detected.")
+    
+    return bouts, bouts_with_direction
+
+def bout_direction_classify(bouts, speed, move_direction_threshold):
+    '''Classify bouts based on their direction'''
+    forward_bouts = []
+    backward_bouts = []
+    balanced_bouts = []
+    
+    for bout in bouts:
+        start_idx, end_idx = bout
+        bout_speed = speed[start_idx:end_idx]
+        sum_speed = np.sum(bout_speed)
+        sum_abs_speed = np.sum(np.abs(bout_speed))
+        ratio = sum_speed / sum_abs_speed if sum_abs_speed > 0 else 0
+        if ratio > move_direction_threshold:
+            forward_bouts.append(bout)
+        elif ratio < -move_direction_threshold:
+            backward_bouts.append(bout)
+        else:
+            balanced_bouts.append(bout)
+    
+    return forward_bouts, backward_bouts, balanced_bouts
 
 def running_bout_classify(general_bouts, speed, timestamps, threshold, pre_buffer, post_buffer, duration_buffer, sample_rate):
     '''Classify running bouts into locomotion, reset, jerk, and other'''
@@ -104,6 +168,20 @@ def running_bout_classify(general_bouts, speed, timestamps, threshold, pre_buffe
         else:
             other.append([start_idx, end_idx])
     return locomotion, reset, jerk, other
+
+def running_bout_classify_for_only_running(general_bouts, duration_buffer, sample_rate):
+    '''Classify running bouts into locomotion and other when only_running is True'''
+    locomotion = []
+    jerk = []
+    duration_buffer_samples = int(duration_buffer * sample_rate)
+    for bout in general_bouts:
+        start_idx, end_idx = bout
+        duration = end_idx - start_idx + 1
+        if duration >= duration_buffer_samples:
+            locomotion.append([start_idx, end_idx])
+        else:
+            jerk.append([start_idx, end_idx])
+    return locomotion, jerk
 
 def apply_running_filters(speed_data, timestamps, filter_type, **kwargs):
     """

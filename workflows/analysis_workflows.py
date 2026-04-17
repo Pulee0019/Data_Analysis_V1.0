@@ -392,14 +392,31 @@ def running_data_analysis():
 
     bouts_param = ['general_bouts', 'locomotion_bouts', 'reset_bouts', 'jerk_bouts',
                    'other_bouts', 'rest_bouts']
-    disp_frame = ttk.Frame(filter_disp_frame)
-    disp_frame.pack(fill=tk.X, pady=(0, 10))
-    ttk.Label(disp_frame, text="Display Bouts:").pack(side=tk.LEFT)
+    bout_directions = ['general', 'forward', 'backward', 'balanced']
+    # Display Bouts 
+    bout_row = ttk.Frame(filter_disp_frame)
+    bout_row.pack(fill=tk.X, pady=(0, 5))
+    ttk.Label(bout_row, text="Display Bouts:").pack(side=tk.LEFT)
+    ttk.Combobox(bout_row, textvariable=disp_var, values=bouts_param, 
+                state="readonly", width=20).pack(side=tk.RIGHT)
+
+    # Direction 
+    dir_row = ttk.Frame(filter_disp_frame)
+    dir_row.pack(fill=tk.X, pady=(0, 10))
+    ttk.Label(dir_row, text="Direction:").pack(side=tk.LEFT)
+    ttk.Combobox(dir_row, textvariable=direction_var, values=bout_directions,
+                state="readonly", width=20).pack(side=tk.RIGHT)
     
-    bout_menu = ttk.Combobox(disp_frame, textvariable=disp_var,
-                                values=bouts_param, state="readonly", width=20)
-    bout_menu.pack(side=tk.RIGHT, padx=(10, 0))
+    # Running only checkbox
+    flag_row = ttk.Frame(filter_disp_frame)
+    flag_row.pack(fill=tk.X, pady=(0, 10))
+    only_running_var = tk.IntVar(value=0)
+    ttk.Checkbutton(flag_row, text="Only Running Analysis", variable=only_running_var).pack(side=tk.LEFT)
+
     disp_var.set(bouts_param[1])
+    direction_var.set(bout_directions[1])
+    
+    
 
     bout_param_frame = ttk.LabelFrame(top_row,
                                     text="Bout Detection Parameters",
@@ -407,12 +424,13 @@ def running_data_analysis():
     bout_param_frame.grid(row=0, column=1, sticky='ew', padx=(5, 0), pady=(0, 10))
 
     bout_param_defs = [
-        ("General threshold (cm/s)",   "threshold",           "float", 0.5,  0.1, (0.1, 10)),
-        ("General min duration (s)",   "gen_min_dur",         "float", 0.5,  0.1, (0.1, 20)),
-        ("Min rest duration (s)",      "rest_dur",            "float", 4.0,  0.5, (0.5, 30)),
-        ("Pre-locomotion buffer (s)",  "pre_buffer",          "float", 5.0,  0.5, (0, 20)),
-        ("Post-locomotion buffer (s)", "post_buffer",         "float", 5.0,  0.5, (0, 20)),
-        ("Locomotion duration (s)",    "locomotion_duration", "float", 2.0,  0.5, (0, 10))
+        ("General threshold (cm/s)",   "threshold",                "float", 0.5,  0.1, (0.1, 10)),
+        ("General min duration (s)",   "gen_min_dur",              "float", 0.5,  0.1, (0.1, 20)),
+        ("Min rest duration (s)",      "rest_dur",                 "float", 4.0,  0.5, (0.5, 30)),
+        ("Pre-locomotion buffer (s)",  "pre_buffer",               "float", 5.0,  0.5, (0, 20)),
+        ("Post-locomotion buffer (s)", "post_buffer",              "float", 5.0,  0.5, (0, 20)),
+        ("Locomotion duration (s)",    "locomotion_duration",      "float", 2.0,  0.5, (0, 10)),
+        ("Move direction threshold",   "move_direction_threshold", "float", 0.5,  0.1, (0.1, 1.0))
     ]
     bout_vars = {}
     for row, (lab, key, typ, default, incr, (vmin, vmax)) in enumerate(bout_param_defs):
@@ -453,25 +471,30 @@ def running_data_analysis():
                 'params': params
             })
         
-        threshold           = bout_vars["threshold"].get()
-        gen_min_dur         = bout_vars["gen_min_dur"].get()
-        rest_dur            = bout_vars["rest_dur"].get()
-        pre_buf             = bout_vars["pre_buffer"].get()
-        post_buf            = bout_vars["post_buffer"].get()
-        locomotion_duration = bout_vars["locomotion_duration"].get()
+        threshold                = bout_vars["threshold"].get()
+        gen_min_dur              = bout_vars["gen_min_dur"].get()
+        rest_dur                 = bout_vars["rest_dur"].get()
+        pre_buf                  = bout_vars["pre_buffer"].get()
+        post_buf                 = bout_vars["post_buffer"].get()
+        locomotion_duration      = bout_vars["locomotion_duration"].get()
+        move_direction_threshold = bout_vars["move_direction_threshold"].get()
+        only_running             = bool(only_running_var.get())
+        
         processed_data = preprocess_running_data(ast2_data, filter_settings)
         if not processed_data:
             canvas.draw(); return
         
         fs = ast2_data['header']['inputRate'] / ast2_data['header']['saveEvery']
-        bouts = running_bout_analysis_classify(
+        bouts, bouts_with_direction = running_bout_analysis_classify(
             processed_data,
             general_threshold=threshold,
             general_min_duration=gen_min_dur,
             rest_min_duration=rest_dur,
             pre_locomotion_buffer=pre_buf,
             post_locomotion_buffer=post_buf,
-            locomotion_duration=locomotion_duration)
+            locomotion_duration=locomotion_duration,
+            move_direction_threshold=move_direction_threshold,
+            only_running=only_running)
         
         if processed_data:
             timestamps = processed_data['timestamps']
@@ -548,12 +571,14 @@ def running_data_analysis():
                     'params': params
                 })
 
-            threshold           = bout_vars["threshold"].get()
-            gen_min_dur         = bout_vars["gen_min_dur"].get()
-            rest_dur            = bout_vars["rest_dur"].get()
-            pre_buf             = bout_vars["pre_buffer"].get()
-            post_buf            = bout_vars["post_buffer"].get()
-            locomotion_duration = bout_vars["locomotion_duration"].get()
+            threshold                = bout_vars["threshold"].get()
+            gen_min_dur              = bout_vars["gen_min_dur"].get()
+            rest_dur                 = bout_vars["rest_dur"].get()
+            pre_buf                  = bout_vars["pre_buffer"].get()
+            post_buf                 = bout_vars["post_buffer"].get()
+            locomotion_duration      = bout_vars["locomotion_duration"].get()
+            move_direction_threshold = bout_vars["move_direction_threshold"].get()
+            only_running             = bool(only_running_var.get())
 
             successful = 0
             failed = 0
@@ -570,19 +595,21 @@ def running_data_analysis():
                     if not processed_data:
                         failed += 1; continue
 
-                    bouts = running_bout_analysis_classify(
+                    bouts, bouts_with_direction = running_bout_analysis_classify(
                         processed_data,
                         general_threshold=threshold,
                         general_min_duration=gen_min_dur,
                         rest_min_duration=rest_dur,
                         pre_locomotion_buffer=pre_buf,
                         post_locomotion_buffer=post_buf,
-                        locomotion_duration=locomotion_duration
+                        locomotion_duration=locomotion_duration,
+                        move_direction_threshold=move_direction_threshold,
+                        only_running=only_running
                     )
                     
                     animal_data['running_processed_data'] = processed_data
                     animal_data['running_bouts'] = bouts
-                    animal_data['bouts'] = bouts
+                    animal_data['bouts_with_direction'] = bouts_with_direction
                     successful += 1
                     log_message(f"Processed {animal_single_channel_id}", "INFO")
                 except Exception as e:

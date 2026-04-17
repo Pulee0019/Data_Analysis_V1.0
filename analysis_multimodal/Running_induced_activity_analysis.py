@@ -90,6 +90,18 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
             bouts_data = animal_data['running_bouts']
             available_bout_types = list(bouts_data.keys())
     
+    available_bout_directions = []
+    for animal_data in multi_animal_data:
+        if 'bouts_with_direction' in animal_data and animal_data['bouts_with_direction']:
+            bouts_with_direction = animal_data['bouts_with_direction']
+            for bout_type, bouts_with_direction1 in bouts_with_direction.items():
+                for bout_direction, bout in bouts_with_direction1.items():
+                    if bout_direction not in available_bout_directions:
+                        available_bout_directions.append(bout_direction)
+                    
+    log_message(f"Available bout types: {available_bout_types}")
+    log_message(f"Available bout directions: {available_bout_directions}")
+
     if not available_bout_types:
         log_message("No bout types found in animal data", "ERROR")
         return
@@ -122,6 +134,8 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
         'baseline_end': "0",
         'show_bout_type': True,
         'bout_types': available_bout_types,
+        'show_bout_directions': True,
+        'bout_directions': available_bout_directions,
         'show_event_type': True,
     }
     param_frame = create_parameter_panel(container, param_config)
@@ -147,10 +161,10 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
         table_manager = TableManager(root, table_frame, btn_frame, multi_animal_data, analysis_mode)
 
     def run_analysis():
-        params = get_parameters_from_ui(param_frame, require_bout_type=True, require_event_type=True)
+        params = get_parameters_from_ui(param_frame, require_bout_type=True, require_bout_direction=True, require_event_type=True)
         if params:
             # Add full_event_type
-            params['full_event_type'] = f"{params['bout_type'].replace('_bouts', '')}_{params['event_type']}s"
+            params['full_event_type'] = f"{params['bout_type'].replace('_bouts', '')}_{params['bout_direction']}_{params['event_type']}s"
             table_manager.run_analysis(params, analysis_mode)
 
     tk.Button(btn_frame, text="Run Analysis", command=run_analysis,
