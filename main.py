@@ -8,6 +8,7 @@ try:
     from analysis_multimodal.Drug_induced_activity_analysis import show_drug_induced_analysis
     from analysis_multimodal.Optogenetic_induced_activity_analysis import show_optogenetic_induced_analysis
     from analysis_multimodal.Running_induced_activity_analysis import show_running_induced_analysis
+    from analysis_multimodal.Bout_analysis import show_bout_analysis
     from core.analysis_results import AnalysisResultsManager
     from core.config_store import (
         channel_memory,
@@ -63,6 +64,10 @@ def bootstrap_globals(root):
         "EXPERIMENT_MODE_FIBER_AST2": "fiber+ast2",
         "EXPERIMENT_MODE_FIBER_AST2_DLC": "fiber+ast2+dlc",
         "current_experiment_mode": "fiber+ast2",
+        'method_var': tk.StringVar(),
+        'only_running_var': tk.IntVar(value=0),
+        "disp_var": tk.StringVar(),
+        "direction_var": tk.StringVar(),
         "target_signal_var": tk.StringVar(value="470"),
         "reference_signal_var": tk.StringVar(value="baseline"),
         "baseline_start": tk.DoubleVar(value=0),
@@ -72,6 +77,7 @@ def bootstrap_globals(root):
         "smooth_order": tk.IntVar(value=5),
         "apply_baseline": tk.BooleanVar(value=False),
         "baseline_model": tk.StringVar(value="Polynomial"),
+        "baseline_poly_order": tk.IntVar(value=21),
         "apply_motion": tk.BooleanVar(value=False),
         "preprocess_frame": None,
         "multimodal_analyzer": None,
@@ -84,8 +90,6 @@ def bootstrap_globals(root):
         "bodypart_buttons": {},
         "selected_bodyparts": set(),
         "visualization_window": None,
-        "disp_var": tk.StringVar(),
-        "direction_var": tk.StringVar(),
         "skeleton_connections": [],
         "skeleton_building": False,
         "skeleton_sequence": [],
@@ -253,6 +257,17 @@ def build_menu(root, state):
     optogenetics_induced_menu.add_command(
         label="Optogenetics + Drug",
         command=lambda: show_optogenetic_induced_analysis(root, state["multi_animal_data"], "optogenetics+drug"),
+    )
+    
+    bout_menu = tk.Menu(multimodal_menu, tearoff=0)
+    multimodal_menu.add_cascade(label="Bout Analysis", menu=bout_menu)
+    bout_menu.add_command(
+        label="Running",
+        command=lambda: show_bout_analysis(root, state["multi_animal_data"], "running"),
+    )
+    bout_menu.add_command(
+        label="Running + Drug",
+        command=lambda: show_bout_analysis(root, state["multi_animal_data"], "running+drug"),
     )
 
     setting_menu = tk.Menu(menubar, tearoff=0)

@@ -32,7 +32,7 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
     if analysis_mode == "running+optogenetics" or analysis_mode == "running+optogenetics+drug":
         log_message("Identifying optogenetic events for running+optogenetics analysis...")
         
-        # Initialize event dictionaries
+    # Initialize event dictionaries
     all_optogenetic_events = {}
     all_drug_events = {}
     
@@ -130,6 +130,7 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
     param_config = {
         'start_time': "-5",
         'end_time': "15",
+        'show_baseline_window': True,
         'baseline_start': "-5",
         'baseline_end': "0",
         'show_bout_type': True,
@@ -161,7 +162,7 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
         table_manager = TableManager(root, table_frame, btn_frame, multi_animal_data, analysis_mode)
 
     def run_analysis():
-        params = get_parameters_from_ui(param_frame, require_bout_type=True, require_bout_direction=True, require_event_type=True)
+        params = get_parameters_from_ui(param_frame, require_bout_type=True, require_bout_direction=True, require_event_type=True, require_baseline_window=True)
         if params:
             # Add full_event_type
             params['full_event_type'] = f"{params['bout_type'].replace('_bouts', '')}_{params['bout_direction']}_{params['event_type']}s"

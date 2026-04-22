@@ -22,7 +22,7 @@ FIBER_COLORS = ['#44B444', '#FF0000', '#FF9900']
 SUBPLOT_H = 6
 FIG_DPI   = 100
 
-def get_events_from_bouts(animal_data, event_type, duration = False):
+def get_events_from_bouts(animal_data, event_type, duration=False):
     """Extract events from bouts data based on event type"""
     events = []
     
@@ -45,7 +45,9 @@ def get_events_from_bouts(animal_data, event_type, duration = False):
         bout_type = bout_direction_with_type.replace(f"_{bout_direction}", '_bouts')  # Get bout type (e.g., 'general_bouts')
         event_kind = 'offset'
     else:
-        return events
+        event_kind = 'duration'
+        bout_direction = event_type.split('_')[-1]  # Extract direction (e.g., 'forward' or 'backward')
+        bout_type = event_type.replace(f"_{bout_direction}", '_bouts')  # Get bout type (e.g., 'general_bouts')
     
     # Get bout data
     bouts = bouts_with_direction[bout_type][bout_direction]
@@ -66,7 +68,7 @@ def get_events_from_bouts(animal_data, event_type, duration = False):
                     events.append(timestamps[start_idx])
                 elif event_kind == 'offset' and not duration:  # offset
                     events.append(timestamps[end_idx])
-                elif duration:  # duration
+                elif event_kind == 'duration' and duration:  # duration
                     events.append((timestamps[start_idx], timestamps[end_idx]))
     
     return events
@@ -561,6 +563,7 @@ def create_parameter_panel(parent, param_config):
         'width': 350,
         'start_time': "-30",
         'end_time': "60",
+        'show_baseline_window': True,
         'baseline_start': "-30",
         'baseline_end': "0",
         'show_bout_type': False,
@@ -652,29 +655,30 @@ def create_parameter_panel(parent, param_config):
     param_frame.start_time_var = start_time_var
     param_frame.end_time_var = end_time_var
     
-    # Baseline window settings
-    baseline_frame = tk.LabelFrame(param_frame, text="Baseline Window (seconds)", 
-                                  font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
-    baseline_frame.pack(fill=tk.X, padx=10, pady=10)
-    
-    baseline_start_frame = tk.Frame(baseline_frame, bg="#f8f8f8")
-    baseline_start_frame.pack(fill=tk.X, pady=5)
-    tk.Label(baseline_start_frame, text="Start:", bg="#f8f8f8", 
-            font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
-    baseline_start_var = tk.StringVar(value=config['baseline_start'])
-    tk.Entry(baseline_start_frame, textvariable=baseline_start_var, width=8, 
-            font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
-    
-    baseline_end_frame = tk.Frame(baseline_frame, bg="#f8f8f8")
-    baseline_end_frame.pack(fill=tk.X, pady=5)
-    tk.Label(baseline_end_frame, text="End:", bg="#f8f8f8", 
-            font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
-    baseline_end_var = tk.StringVar(value=config['baseline_end'])
-    tk.Entry(baseline_end_frame, textvariable=baseline_end_var, width=8, 
-            font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
-    
-    param_frame.baseline_start_var = baseline_start_var
-    param_frame.baseline_end_var = baseline_end_var
+    if config['show_baseline_window']:
+        # Baseline window settings
+        baseline_frame = tk.LabelFrame(param_frame, text="Baseline Window (seconds)", 
+                                    font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
+        baseline_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        baseline_start_frame = tk.Frame(baseline_frame, bg="#f8f8f8")
+        baseline_start_frame.pack(fill=tk.X, pady=5)
+        tk.Label(baseline_start_frame, text="Start:", bg="#f8f8f8", 
+                font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
+        baseline_start_var = tk.StringVar(value=config['baseline_start'])
+        tk.Entry(baseline_start_frame, textvariable=baseline_start_var, width=8, 
+                font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
+        
+        baseline_end_frame = tk.Frame(baseline_frame, bg="#f8f8f8")
+        baseline_end_frame.pack(fill=tk.X, pady=5)
+        tk.Label(baseline_end_frame, text="End:", bg="#f8f8f8", 
+                font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
+        baseline_end_var = tk.StringVar(value=config['baseline_end'])
+        tk.Entry(baseline_end_frame, textvariable=baseline_end_var, width=8, 
+                font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
+        
+        param_frame.baseline_start_var = baseline_start_var
+        param_frame.baseline_end_var = baseline_end_var
     
     # Export option
     if config['show_export']:
@@ -691,33 +695,31 @@ def create_parameter_panel(parent, param_config):
     
     return param_frame
 
-def get_parameters_from_ui(param_frame, require_bout_type=False, require_bout_direction=False, require_event_type=False):
+def get_parameters_from_ui(param_frame, require_bout_type=False, require_bout_direction=False, require_event_type=False, require_baseline_window=True):
     """Extract parameters from UI"""
     try:
-        start_time = float(param_frame.start_time_var.get())
-        end_time = float(param_frame.end_time_var.get())
-        baseline_start = float(param_frame.baseline_start_var.get())
-        baseline_end = float(param_frame.baseline_end_var.get())
-        
-        if start_time >= end_time:
-            log_message("Start time must be less than end time", "WARNING")
-            return None
-        
-        if baseline_start >= baseline_end:
-            log_message("Baseline start must be less than baseline end", "WARNING")
-            return None
-        
-        pre_time = abs(min(0, start_time))
-        post_time = max(0, end_time)
-        
-        params = {
-            'start_time': start_time,
-            'end_time': end_time,
-            'pre_time': pre_time,
-            'post_time': post_time,
-            'baseline_start': baseline_start,
-            'baseline_end': baseline_end,
-        }
+        if require_baseline_window:
+            start_time = float(param_frame.start_time_var.get())
+            end_time = float(param_frame.end_time_var.get())
+            
+            if start_time >= end_time:
+                log_message("Start time must be less than end time", "WARNING")
+                return None
+
+            pre_time = abs(min(0, start_time))
+            post_time = max(0, end_time)
+            
+            params = {
+                'start_time': start_time,
+                'end_time': end_time,
+                'pre_time': pre_time,
+                'post_time': post_time
+            }
+        else: # the start_time_var could be "start+1000" or "end-500", so we keep it as string for later parsing
+            params = {
+                'start_time': param_frame.start_time_var.get(),
+                'end_time': param_frame.end_time_var.get()
+            }
         
         # Add optional parameters
         if hasattr(param_frame, 'bout_type_var') and require_bout_type:
@@ -725,7 +727,14 @@ def get_parameters_from_ui(param_frame, require_bout_type=False, require_bout_di
             
         if hasattr(param_frame, 'bout_direction_var') and require_bout_direction:
             params['bout_direction'] = param_frame.bout_direction_var.get()
-        
+            
+        if hasattr(param_frame, 'baseline_start_var') and hasattr(param_frame, 'baseline_end_var') and require_baseline_window:
+            params['baseline_start'] = float(param_frame.baseline_start_var.get())
+            params['baseline_end'] = float(param_frame.baseline_end_var.get())
+            if params['baseline_start'] >= params['baseline_end']:
+                log_message("Baseline start must be less than baseline end", "WARNING")
+                return None
+
         if hasattr(param_frame, 'event_type_var') and require_event_type:
             params['event_type'] = param_frame.event_type_var.get()
         

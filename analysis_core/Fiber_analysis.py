@@ -81,7 +81,7 @@ def smooth_data(animal_data=None, window_size=11, poly_order=3, target_signal="4
         log_message(f"Smoothing failed: {str(e)}", "ERROR")
         return False
 
-def baseline_correction(animal_data=None, model_type="Polynomial", target_signal="470",
+def baseline_correction(animal_data=None, model_type="Polynomial", baseline_poly_order=21, target_signal="470",
                         reference_signal="410", apply_smooth=False):
     """Apply baseline correction to target signals + reference signal"""
     try:
@@ -166,10 +166,12 @@ def baseline_correction(animal_data=None, model_type="Polynomial", target_signal
                             baseline_pred = exp_model(time_data, *params)
                         except Exception as e:
                             log_message(f"Exponential fit failed for CH{channel_num}_{wavelength}: {str(e)}, using polynomial", "INFO")
-                            params = np.polyfit(time_data[baseline_mask], signal_data[baseline_mask], 1)
+                            baseline_mask = np.ones_like(time_data, dtype=bool)
+                            params = np.polyfit(time_data[baseline_mask], signal_data[baseline_mask], baseline_poly_order)
                             baseline_pred = np.polyval(params, time_data)
                     else:
-                        params = np.polyfit(time_data[baseline_mask], signal_data[baseline_mask], 1)
+                        baseline_mask = np.ones_like(time_data, dtype=bool)
+                        params = np.polyfit(time_data[baseline_mask], signal_data[baseline_mask], baseline_poly_order)
                         baseline_pred = np.polyval(params, time_data)
                     
                     baseline_corrected_col = f"CH{channel_num}_{wavelength}_baseline_corrected"
@@ -305,7 +307,7 @@ def motion_correction(animal_data=None, target_signal="470", reference_signal="4
 def apply_preprocessing(animal_data=None, target_signal="470", reference_signal="410", 
                        baseline_period=(0, 60), apply_smooth=False, window_size=11, 
                        poly_order=3, apply_baseline=False, baseline_model="Polynomial", 
-                       apply_motion=False):
+                       baseline_poly_order=21, apply_motion=False):
     """Apply all selected preprocessing steps"""
     try:
         apply_smooth = bool(apply_smooth)
@@ -317,7 +319,7 @@ def apply_preprocessing(animal_data=None, target_signal="470", reference_signal=
                 return False
         
         if apply_baseline:
-            if not baseline_correction(animal_data, baseline_model, target_signal, reference_signal, apply_smooth):
+            if not baseline_correction(animal_data, baseline_model, baseline_poly_order, target_signal, reference_signal, apply_smooth):
                 return False
         
         # Motion correction requires a real wavelength reference (not 'baseline')

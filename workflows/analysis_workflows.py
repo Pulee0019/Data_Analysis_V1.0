@@ -45,7 +45,7 @@ def fiber_preprocessing():
     
     prep_window = tk.Toplevel(root)
     prep_window.title("Fiber Data Preprocessing")
-    prep_window.geometry("320x550")
+    prep_window.geometry("350x600")
     prep_window.transient(root)
     prep_window.grab_set()
     
@@ -132,11 +132,11 @@ def fiber_preprocessing():
                     command=lambda: toggle_widgets(smooth_frame, apply_smooth.get(), 1)).grid(row=0, column=0, sticky="w")
     ttk.Label(smooth_frame, text="Window Size:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
     ttk.Scale(smooth_frame, from_=3, to=101, orient=tk.HORIZONTAL,
-             variable=smooth_window, length=100).grid(row=1, column=1, padx=5, pady=5)
+             variable=smooth_window, length=100, command=lambda v: smooth_window.set(int(float(v)))).grid(row=1, column=1, padx=5, pady=5)
     ttk.Label(smooth_frame, textvariable=smooth_window).grid(row=1, column=2, padx=5, pady=5)
     ttk.Label(smooth_frame, text="Polynomial Order:").grid(row=2, column=0, sticky="w", padx=5, pady=5)
     ttk.Scale(smooth_frame, from_=1, to=5, orient=tk.HORIZONTAL,
-             variable=smooth_order, length=100).grid(row=2, column=1, padx=5, pady=5)
+             variable=smooth_order, length=100, command=lambda v: smooth_order.set(int(float(v)))).grid(row=2, column=1, padx=5, pady=5)
     ttk.Label(smooth_frame, textvariable=smooth_order).grid(row=2, column=2, padx=5, pady=5)
     
     global baseline_corr_frame
@@ -144,11 +144,29 @@ def fiber_preprocessing():
     baseline_corr_frame.pack(fill=tk.X, padx=5, pady=5)
     
     ttk.Checkbutton(baseline_corr_frame, text="Apply Baseline Correction", variable=apply_baseline,
-                    command=lambda: toggle_widgets(baseline_corr_frame, apply_baseline.get(), 1)).grid(row=0, column=0, sticky="w")
+                    command=lambda: baseline_frame_changed()).grid(row=0, column=0, sticky="w")
     ttk.Label(baseline_corr_frame, text="Baseline Model:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
     model_options = ["Polynomial", "Exponential"]
-    model_menu = ttk.OptionMenu(baseline_corr_frame, baseline_model, "Polynomial", *model_options)
+    model_menu = ttk.OptionMenu(baseline_corr_frame, baseline_model, "Polynomial", *model_options, command=lambda _: baseline_frame_changed())
     model_menu.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
+    
+    poly_label = ttk.Label(baseline_corr_frame, text="Polynomial Order:")
+    poly_scale = ttk.Scale(
+        baseline_corr_frame, from_=1, to=51, 
+        orient=tk.HORIZONTAL, variable=baseline_poly_order, length=100,
+        command=lambda v: baseline_poly_order.set(int(float(v)))
+    )
+    poly_value = ttk.Label(baseline_corr_frame, textvariable=baseline_poly_order)
+    
+    poly_label.grid(row=2, column=0, sticky="w", padx=5, pady=5)
+    poly_scale.grid(row=2, column=1, padx=5, pady=5)
+    poly_value.grid(row=2, column=2, padx=5, pady=5)
+    
+    baseline_corr_frame.model_label = baseline_corr_frame.grid_slaves(row=1, column=0)[0]
+    baseline_corr_frame.model_menu = model_menu
+    baseline_corr_frame.poly_label = poly_label
+    baseline_corr_frame.poly_scale = poly_scale
+    baseline_corr_frame.poly_value = poly_value
     
     global motion_frame
     motion_frame = ttk.LabelFrame(main_frame, text="Motion Correction")
@@ -166,6 +184,27 @@ def fiber_preprocessing():
     ttk.Button(button_frame, text="Close",
               command=on_prep_window_close).pack(side=tk.RIGHT, padx=5)
 
+def baseline_frame_changed():
+    """Show/hide baseline correction parameters based on checkbox and model selection"""
+    if not apply_baseline.get():
+        baseline_corr_frame.model_label.grid_remove()
+        baseline_corr_frame.model_menu.grid_remove()
+        baseline_corr_frame.poly_label.grid_remove()
+        baseline_corr_frame.poly_scale.grid_remove()
+        baseline_corr_frame.poly_value.grid_remove()
+    else:
+        baseline_corr_frame.model_label.grid()
+        baseline_corr_frame.model_menu.grid()
+        
+        if baseline_model.get() == "Polynomial":
+            baseline_corr_frame.poly_label.grid()
+            baseline_corr_frame.poly_scale.grid()
+            baseline_corr_frame.poly_value.grid()
+        else:
+            baseline_corr_frame.poly_label.grid_remove()
+            baseline_corr_frame.poly_scale.grid_remove()
+            baseline_corr_frame.poly_value.grid_remove()
+        
 def toggle_motion_correction():
     """Motion correction is only available with a wavelength-based reference (not 'baseline')"""
     if reference_signal_var.get() == "baseline":
@@ -307,6 +346,7 @@ def running_data_analysis():
     top_row.columnconfigure(0, weight=1)
     top_row.columnconfigure(1, weight=1)  
 
+    global filter_disp_frame, bout_param_frame
     filter_disp_frame = ttk.LabelFrame(top_row, text="Filter Configuration and Bouts Display", padding=10)
     filter_disp_frame.grid(row=0, column=0, sticky='ew', padx=(0, 5), pady=(0, 10))
     
@@ -339,7 +379,9 @@ def running_data_analysis():
     ttk.Label(method_frame, text="Smoothing Method:").pack(side=tk.LEFT)
     
     method_names = [method["name"] for method in smooth_methods]
-    method_var = tk.StringVar(value=method_names[0])
+    if not method_var.get():
+        method_var.set(method_names[1])
+        
     method_combo = ttk.Combobox(method_frame, textvariable=method_var, 
                                values=method_names, state="readonly", width=20)
     method_combo.pack(side=tk.RIGHT, padx=(10, 0))
@@ -350,6 +392,12 @@ def running_data_analysis():
     param_vars = {}
     
     def update_parameters(*args):
+        try:
+            if not params_frame.winfo_exists():
+                return
+        except tk.TclError:
+            return
+        
         for widget in params_frame.winfo_children():
             widget.destroy()
         
@@ -387,7 +435,7 @@ def running_data_analysis():
             widget.pack(side=tk.RIGHT, padx=(10, 0))
             param_vars[param['name']] = var
     
-    method_var.trace('w', update_parameters)
+    trace_id = method_var.trace('w', update_parameters)
     update_parameters()
 
     bouts_param = ['general_bouts', 'locomotion_bouts', 'reset_bouts', 'jerk_bouts',
@@ -410,13 +458,13 @@ def running_data_analysis():
     # Running only checkbox
     flag_row = ttk.Frame(filter_disp_frame)
     flag_row.pack(fill=tk.X, pady=(0, 10))
-    only_running_var = tk.IntVar(value=0)
     ttk.Checkbutton(flag_row, text="Only Running Analysis", variable=only_running_var).pack(side=tk.LEFT)
 
-    disp_var.set(bouts_param[1])
-    direction_var.set(bout_directions[1])
+    if not disp_var.get():
+        disp_var.set(bouts_param[1])
     
-    
+    if not direction_var.get():
+        direction_var.set(bout_directions[0])
 
     bout_param_frame = ttk.LabelFrame(top_row,
                                     text="Bout Detection Parameters",
@@ -551,6 +599,15 @@ def running_data_analysis():
                 
             canvas.draw()
     
+    def on_analysis_window_close():
+        try:
+            method_var.trace_remove('write', trace_id)
+        except Exception:
+            pass
+        analysis_window.destroy()
+        
+    analysis_window.protocol("WM_DELETE_WINDOW", on_analysis_window_close)
+        
     def apply_all_settings():
         try:
             selected_method_name = method_var.get()
@@ -579,6 +636,11 @@ def running_data_analysis():
             locomotion_duration      = bout_vars["locomotion_duration"].get()
             move_direction_threshold = bout_vars["move_direction_threshold"].get()
             only_running             = bool(only_running_var.get())
+            
+            if only_running_var.get():
+                multimodal_menu.entryconfig("Bout Analysis", state="normal")
+            else:
+                multimodal_menu.entryconfig("Bout Analysis", state="disabled")
 
             successful = 0
             failed = 0
@@ -631,6 +693,11 @@ def running_data_analysis():
                         f"Threshold {threshold} cm/s, "
                         f"Method: {selected_method_name}", "INFO")
             log_message(f"Results: {successful} successful, {failed} failed", "INFO")
+            
+            try:
+                method_var.trace_remove('write', trace_id)
+            except Exception:
+                pass
             analysis_window.destroy()
 
         except ValueError as e:
@@ -648,7 +715,7 @@ def running_data_analysis():
               command=apply_all_settings).pack(side=tk.LEFT, padx=5)
     
     ttk.Button(button_frame, text="Cancel", 
-              command=analysis_window.destroy).pack(side=tk.RIGHT, padx=5)
+              command=on_analysis_window_close).pack(side=tk.RIGHT, padx=5)
     
     update_preview()
 
@@ -669,6 +736,7 @@ def apply_preprocessing_wrapper():
         poly_order_val = int(smooth_order.get())
         apply_baseline_val = bool(apply_baseline.get())
         baseline_model_val = str(baseline_model.get())
+        baseline_poly_order_val = int(baseline_poly_order.get())
         apply_motion_val = bool(apply_motion.get())
         
         successful_preprocessing = 0
@@ -693,6 +761,7 @@ def apply_preprocessing_wrapper():
                     poly_order_val,
                     apply_baseline_val,
                     baseline_model_val,
+                    baseline_poly_order_val,
                     apply_motion_val
                 )
                 
