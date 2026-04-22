@@ -165,7 +165,7 @@ Typical directory structure:
 >  
 ![optogenetics induced2](https://github.com/Pulee0019/Data_Analysis_V1.0/blob/main/imgs/optogenetics%20induced2.png)
 ### 3.4.4 Bout Analysis
-> Inlude Running and Running+Drug. Running is used when compare different days/drug admininstration in different recordings. Running+Drug is used when compare drug effect on running in single recordings.
+> Include Running and Running+Drug. Running is used when compare different days/drug admininstration in different recordings. Running+Drug is used when compare drug effect on running in single recordings.
 
 > Different from multimodal analysis described above, the plot window can enter a string (such as start, end, start+1000, end-1000), to acquire same window length for the bout statistic of duration, peak and mean. Also for the histgram disturbution of bout speed.
 
