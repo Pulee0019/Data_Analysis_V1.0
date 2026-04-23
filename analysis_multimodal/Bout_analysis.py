@@ -89,9 +89,9 @@ def show_bout_analysis(root, multi_animal_data, analysis_mode="running"):
     
     # Left panel: Parameters
     param_config = {
-        'start_time': "start",
-        'end_time': "end",
-        'show_baseline_window': False,
+        'show_stats_window': True,
+        'stats_start': "start",
+        'stats_end': "end",
         'show_bout_type': True,
         'bout_types': available_bout_types,
         'show_bout_directions': True,
@@ -111,7 +111,7 @@ def show_bout_analysis(root, multi_animal_data, analysis_mode="running"):
     table_manager = TableManager(root, table_frame, btn_frame, multi_animal_data, analysis_mode)
         
     def run_analysis():
-        params = get_parameters_from_ui(param_frame, require_bout_type=True, require_bout_direction=True, require_baseline_window=False)
+        params = get_parameters_from_ui(param_frame, require_statistics_window=True, require_bout_type=True, require_bout_direction=True)
         if params:
             # Add full_event_type
             params['full_event_type'] = f"{params['bout_type'].replace('_bouts', '')}_{params['bout_direction']}"
@@ -365,8 +365,8 @@ def run_running_drug_bout_analysis(row_data, params):
         
 def analyze_row_running_bouts(row_name, animals, params):
     """"Compute bout duration, mean speed and peak speed for each animal in the row duration statistic window, and return the results"""
-    start_window = params.get('start_time', 'start')
-    end_window = params.get('end_time', 'end')
+    start_window = params.get('stats_start', 'start')
+    end_window = params.get('stats_end', 'end')
     if start_window != 'start':
         start_index_str, start_shift_str = start_window.split('+') if '+' in start_window else start_window.split('-')
         start_shift_time = int(start_shift_str)
@@ -439,8 +439,8 @@ def analyze_row_running_bouts(row_name, animals, params):
 
 def analyze_row_running_drug_bout(animals, params, row_name):
     """Analysis for running+drug bout analysis, compute bout duration, mean speed and peak speed for each animal in the row duration statistic window, and return the results, need auto identify drug sessions and analyze bouts in each drug session"""
-    start_window = params.get('start_time', 'start')
-    end_window = params.get('end_time', 'end')
+    start_window = params.get('stats_start', 'start')
+    end_window = params.get('stats_end', 'end')
     if start_window != 'start':
         start_index_str, start_shift_str = start_window.split('+') if '+' in start_window else start_window.split('-')
         start_shift_time = int(start_shift_str)
@@ -648,29 +648,30 @@ def plot_running_bout_speed_distribution(results, params, event_type):
                 thispatch.set_facecolor(color)
             ax.set_title(f"{row_name} - Bout Speed Distribution", fontsize=14, fontweight='bold')
             ax.set_xlabel("Speed (cm/s)", fontsize=12)
-            ax.set_ylabel("Frequency", fontsize=12)
+            ax.set_ylabel("Density", fontsize=12)
             plt.tight_layout()
             plt.show()
     elif event_type == 'running_drug_bout_analysis':
         for row_name, category_data in results.items():
             ax = plt.figure(figsize=(10, 6)).add_subplot(1, 1, 1)
+            colors_list = plt.cm.tab10.colors  # Get a list of 10 distinct colors
             i = 1
             for category, cat_results in category_data.items():
                 all_bout_speeds = np.concatenate([res['bout_speeds'] for res in cat_results if 'bout_speeds' in res])
                 if len(all_bout_speeds) == 0:
                     continue
-                N, bins, patches = ax.hist(all_bout_speeds, bins=30, alpha=i/len(category_data), density=True, label=category)
-                fracs = N / N.max()
-                norm = colors.Normalize(fracs.min(), fracs.max())
-                ax.yaxis.set_major_formatter(PercentFormatter(xmax=1))
-                for thisfrac, thispatch in zip(fracs, patches):
-                    color = plt.cm.coolwarm(thisfrac)
-                    thispatch.set_facecolor(color)
+                N, bins, patches = ax.hist(all_bout_speeds, bins=30, alpha=0.5, density=True, label=category, color=colors_list[i % len(colors_list)])
+                # fracs = N / N.max()
+                # norm = colors.Normalize(fracs.min(), fracs.max())
+                # ax.yaxis.set_major_formatter(PercentFormatter(xmax=1))
+                # for thisfrac, thispatch in zip(fracs, patches):
+                #     color = plt.cm.coolwarm(thisfrac)
+                #     thispatch.set_facecolor(color)
                 i += 1
             ax.set_title(f"{row_name} - Bout Speed Distribution by Drug Category", fontsize=14, fontweight='bold')
             ax.set_xlabel("Speed (cm/s)", fontsize=12)
-            ax.set_ylabel("Frequency", fontsize=12)
-            ax.legend(title="Drug Category")
+            ax.set_ylabel("Density", fontsize=12)
+            ax.legend()
             plt.tight_layout()
             plt.show()
 

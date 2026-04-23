@@ -38,10 +38,12 @@ def show_drug_induced_analysis(root, multi_animal_data):
     
     # Left panel: Parameters
     param_config = {
-        'start_time': "-1000",
-        'end_time': "2000",
+        'show_plot_window': True,
+        'plot_start': "-1000",
+        'plot_end': "2000",
+        'show_baseline_window': True,
         'baseline_start': "-1000",
-        'baseline_end': "0",
+        'baseline_end': "0"
     }
     param_frame = create_parameter_panel(container, param_config)
     param_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=(0, 5))
@@ -58,7 +60,7 @@ def show_drug_induced_analysis(root, multi_animal_data):
     table_manager = TableManager(root, table_frame, btn_frame, multi_animal_data)
     
     def run_analysis():
-        params = get_parameters_from_ui(param_frame)
+        params = get_parameters_from_ui(param_frame, require_plot_window=True, require_baseline_window=True)
         if params:
             table_manager.run_analysis(params)
     
@@ -385,8 +387,8 @@ def collect_statistics(row_name, animal_id, session_idx, drug_name, result,
                            time_array, params, target_wavelengths, active_channels):
     """Collect statistics for drug-induced running and fiber analysis"""
     rows = []
-    pre_mask = (time_array >= -params['pre_time']) & (time_array <= 0)
-    post_mask = (time_array >= 0) & (time_array <= params['post_time'])
+    pre_mask = (time_array >= -params['plot_pre']) & (time_array <= 0)
+    post_mask = (time_array >= 0) & (time_array <= params['plot_post'])
 
     full_id = f"{animal_id}_Session{session_idx+1}_{drug_name}"
 
@@ -477,8 +479,8 @@ def collect_statistics(row_name, animal_id, session_idx, drug_name, result,
 
 def analyze_row_drug_induced(row_name, animals, params):
     """Analyze drug-induced effects for one row (multiple animals combined)"""
-    time_array = np.linspace(-params['pre_time'], params['post_time'], 
-                            int((params['pre_time'] + params['post_time']) * 10))
+    time_array = np.linspace(-params['plot_pre'], params['plot_post'], 
+                            int((params['plot_pre'] + params['plot_post']) * 10))
     
     # Collect wavelengths
     target_wavelengths = []
@@ -563,7 +565,7 @@ def analyze_row_drug_induced(row_name, animals, params):
                 events, running_timestamps, running_speed,
                 fiber_timestamps, dff_data,
                 active_channels, target_wavelengths,
-                params['pre_time'], params['post_time'],
+                params['plot_pre'], params['plot_post'],
                 params['baseline_start'], params['baseline_end']
             )
             

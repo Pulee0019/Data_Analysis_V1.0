@@ -44,7 +44,7 @@ def get_events_from_bouts(animal_data, event_type, duration=False):
         bout_direction = bout_direction_with_type.split('_')[-1]  # Extract direction (e.g., 'forward' or 'backward')
         bout_type = bout_direction_with_type.replace(f"_{bout_direction}", '_bouts')  # Get bout type (e.g., 'general_bouts')
         event_kind = 'offset'
-    else:
+    elif duration:
         event_kind = 'duration'
         bout_direction = event_type.split('_')[-1]  # Extract direction (e.g., 'forward' or 'backward')
         bout_type = event_type.replace(f"_{bout_direction}", '_bouts')  # Get bout type (e.g., 'general_bouts')
@@ -68,7 +68,7 @@ def get_events_from_bouts(animal_data, event_type, duration=False):
                     events.append(timestamps[start_idx])
                 elif event_kind == 'offset' and not duration:  # offset
                     events.append(timestamps[end_idx])
-                elif event_kind == 'duration' and duration:  # duration
+                elif event_kind == 'duration':  # duration
                     events.append((timestamps[start_idx], timestamps[end_idx]))
     
     return events
@@ -361,15 +361,15 @@ def create_opto_parameter_string(freq, pulse_width, duration, power):
 def calculate_running_episodes(events, running_timestamps, running_speed,
                                fiber_timestamps, dff_data,
                                active_channels, target_wavelengths,
-                               pre_time, post_time, baseline_start, baseline_end):
+                               plot_pre, plot_post, baseline_start, baseline_end):
     """Calculate episodes around running events with custom baseline"""
-    time_array = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
+    time_array = np.linspace(-plot_pre, plot_post, int((plot_pre + plot_post) * 10))
     
     # Running episodes
     running_episodes = []
     for event in events:
-        start_idx = np.argmin(np.abs(running_timestamps - (event - pre_time)))
-        end_idx = np.argmin(np.abs(running_timestamps - (event + post_time)))
+        start_idx = np.argmin(np.abs(running_timestamps - (event - plot_pre)))
+        end_idx = np.argmin(np.abs(running_timestamps - (event + plot_post)))
         
         if end_idx > start_idx:
             episode_data = running_speed[start_idx:end_idx]
@@ -412,8 +412,8 @@ def calculate_running_episodes(events, running_timestamps, running_speed,
                             std_dff = 1e-10
                         
                         # Extract plotting window
-                        start_idx = np.argmin(np.abs(fiber_timestamps - (event - pre_time)))
-                        end_idx = np.argmin(np.abs(fiber_timestamps - (event + post_time)))
+                        start_idx = np.argmin(np.abs(fiber_timestamps - (event - plot_pre)))
+                        end_idx = np.argmin(np.abs(fiber_timestamps - (event + plot_post)))
                         
                         if end_idx > start_idx:
                             episode_data = data[start_idx:end_idx]
@@ -549,21 +549,32 @@ def create_parameter_panel(parent, param_config):
     param_config: dict with keys:
         - 'title': Panel title (default: "Analysis Parameters")
         - 'width': Panel width (default: 350)
-        - 'start_time': Default start time (default: "-30")
-        - 'end_time': Default end time (default: "60")
+        - 'show_plot_window': Whether to show plot window settings (default: False)
+        - 'plot_start': Default plot start time (default: "-30")
+        - 'plot_end': Default plot end time (default: "60")
+        - 'show_stats_window': Whether to show statistics window settings (default: False)
+        - 'stats_start': Default statistics start time (default: "start")
+        - 'stats_end': Default statistics end time (default: "end")
+        - 'show_baseline_window': Whether to show baseline window settings (default: False)
         - 'baseline_start': Default baseline start (default: "-30")
         - 'baseline_end': Default baseline end (default: "0")
         - 'show_bout_type': Whether to show bout type selection (default: False)
         - 'bout_types': List of available bout types (default: [])
+        - 'show_bout_directions': Whether to show bout direction selection (default: False)
+        - 'bout_directions': List of available bout directions (default: [])
         - 'show_event_type': Whether to show event type selection (default: False)
         - 'show_export': Whether to show export option (default: True)
     """
     config = {
         'title': "Analysis Parameters",
         'width': 350,
-        'start_time': "-30",
-        'end_time': "60",
-        'show_baseline_window': True,
+        'show_plot_window': False,
+        'plot_start': "-30",
+        'plot_end': "60",
+        'show_stats_window': False,
+        'stats_start': "start",
+        'stats_end': "end",
+        'show_baseline_window': False,
         'baseline_start': "-30",
         'baseline_end': "0",
         'show_bout_type': False,
@@ -580,80 +591,55 @@ def create_parameter_panel(parent, param_config):
                                bg="#f8f8f8", width=config['width'])
     param_frame.pack_propagate(False)
     
-    # Bout type selection (if needed)
-    if config['show_bout_type'] and config['bout_types']:
-        bout_frame = tk.LabelFrame(param_frame, text="Bout Type", 
-                                  font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
-        bout_frame.pack(fill=tk.X, padx=10, pady=10)
+    if config['show_plot_window']:
+        # Plot window settings
+        time_frame = tk.LabelFrame(param_frame, text="Plot Window (seconds)", 
+                                font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
+        time_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        tk.Label(bout_frame, text="Select Type:", bg="#f8f8f8", 
-                font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=10, pady=(5,2))
+        start_frame = tk.Frame(time_frame, bg="#f8f8f8")
+        start_frame.pack(fill=tk.X, pady=5)
+        tk.Label(start_frame, text="Start:", bg="#f8f8f8", 
+                font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
+        plot_start_var = tk.StringVar(value=config['plot_start'])
+        tk.Entry(start_frame, textvariable=plot_start_var, width=8, 
+                font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
         
-        bout_type_var = tk.StringVar()
-        bout_type_combo = ttk.Combobox(bout_frame, textvariable=bout_type_var,
-                                      values=config['bout_types'], state="readonly",
-                                      font=("Microsoft YaHei", 8))
-        bout_type_combo.pack(padx=10, pady=5, fill=tk.X)
-        if config['bout_types']:
-            bout_type_combo.set(config['bout_types'][1])
+        end_frame = tk.Frame(time_frame, bg="#f8f8f8")
+        end_frame.pack(fill=tk.X, pady=5)
+        tk.Label(end_frame, text="End:", bg="#f8f8f8", 
+                font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
+        plot_end_var = tk.StringVar(value=config['plot_end'])
+        tk.Entry(end_frame, textvariable=plot_end_var, width=8, 
+                font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
         
-        param_frame.bout_type_var = bout_type_var
-    
-    # Event type selection (if needed)
-    if config['show_event_type']:
-        event_frame = tk.LabelFrame(param_frame, text="Event Type", 
+        param_frame.plot_start_var = plot_start_var
+        param_frame.plot_end_var = plot_end_var
+        
+    if config['show_stats_window']:
+        # Statistics window settings
+        stats_frame = tk.LabelFrame(param_frame, text="Statistics Window (seconds)", 
                                    font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
-        event_frame.pack(fill=tk.X, padx=10, pady=10)
+        stats_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        event_type_var = tk.StringVar(value="onset")
-        tk.Radiobutton(event_frame, text="Onset", variable=event_type_var, 
-                      value="onset", bg="#f8f8f8", font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=20)
-        tk.Radiobutton(event_frame, text="Offset", variable=event_type_var, 
-                      value="offset", bg="#f8f8f8", font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=20)
+        stats_start_frame = tk.Frame(stats_frame, bg="#f8f8f8")
+        stats_start_frame.pack(fill=tk.X, pady=5)
+        tk.Label(stats_start_frame, text="Start:", bg="#f8f8f8", 
+                font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
+        stats_start_var = tk.StringVar(value=config['stats_start'])
+        tk.Entry(stats_start_frame, textvariable=stats_start_var, width=8, 
+                font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
         
-        param_frame.event_type_var = event_type_var
+        stats_end_frame = tk.Frame(stats_frame, bg="#f8f8f8")
+        stats_end_frame.pack(fill=tk.X, pady=5)
+        tk.Label(stats_end_frame, text="End:", bg="#f8f8f8", 
+                font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
+        stats_end_var = tk.StringVar(value=config['stats_end'])
+        tk.Entry(stats_end_frame, textvariable=stats_end_var, width=8, 
+                font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
         
-    if config['show_bout_directions'] and config['bout_directions']:
-        bout_direction_frame = tk.LabelFrame(param_frame, text="Bout Directions", 
-                                             font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
-        bout_direction_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        tk.Label(bout_direction_frame, text="Select Direction:", bg="#f8f8f8", 
-                font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=10, pady=(5,2))
-        
-        bout_direction_var = tk.StringVar()
-        bout_direction_combo = ttk.Combobox(bout_direction_frame, textvariable=bout_direction_var,
-                                             values=config['bout_directions'], state="readonly",
-                                      font=("Microsoft YaHei", 8))
-        bout_direction_combo.pack(padx=10, pady=5, fill=tk.X)
-        if config['bout_directions']:
-            bout_direction_combo.set(config['bout_directions'][0])
-        
-        param_frame.bout_direction_var = bout_direction_var
-
-    # Plot window settings
-    time_frame = tk.LabelFrame(param_frame, text="Plot Window (seconds)", 
-                              font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
-    time_frame.pack(fill=tk.X, padx=10, pady=10)
-    
-    start_frame = tk.Frame(time_frame, bg="#f8f8f8")
-    start_frame.pack(fill=tk.X, pady=5)
-    tk.Label(start_frame, text="Start:", bg="#f8f8f8", 
-            font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
-    start_time_var = tk.StringVar(value=config['start_time'])
-    tk.Entry(start_frame, textvariable=start_time_var, width=8, 
-            font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
-    
-    end_frame = tk.Frame(time_frame, bg="#f8f8f8")
-    end_frame.pack(fill=tk.X, pady=5)
-    tk.Label(end_frame, text="End:", bg="#f8f8f8", 
-            font=("Microsoft YaHei", 8), width=8, anchor='w').pack(side=tk.LEFT, padx=10)
-    end_time_var = tk.StringVar(value=config['end_time'])
-    tk.Entry(end_frame, textvariable=end_time_var, width=8, 
-            font=("Microsoft YaHei", 8)).pack(side=tk.LEFT, padx=5)
-    
-    param_frame.start_time_var = start_time_var
-    param_frame.end_time_var = end_time_var
+        param_frame.stats_start_var = stats_start_var
+        param_frame.stats_end_var = stats_end_var
     
     if config['show_baseline_window']:
         # Baseline window settings
@@ -679,7 +665,58 @@ def create_parameter_panel(parent, param_config):
         
         param_frame.baseline_start_var = baseline_start_var
         param_frame.baseline_end_var = baseline_end_var
-    
+        
+    # Bout type selection (if needed)
+    if config['show_bout_type'] and config['bout_types']:
+        bout_frame = tk.LabelFrame(param_frame, text="Bout Type", 
+                                  font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
+        bout_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        tk.Label(bout_frame, text="Select Type:", bg="#f8f8f8", 
+                font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=10, pady=(5,2))
+        
+        bout_type_var = tk.StringVar()
+        bout_type_combo = ttk.Combobox(bout_frame, textvariable=bout_type_var,
+                                      values=config['bout_types'], state="readonly",
+                                      font=("Microsoft YaHei", 8))
+        bout_type_combo.pack(padx=10, pady=5, fill=tk.X)
+        if config['bout_types']:
+            bout_type_combo.set(config['bout_types'][1])
+        
+        param_frame.bout_type_var = bout_type_var
+
+    if config['show_bout_directions'] and config['bout_directions']:
+        bout_direction_frame = tk.LabelFrame(param_frame, text="Bout Directions", 
+                                             font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
+        bout_direction_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        tk.Label(bout_direction_frame, text="Select Direction:", bg="#f8f8f8", 
+                font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=10, pady=(5,2))
+        
+        bout_direction_var = tk.StringVar()
+        bout_direction_combo = ttk.Combobox(bout_direction_frame, textvariable=bout_direction_var,
+                                             values=config['bout_directions'], state="readonly",
+                                      font=("Microsoft YaHei", 8))
+        bout_direction_combo.pack(padx=10, pady=5, fill=tk.X)
+        if config['bout_directions']:
+            bout_direction_combo.set(config['bout_directions'][0])
+        
+        param_frame.bout_direction_var = bout_direction_var
+        
+    # Event type selection (if needed)
+    if config['show_event_type']:
+        event_frame = tk.LabelFrame(param_frame, text="Event Type", 
+                                   font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
+        event_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        event_type_var = tk.StringVar(value="onset")
+        tk.Radiobutton(event_frame, text="Onset", variable=event_type_var, 
+                      value="onset", bg="#f8f8f8", font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=20)
+        tk.Radiobutton(event_frame, text="Offset", variable=event_type_var, 
+                      value="offset", bg="#f8f8f8", font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=20)
+        
+        param_frame.event_type_var = event_type_var
+        
     # Export option
     if config['show_export']:
         export_frame = tk.LabelFrame(param_frame, text="Export Options", 
@@ -695,38 +732,29 @@ def create_parameter_panel(parent, param_config):
     
     return param_frame
 
-def get_parameters_from_ui(param_frame, require_bout_type=False, require_bout_direction=False, require_event_type=False, require_baseline_window=True):
+def get_parameters_from_ui(param_frame, require_plot_window=False, require_statistics_window=False, require_baseline_window=False, require_bout_type=False, require_bout_direction=False, require_event_type=False):
     """Extract parameters from UI"""
     try:
-        if require_baseline_window:
-            start_time = float(param_frame.start_time_var.get())
-            end_time = float(param_frame.end_time_var.get())
-            
-            if start_time >= end_time:
-                log_message("Start time must be less than end time", "WARNING")
-                return None
-
-            pre_time = abs(min(0, start_time))
-            post_time = max(0, end_time)
-            
-            params = {
-                'start_time': start_time,
-                'end_time': end_time,
-                'pre_time': pre_time,
-                'post_time': post_time
-            }
-        else: # the start_time_var could be "start+1000" or "end-500", so we keep it as string for later parsing
-            params = {
-                'start_time': param_frame.start_time_var.get(),
-                'end_time': param_frame.end_time_var.get()
-            }
-        
+        params = {}
         # Add optional parameters
-        if hasattr(param_frame, 'bout_type_var') and require_bout_type:
-            params['bout_type'] = param_frame.bout_type_var.get()
+        if hasattr(param_frame, 'plot_start_var') and hasattr(param_frame, 'plot_end_var') and require_plot_window:
+            plot_start = float(param_frame.plot_start_var.get())
+            plot_end = float(param_frame.plot_end_var.get())
+            if plot_start >= plot_end:
+                log_message("Plot start must be less than plot end", "WARNING")
+                return None
             
-        if hasattr(param_frame, 'bout_direction_var') and require_bout_direction:
-            params['bout_direction'] = param_frame.bout_direction_var.get()
+            plot_pre = abs(min(0, plot_start))
+            plot_post = max(0, plot_end)
+            
+            params['plot_start'] = plot_start
+            params['plot_end'] = plot_end
+            params['plot_pre'] = plot_pre
+            params['plot_post'] = plot_post
+            
+        if hasattr(param_frame, 'stats_start_var') and hasattr(param_frame, 'stats_end_var') and require_statistics_window:
+            params['stats_start'] = param_frame.stats_start_var.get()
+            params['stats_end'] = param_frame.stats_end_var.get()
             
         if hasattr(param_frame, 'baseline_start_var') and hasattr(param_frame, 'baseline_end_var') and require_baseline_window:
             params['baseline_start'] = float(param_frame.baseline_start_var.get())
@@ -734,6 +762,12 @@ def get_parameters_from_ui(param_frame, require_bout_type=False, require_bout_di
             if params['baseline_start'] >= params['baseline_end']:
                 log_message("Baseline start must be less than baseline end", "WARNING")
                 return None
+            
+        if hasattr(param_frame, 'bout_type_var') and require_bout_type:
+            params['bout_type'] = param_frame.bout_type_var.get()
+            
+        if hasattr(param_frame, 'bout_direction_var') and require_bout_direction:
+            params['bout_direction'] = param_frame.bout_direction_var.get()
 
         if hasattr(param_frame, 'event_type_var') and require_event_type:
             params['event_type'] = param_frame.event_type_var.get()

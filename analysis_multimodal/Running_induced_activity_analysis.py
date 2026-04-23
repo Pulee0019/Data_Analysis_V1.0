@@ -128,8 +128,9 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
     
     # Left panel: Parameters
     param_config = {
-        'start_time': "-5",
-        'end_time': "15",
+        'show_plot_window': True,
+        'plot_start': "-5",
+        'plot_end': "15",
         'show_baseline_window': True,
         'baseline_start': "-5",
         'baseline_end': "0",
@@ -137,7 +138,7 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
         'bout_types': available_bout_types,
         'show_bout_directions': True,
         'bout_directions': available_bout_directions,
-        'show_event_type': True,
+        'show_event_type': True
     }
     param_frame = create_parameter_panel(container, param_config)
     param_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=(0, 5))
@@ -162,7 +163,7 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
         table_manager = TableManager(root, table_frame, btn_frame, multi_animal_data, analysis_mode)
 
     def run_analysis():
-        params = get_parameters_from_ui(param_frame, require_bout_type=True, require_bout_direction=True, require_event_type=True, require_baseline_window=True)
+        params = get_parameters_from_ui(param_frame, require_plot_window=True, require_baseline_window=True, require_bout_type=True, require_bout_direction=True, require_event_type=True)
         if params:
             # Add full_event_type
             params['full_event_type'] = f"{params['bout_type'].replace('_bouts', '')}_{params['bout_direction']}_{params['event_type']}s"
@@ -656,8 +657,8 @@ def run_running_drug_analysis(row_data, params):
         
 def analyze_row_running(row_name, animals, params):
     """Analyze one row for running-only mode"""
-    time_array = np.linspace(-params['pre_time'], params['post_time'], 
-                            int((params['pre_time'] + params['post_time']) * 10))
+    time_array = np.linspace(-params['plot_pre'], params['plot_post'], 
+                            int((params['plot_pre'] + params['plot_post']) * 10))
     
     # Collect all wavelengths
     target_wavelengths = []
@@ -713,7 +714,7 @@ def analyze_row_running(row_name, animals, params):
                 events, running_timestamps, running_speed,
                 fiber_timestamps, dff_data,
                 active_channels, target_wavelengths,
-                params['pre_time'], params['post_time'],
+                params['plot_pre'], params['plot_post'],
                 params['baseline_start'], params['baseline_end']
             )
 
@@ -777,8 +778,8 @@ def analyze_row_running_drug(row_name, animals, params):
     """Analyze one row for running+drug mode with multiple drugs
     Modified to use drug onset/offset times from configuration
     """
-    time_array = np.linspace(-params['pre_time'], params['post_time'], 
-                            int((params['pre_time'] + params['post_time']) * 10))
+    time_array = np.linspace(-params['plot_pre'], params['plot_post'], 
+                            int((params['plot_pre'] + params['plot_post']) * 10))
     
     # Collect wavelengths
     target_wavelengths = []
@@ -954,7 +955,7 @@ def analyze_row_running_drug(row_name, animals, params):
                     category_events, running_timestamps, running_speed,
                     fiber_timestamps, dff_data,
                     active_channels, target_wavelengths,
-                    params['pre_time'], params['post_time'],
+                    params['plot_pre'], params['plot_post'],
                     params['baseline_start'], params['baseline_end']
                 )
                 
@@ -1021,8 +1022,8 @@ def analyze_row_running_drug(row_name, animals, params):
 
 def analyze_row_running_optogenetics(row_name, animals, params, all_optogenetic_events, power_values):
     """Analyze one row for running+optogenetics mode"""
-    time_array = np.linspace(-params['pre_time'], params['post_time'], 
-                            int((params['pre_time'] + params['post_time']) * 10))
+    time_array = np.linspace(-params['plot_pre'], params['plot_post'], 
+                            int((params['plot_pre'] + params['plot_post']) * 10))
     
     # Collect wavelengths
     target_wavelengths = []
@@ -1119,7 +1120,7 @@ def analyze_row_running_optogenetics(row_name, animals, params, all_optogenetic_
                     with_opto_events, running_timestamps, running_speed,
                     fiber_timestamps, dff_data,
                     active_channels, target_wavelengths,
-                    params['pre_time'], params['post_time'],
+                    params['plot_pre'], params['plot_post'],
                     params['baseline_start'], params['baseline_end']
                 )
                 
@@ -1156,7 +1157,7 @@ def analyze_row_running_optogenetics(row_name, animals, params, all_optogenetic_
                     without_opto_events, running_timestamps, running_speed,
                     fiber_timestamps, dff_data,
                     active_channels, target_wavelengths,
-                    params['pre_time'], params['post_time'],
+                    params['plot_pre'], params['plot_post'],
                     params['baseline_start'], params['baseline_end']
                 )
                 
@@ -1254,8 +1255,8 @@ def collect_statistics(row_name, animal_id, event_type, result, time_array, para
                        target_wavelengths, active_channels):
     """Collect statistics for export"""
     rows = []
-    pre_mask = (time_array >= -params['pre_time']) & (time_array <= 0)
-    post_mask = (time_array >= 0) & (time_array <= params['post_time'])
+    pre_mask = (time_array >= -params['plot_pre']) & (time_array <= 0)
+    post_mask = (time_array >= 0) & (time_array <= params['plot_post'])
     
     # Running statistics
     for trial_idx, episode_data in enumerate(result['running']):
@@ -2341,8 +2342,8 @@ def run_running_optogenetics_analysis(row_data, params, all_optogenetic_events,
 def analyze_row_running_optogenetics_drug(row_name, animals, params, 
                                           all_optogenetic_events, power_values, all_drug_events):
     """Analyze one row for running+optogenetics+drug mode with multiple drugs"""
-    time_array = np.linspace(-params['pre_time'], params['post_time'], 
-                            int((params['pre_time'] + params['post_time']) * 10))
+    time_array = np.linspace(-params['plot_pre'], params['plot_post'], 
+                            int((params['plot_pre'] + params['plot_post']) * 10))
     
     # Collect wavelengths
     target_wavelengths = []
@@ -2487,7 +2488,7 @@ def analyze_row_running_optogenetics_drug(row_name, animals, params,
                         with_opto, running_timestamps, running_speed,
                         fiber_timestamps, dff_data,
                         active_channels, target_wavelengths,
-                        params['pre_time'], params['post_time'],
+                        params['plot_pre'], params['plot_post'],
                         params['baseline_start'], params['baseline_end']
                     )
                     
@@ -2516,7 +2517,7 @@ def analyze_row_running_optogenetics_drug(row_name, animals, params,
                         without_opto, running_timestamps, running_speed,
                         fiber_timestamps, dff_data,
                         active_channels, target_wavelengths,
-                        params['pre_time'], params['post_time'],
+                        params['plot_pre'], params['plot_post'],
                         params['baseline_start'], params['baseline_end']
                     )
                     
@@ -2592,8 +2593,8 @@ def collect_statistics_with_condition(row_name, animal_id, event_type, result,
                                       active_channels, condition):
     """Collect statistics with condition label"""
     rows = []
-    pre_mask = (time_array >= -params['pre_time']) & (time_array <= 0)
-    post_mask = (time_array >= 0) & (time_array <= params['post_time'])
+    pre_mask = (time_array >= -params['plot_pre']) & (time_array <= 0)
+    post_mask = (time_array >= 0) & (time_array <= params['plot_post'])
     
     # Running statistics
     for trial_idx, episode_data in enumerate(result['running']):

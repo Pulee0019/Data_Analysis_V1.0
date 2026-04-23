@@ -30,9 +30,16 @@ def main_visualization(animal_data=None):
             
             create_bodypart_buttons(list(parsed_data.keys()))
             create_visualization_window()
+            create_fiber_visualization()
+            create_running_visualization()
         
-        create_fiber_visualization()
-        create_running_visualization()
+        if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
+            create_fiber_visualization()
+            create_running_visualization()
+        
+        if current_experiment_mode == EXPERIMENT_MODE_AST2:
+            create_running_visualization()
+
     else:
         # Using animal_data
         animal_mode = animal_data.get('experiment_mode', EXPERIMENT_MODE_FIBER_AST2_DLC)
@@ -44,16 +51,24 @@ def main_visualization(animal_data=None):
                 parsed_data = animal_data['dlc_data']
                 create_bodypart_buttons(list(parsed_data.keys()))
                 create_visualization_window()
-        else:
+                create_fiber_visualization(animal_data)
+                create_running_visualization(animal_data)
+        elif animal_mode == EXPERIMENT_MODE_FIBER_AST2:
             # Fiber+AST2 mode: show info message
             info_label = tk.Label(central_display_frame, 
                                  text="Fiber + AST2 Mode\n\nBodypart visualization not available\nSee fiber and running plots on the right",
                                  bg="#f8f8f8", fg="#666666",
                                  font=("Arial", 12))
             info_label.pack(pady=100)
-        
-        create_fiber_visualization(animal_data)
-        create_running_visualization(animal_data)
+            create_fiber_visualization(animal_data)
+            create_running_visualization(animal_data)
+        elif animal_mode == EXPERIMENT_MODE_AST2:
+            info_label = tk.Label(central_display_frame, 
+                                 text="Fiber + AST2 Mode\n\nBodypart visualization not available\nSee fiber and running plots on the right",
+                                 bg="#f8f8f8", fg="#666666",
+                                 font=("Arial", 12))
+            info_label.pack(pady=100)
+            create_running_visualization(animal_data)
 
 def create_fiber_visualization(animal_data=None):
     global fiber_plot_window, input3_events, drug_events

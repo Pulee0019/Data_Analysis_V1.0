@@ -82,10 +82,12 @@ def show_optogenetic_induced_analysis(root, multi_animal_data, analysis_mode="op
     
     # Left panel: Parameters
     param_config = {
+        'show_plot_window': True,
         'start_time': "-30",
         'end_time': "60",
+        'show_baseline_window': True,
         'baseline_start': "-30",
-        'baseline_end': "0",
+        'baseline_end': "0"
     }
     param_frame = create_parameter_panel(container, param_config)
     param_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=(0, 5))
@@ -103,7 +105,7 @@ def show_optogenetic_induced_analysis(root, multi_animal_data, analysis_mode="op
                                     all_drug_events, analysis_mode)
 
     def run_analysis():
-        params = get_parameters_from_ui(param_frame)
+        params = get_parameters_from_ui(param_frame, require_plot_window=True, require_baseline_window=True)
         if params:
             table_manager.run_analysis(params)
 
@@ -555,7 +557,7 @@ def collect_optogenetic_statistics(param_name, animal_id, result,
         animal_id: Animal identifier
         result: Result dictionary from calculate_running_episodes
         time_array: Time array for the analysis
-        params: Analysis parameters dict with 'pre_time', 'post_time', etc.
+        params: Analysis parameters dict with 'plot_pre', 'plot_post', etc.
         target_wavelengths: List of wavelengths analyzed
         active_channels: List of active channels
         power_mw: Optogenetic stimulation power in mW
@@ -564,8 +566,8 @@ def collect_optogenetic_statistics(param_name, animal_id, result,
         List of dictionaries containing statistics for each trial/channel/wavelength
     """
     rows = []
-    pre_mask = (time_array >= -params['pre_time']) & (time_array <= 0)
-    post_mask = (time_array >= 0) & (time_array <= params['post_time'])
+    pre_mask = (time_array >= -params['plot_pre']) & (time_array <= 0)
+    post_mask = (time_array >= 0) & (time_array <= params['plot_post'])
 
     # Running statistics
     for trial_idx, episode_data in enumerate(result['running']):
@@ -720,7 +722,7 @@ def analyze_param_optogenetic(param_name, sessions, params):
                 events, running_timestamps, running_speed,
                 fiber_timestamps, dff_data,
                 active_channels, target_wavelengths,
-                params['pre_time'], params['post_time'],
+                params['plot_pre'], params['plot_post'],
                 params['baseline_start'], params['baseline_end']
             )
             
@@ -757,8 +759,8 @@ def analyze_param_optogenetic(param_name, sessions, params):
         return None, None
     
     # Calculate results
-    time_array = np.linspace(-params['pre_time'], params['post_time'],
-                            int((params['pre_time'] + params['post_time']) * 10))
+    time_array = np.linspace(-params['plot_pre'], params['plot_post'],
+                            int((params['plot_pre'] + params['plot_post']) * 10))
     
     result = {
         'time': time_array,

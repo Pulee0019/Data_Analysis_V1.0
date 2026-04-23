@@ -10,6 +10,7 @@ import numpy as np
 from infrastructure.logger import log_message
 from core.io import h_AST2_raw2Speed, h_AST2_readData, load_fiber_data, load_fiber_events, read_dlc_file
 
+EXPERIMENT_MODE_AST2 = "ast2"
 EXPERIMENT_MODE_FIBER_AST2 = "fiber+ast2"
 EXPERIMENT_MODE_FIBER_AST2_DLC = "fiber+ast2+dlc"
 
@@ -56,14 +57,19 @@ def import_multi_animals():
                 }
 
                 # Determine required files based on mode
-                if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
+                if current_experiment_mode == EXPERIMENT_MODE_AST2:
+                    required_files = ['ast2']
+                elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
                     required_files = ['fiber', 'fiber_events', 'ast2']
-                else:  # FIBER_AST2_DLC
+                elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
                     required_files = ['dlc', 'fiber', 'fiber_events', 'ast2']
 
                 for file_type, file_patterns in patterns.items():
                     # Skip DLC search if not needed
                     if file_type == 'dlc' and current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
+                        continue
+                    
+                    if file_type in ['fiber', 'fiber_events', 'dlc'] and current_experiment_mode == EXPERIMENT_MODE_AST2:
                         continue
                     
                     found_file = None
@@ -82,15 +88,19 @@ def import_multi_animals():
 
                 if not all(ft in files_found for ft in required_files):
                     continue
+                
+                fiber_result = None
+                if current_experiment_mode in [EXPERIMENT_MODE_FIBER_AST2, EXPERIMENT_MODE_FIBER_AST2_DLC] and 'fiber' in files_found:
+                    # Process fiber data to get available channels
+                    fiber_result = load_fiber_data(files_found['fiber'])
+                    if not fiber_result or 'channel_data' not in fiber_result:
+                        continue
+                    
+                    available_channels = list(fiber_result['channel_data'].keys())
 
-                # Process fiber data to get available channels
-                fiber_result = load_fiber_data(files_found['fiber'])
-                if not fiber_result or 'channel_data' not in fiber_result:
-                    continue
-
-                fiber_events = load_fiber_events(files_found['fiber_events'])
-
-                available_channels = list(fiber_result['channel_data'].keys())
+                fiber_events = None
+                if current_experiment_mode in [EXPERIMENT_MODE_FIBER_AST2, EXPERIMENT_MODE_FIBER_AST2_DLC] and 'fiber_events' in files_found:
+                    fiber_events = load_fiber_events(files_found['fiber_events'])     
 
                 # Process DLC file (only if in full mode)
                 dlc_data = None
@@ -116,50 +126,70 @@ def import_multi_animals():
                     except Exception as e:
                         log_message(f"Failed to load AST2 for {base_animal_id}: {str(e)}", "ERROR")
 
-                # Create separate animal_data for each channel
-                for channel_num in available_channels:
-                    animal_single_channel_id = f"{base_animal_id}-Ch{channel_num}"
-                    
-                    # Check for duplicates
-                    if any(d['animal_single_channel_id'] == animal_single_channel_id for d in multi_animal_data):
-                        log_message(f"Skip duplicate: {animal_single_channel_id}")
-                        continue
+                if fiber_result:
+                    # Create separate animal_data for each channel
+                    for channel_num in available_channels:
+                        animal_single_channel_id = f"{base_animal_id}-Ch{channel_num}"
+                        
+                        # Check for duplicates
+                        if any(d['animal_single_channel_id'] == animal_single_channel_id for d in multi_animal_data):
+                            log_message(f"Skip duplicate: {animal_single_channel_id}")
+                            continue
 
-                    # Create single-channel fiber data
-                    single_channel_fiber_data = fiber_result['fiber_data'].copy()
-                    
+                        # Create single-channel fiber data
+                        single_channel_fiber_data = fiber_result['fiber_data'].copy()
+                        
+                        animal_data = {
+                            'animal_id': base_animal_id,
+                            'animal_single_channel_id': animal_single_channel_id,
+                            'channel_num': channel_num,
+                            'files': files_found.copy(),
+                            'fiber_data': single_channel_fiber_data,
+                            'fiber_events': fiber_events,
+                            'channels': fiber_result['channels'].copy(),
+                            'channel_data': {channel_num: fiber_result['channel_data'][channel_num]},
+                            'active_channels': [channel_num],  # Only this channel
+                            'processed': True,
+                            'event_time_absolute': False,
+                            'experiment_mode': current_experiment_mode
+                        }
+
+                        # Add DLC data (same for all channels of this animal)
+                        if dlc_data:
+                            animal_data['dlc_data'] = dlc_data
+
+                        # Add AST2 data (same for all channels of this animal)
+                        if ast2_data:
+                            animal_data['ast2_data'] = ast2_data
+                            
+                        multi_animal_data.append(animal_data)
+                        selected_files.append(animal_data)
+
+                else:
+                    # If no fiber data, just create one entry without channel-specific data
                     animal_data = {
                         'animal_id': base_animal_id,
-                        'animal_single_channel_id': animal_single_channel_id,
-                        'channel_num': channel_num,
+                        'animal_single_channel_id': base_animal_id,  # No channel info
                         'files': files_found.copy(),
-                        'fiber_data': single_channel_fiber_data,
-                        'fiber_events': fiber_events,
-                        'channels': fiber_result['channels'].copy(),
-                        'channel_data': {channel_num: fiber_result['channel_data'][channel_num]},
-                        'active_channels': [channel_num],  # Only this channel
                         'processed': True,
                         'event_time_absolute': False,
                         'experiment_mode': current_experiment_mode
                     }
-
-                    # Add DLC data (same for all channels of this animal)
-                    if dlc_data:
-                        animal_data['dlc_data'] = dlc_data
-
-                    # Add AST2 data (same for all channels of this animal)
-                    if ast2_data:
-                        animal_data['ast2_data'] = ast2_data
-
                     multi_animal_data.append(animal_data)
                     selected_files.append(animal_data)
 
         added_count = len(multi_animal_data) - before_count if 'before_count' in locals() else len(selected_files)
 
-        if added_count <= 0:
+        if added_count == 0:
             log_message("No valid animal data found in the selected directory", "WARNING")
         else:
-            mode_name = "Fiber+AST2" if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2 else "Fiber+AST2+DLC"
+            if current_experiment_mode == EXPERIMENT_MODE_AST2:
+                mode_name = "AST2"
+            elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
+                mode_name = "Fiber+AST2"
+            else:
+                mode_name = "Fiber+AST2+DLC"
+                
             log_message(f"Found {added_count} new channel entries in {mode_name} mode", "INFO")
             show_channel_selection_dialog()
 
@@ -196,15 +226,20 @@ def import_single_animal():
         }
 
         # Determine required files based on mode
-        if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
+        if current_experiment_mode == EXPERIMENT_MODE_AST2:
+            required_files = ['ast2']
+        elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
             required_files = ['fiber', 'fiber_events', 'ast2']
-        else:  # FIBER_AST2_DLC
+        elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
             required_files = ['dlc', 'fiber', 'fiber_events', 'ast2']
 
         files_found = {}
         for file_type, file_patterns in patterns.items():
             # Skip DLC search if not needed
             if file_type == 'dlc' and current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
+                continue
+            
+            if file_type in ['fiber', 'fiber_events', 'dlc'] and current_experiment_mode == EXPERIMENT_MODE_AST2:
                 continue
             
             found_file = None
@@ -227,13 +262,17 @@ def import_single_animal():
             return
 
         # Process fiber data to get available channels
-        fiber_result = load_fiber_data(files_found['fiber'])
-        if not fiber_result or 'channel_data' not in fiber_result:
-            return
+        fiber_result = None
+        if current_experiment_mode in [EXPERIMENT_MODE_FIBER_AST2, EXPERIMENT_MODE_FIBER_AST2_DLC] and 'fiber' in files_found:
+            fiber_result = load_fiber_data(files_found['fiber'])
+            if not fiber_result or 'channel_data' not in fiber_result:
+                return
 
-        available_channels = list(fiber_result['channel_data'].keys())
+            available_channels = list(fiber_result['channel_data'].keys())
 
-        fiber_events = load_fiber_events(files_found['fiber_events'])
+        fiber_events = None
+        if current_experiment_mode in [EXPERIMENT_MODE_FIBER_AST2, EXPERIMENT_MODE_FIBER_AST2_DLC] and 'fiber_events' in files_found:
+            fiber_events = load_fiber_events(files_found['fiber_events'])
         
         # Process DLC file (only if in full mode)
         dlc_data = None
@@ -265,54 +304,75 @@ def import_single_animal():
             except Exception as e:
                 log_message(f"Failed to load AST2 for {base_animal_id}: {str(e)}", "ERROR")
 
-        # Create separate animal_data for each channel
-        added_channels = []
-        for channel_num in available_channels:
-            animal_single_channel_id = f"{base_animal_id}-Ch{channel_num}"
-            
-            # Check for duplicates
-            if any(d['animal_single_channel_id'] == animal_single_channel_id for d in multi_animal_data):
-                log_message(f"Channel {channel_num} already exists for {base_animal_id}", "INFO")
-                continue
+        if fiber_result:
+            # Create separate animal_data for each channel
+            for channel_num in available_channels:
+                animal_single_channel_id = f"{base_animal_id}-Ch{channel_num}"
+                
+                # Check for duplicates
+                if any(d['animal_single_channel_id'] == animal_single_channel_id for d in multi_animal_data):
+                    log_message(f"Channel {channel_num} already exists for {base_animal_id}", "INFO")
+                    continue
 
-            # Create single-channel fiber data
-            single_channel_fiber_data = fiber_result['fiber_data'].copy()
-            
+                # Create single-channel fiber data
+                single_channel_fiber_data = fiber_result['fiber_data'].copy()
+                
+                animal_data = {
+                    'animal_id': base_animal_id,
+                    'animal_single_channel_id': animal_single_channel_id,
+                    'channel_num': channel_num,
+                    'files': files_found.copy(),
+                    'fiber_data': single_channel_fiber_data,
+                    'fiber_events': fiber_events,
+                    'channels': fiber_result['channels'].copy(),
+                    'channel_data': {channel_num: fiber_result['channel_data'][channel_num]},
+                    'active_channels': [channel_num],  # Only this channel
+                    'processed': True,
+                    'event_time_absolute': False,
+                    'experiment_mode': current_experiment_mode
+                }
+
+                # Add DLC data (same for all channels of this animal)
+                if dlc_data:
+                    animal_data['dlc_data'] = dlc_data
+
+                # Add AST2 data (same for all channels of this animal)
+                if ast2_data:
+                    animal_data['ast2_data'] = ast2_data
+                    
+                multi_animal_data.append(animal_data)
+                selected_files.append(animal_data)
+                    
+        else:
+            # If no fiber data, just create one entry without channel-specific data
             animal_data = {
                 'animal_id': base_animal_id,
-                'animal_single_channel_id': animal_single_channel_id,
-                'channel_num': channel_num,
+                'animal_single_channel_id': base_animal_id,  # No channel info
                 'files': files_found.copy(),
-                'fiber_data': single_channel_fiber_data,
-                'fiber_events': fiber_events,
-                'channels': fiber_result['channels'].copy(),
-                'channel_data': {channel_num: fiber_result['channel_data'][channel_num]},
-                'active_channels': [channel_num],  # Only this channel
                 'processed': True,
                 'event_time_absolute': False,
                 'experiment_mode': current_experiment_mode
             }
 
-            # Add DLC data (same for all channels of this animal)
-            if dlc_data:
-                animal_data['dlc_data'] = dlc_data
-
-            # Add AST2 data (same for all channels of this animal)
-            if ast2_data:
-                animal_data['ast2_data'] = ast2_data
-
             multi_animal_data.append(animal_data)
             selected_files.append(animal_data)
-            added_channels.append(channel_num)
 
         added_count = len(multi_animal_data) - before_count
 
         if added_count > 0:
             show_channel_selection_dialog()
-            mode_name = "Fiber+AST2" if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2 else "Fiber+AST2+DLC"
+            if current_experiment_mode == EXPERIMENT_MODE_AST2:
+                mode_name = "AST2" 
+            elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
+                mode_name = "Fiber+AST2"
+            elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
+                mode_name = "Fiber+AST2+DLC"
             log_message(f"Added {base_animal_id} with {added_count} channels ({mode_name} mode)", "INFO")
         else:
-            log_message(f"No new channels added for {base_animal_id}", "WARNING")
+            if fiber_result:
+                log_message(f"All channels for {base_animal_id} already exist, no new channels added", "INFO")
+            else:
+                log_message(f"{base_animal_id} already exists, no new entry added", "INFO")
 
     except Exception as e:
         log_message(f"Failed to add single animal: {str(e)}", "ERROR")
@@ -517,6 +577,10 @@ def finalize_channel_selection(dialog):
                     # Restore global settings
                     globals()['invert_running'] = old_invert
                     globals()['treadmill_diameter'] = old_diameter
+                    if animal_data['experiment_mode'] == EXPERIMENT_MODE_AST2:
+                        animal_data.update({
+                            'ast2_data_adjusted': ast2_data
+                        })
                 else:
                     log_message(f"Running channel {selected_channel} out of range for {animal_single_channel_id}", "ERROR")
                     continue
@@ -553,10 +617,11 @@ def finalize_channel_selection(dialog):
         current_animal_index = 0
         main_visualization(multi_animal_data[current_animal_index])
         
-        create_fiber_visualization(multi_animal_data[current_animal_index])
-        if fiber_plot_window:
-            fiber_plot_window.set_plot_type("raw")
-            fiber_plot_window.update_plot()
+        if 'fiber_data' in multi_animal_data[current_animal_index] and multi_animal_data[current_animal_index]['fiber_data'] is not None:
+            create_fiber_visualization(multi_animal_data[current_animal_index])
+            if fiber_plot_window:
+                fiber_plot_window.set_plot_type("raw")
+                fiber_plot_window.update_plot()
 
 def align_data(animal_data=None):
     """Modified align_data to support different experiment modes"""

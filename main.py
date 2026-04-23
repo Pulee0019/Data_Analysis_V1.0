@@ -61,6 +61,7 @@ def bootstrap_globals(root):
     state = {
         "root": root,
         "analysis_manager": AnalysisResultsManager(),
+        "EXPERIMENT_MODE_AST2": "ast2",
         "EXPERIMENT_MODE_FIBER_AST2": "fiber+ast2",
         "EXPERIMENT_MODE_FIBER_AST2_DLC": "fiber+ast2+dlc",
         "current_experiment_mode": "fiber+ast2",
@@ -288,6 +289,7 @@ def build_menu(root, state):
             "multimodal_menu": multimodal_menu,
             "running_induced_menu": running_induced_menu,
             "optogenetics_induced_menu": optogenetics_induced_menu,
+            "bout_menu": bout_menu,
         }
     )
 

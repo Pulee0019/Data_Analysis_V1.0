@@ -34,7 +34,7 @@ def select_experiment_mode():
     
     mode_window = tk.Toplevel(root)
     mode_window.title("Select Experiment Mode")
-    mode_window.geometry("400x400")
+    mode_window.geometry("400x500")
     mode_window.transient(root)
     mode_window.grab_set()
     
@@ -55,37 +55,53 @@ def select_experiment_mode():
     
     mode_var = tk.StringVar(value=current_experiment_mode)
     
-    # Mode 1: Fiber + AST2
+    # Mode 1: AST2
     mode1_radio = tk.Radiobutton(
         mode_frame,
-        text="Fiber + AST2 (Running Only)",
+        text="AST2",
+        variable=mode_var,
+        value=EXPERIMENT_MODE_AST2,
+        font=("Arial", 10),
+        justify=tk.LEFT
+    )
+    mode1_radio.pack(anchor="w", pady=5)
+
+    mode1_desc = tk.Label(mode_frame, 
+                         text="  • Running wheel data (AST2)",
+                         font=("Arial", 9), fg="gray", justify=tk.LEFT)
+    mode1_desc.pack(anchor="w", padx=20)
+
+    # Mode 2: Fiber + AST2
+    mode2_radio = tk.Radiobutton(
+        mode_frame,
+        text="Fiber + AST2",
         variable=mode_var,
         value=EXPERIMENT_MODE_FIBER_AST2,
         font=("Arial", 10),
         justify=tk.LEFT
     )
-    mode1_radio.pack(anchor="w", pady=5)
+    mode2_radio.pack(anchor="w", pady=5)
     
-    mode1_desc = tk.Label(mode_frame, 
+    mode2_desc = tk.Label(mode_frame, 
                          text="  • Fiber photometry data\n  • Running wheel data (AST2)",
                          font=("Arial", 9), fg="gray", justify=tk.LEFT)
-    mode1_desc.pack(anchor="w", padx=20)
+    mode2_desc.pack(anchor="w", padx=20)
     
-    # Mode 2: Fiber + AST2 + DLC
-    mode2_radio = tk.Radiobutton(
+    # Mode 3: Fiber + AST2 + DLC
+    mode3_radio = tk.Radiobutton(
         mode_frame,
-        text="Fiber + AST2 + DLC (Full Analysis)",
+        text="Fiber + AST2 + DLC",
         variable=mode_var,
         value=EXPERIMENT_MODE_FIBER_AST2_DLC,
         font=("Arial", 10),
         justify=tk.LEFT
     )
-    mode2_radio.pack(anchor="w", pady=(15, 5))
+    mode3_radio.pack(anchor="w", pady=(15, 5))
     
-    mode2_desc = tk.Label(mode_frame, 
+    mode3_desc = tk.Label(mode_frame, 
                          text="  • Fiber photometry data\n  • Running wheel data (AST2)\n  • DeepLabCut behavioral tracking",
                          font=("Arial", 9), fg="gray", justify=tk.LEFT)
-    mode2_desc.pack(anchor="w", padx=20)
+    mode3_desc.pack(anchor="w", padx=20)
     
     def apply_mode():
         global current_experiment_mode
@@ -114,8 +130,12 @@ def select_experiment_mode():
         # Update UI based on mode
         update_ui_for_mode()
         
-        mode_name = "Fiber + AST2" if new_mode == EXPERIMENT_MODE_FIBER_AST2 else "Fiber + AST2 + DLC"
-        log_message(f"Experiment mode set to: {mode_name}", "INFO")
+        if new_mode == EXPERIMENT_MODE_AST2:
+            log_message("Experiment mode set to: AST2 only", "INFO")
+        elif new_mode == EXPERIMENT_MODE_FIBER_AST2:
+            log_message("Experiment mode set to: Fiber + AST2", "INFO")
+        elif new_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
+             log_message("Experiment mode set to: Fiber + AST2 + DLC", "INFO")
         
         mode_window.destroy()
     
@@ -136,22 +156,42 @@ def update_ui_for_mode():
     global current_experiment_mode
     
     # Update menu items
-    if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
-        # Disable DLC-related menu items
-        behaviour_analysis_menu.entryconfig("Position Analysis", state="disabled")
-        behaviour_analysis_menu.entryconfig("Displacement Analysis", state="disabled")
-        behaviour_analysis_menu.entryconfig("X Displacement Analysis", state="disabled")
-        behaviour_analysis_menu.entryconfig("Trajectory Point Cloud", state="disabled")
-        
-    else:  # FIBER_AST2_DLC mode
-        # Enable all menu items
-        behaviour_analysis_menu.entryconfig("Position Analysis", state="normal")
-        behaviour_analysis_menu.entryconfig("Displacement Analysis", state="normal")
-        behaviour_analysis_menu.entryconfig("X Displacement Analysis", state="normal")
-        behaviour_analysis_menu.entryconfig("Trajectory Point Cloud", state="normal")
+    if current_experiment_mode == EXPERIMENT_MODE_AST2:
+        analysis_menu.entryconfig("Behavior Analysis", state="disabled")
+        analysis_menu.entryconfig("Running Data Analysis", state="normal")
+        analysis_menu.entryconfig("Fiber Data Preprocessing", state="disabled")
+        analysis_menu.entryconfig("Fiber Data Analysis", state="disabled")
+        multimodal_menu.entryconfig("Running-Induced Activity Analysis", state="disabled")
+        multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="disabled")
+        multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="disabled")
+        multimodal_menu.entryconfig("Bout Analysis", state="normal")
+        bout_menu.entryconfig("Running", state="normal")
+        bout_menu.entryconfig("Running + Drug", state="disabled")
+    elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
+        analysis_menu.entryconfig("Behavior Analysis", state="disabled")
+        analysis_menu.entryconfig("Running Data Analysis", state="normal")
+        analysis_menu.entryconfig("Fiber Data Preprocessing", state="normal")
+        analysis_menu.entryconfig("Fiber Data Analysis", state="normal")
+        multimodal_menu.entryconfig("Running-Induced Activity Analysis", state="normal")
+        multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="normal")
+        multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="normal")
+        multimodal_menu.entryconfig("Bout Analysis", state="normal")
+        bout_menu.entryconfig("Running", state="normal")
+        bout_menu.entryconfig("Running + Drug", state="normal")
+    elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
+        analysis_menu.entryconfig("Behavior Analysis", state="disabled")
+        analysis_menu.entryconfig("Running Data Analysis", state="normal")
+        analysis_menu.entryconfig("Fiber Data Preprocessing", state="normal")
+        analysis_menu.entryconfig("Fiber Data Analysis", state="normal")
+        multimodal_menu.entryconfig("Running-Induced Activity Analysis", state="normal")
+        multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="normal")
+        multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="normal")
+        multimodal_menu.entryconfig("Bout Analysis", state="normal")
+        bout_menu.entryconfig("Running", state="normal")
+        bout_menu.entryconfig("Running + Drug", state="normal")
     
     # Clear left panel if in Fiber+AST2 mode
-    if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
+    if current_experiment_mode != EXPERIMENT_MODE_FIBER_AST2_DLC:
         for widget in left_frame.winfo_children():
             widget.destroy()
         
