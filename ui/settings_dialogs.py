@@ -690,6 +690,8 @@ def save_log():
     
 def on_closing():
     log_message("Main window closed, exiting the program...", "INFO")
+    if not state["global_save_dir"]:
+        save_path_setting()
     export_animal_data()
     save_log()
     root.quit()
