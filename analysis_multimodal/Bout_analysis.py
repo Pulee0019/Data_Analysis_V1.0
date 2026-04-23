@@ -2,13 +2,16 @@
 Activated during Only Running Analysis. Supports both running and running+drug analysis for only running analysis results in multi_animal_data. Bout analysis with table configuration to select and analyze different running sessions(running: different days, running+drug: baseline, drug1, drug2, etc.). Bout analysis with parameters configuration to select different bout types(general, locomotion, reset, jerk, other, and rest), different directions(general, forward, backward and balance) and statistic windows(start and end, you can enter 'start' and 'end' to start and end, you can also enter 'start' and 'start+1000' / 'end-1000' and 'end' to acquire the same statistic duration). When run analysis, output the all bouts speed distribution figure in differnt rows meet the selected bout type and direction, Optionally outputs a table with the number of bouts, duration, mean speed and peak speed for selected bout type, direction and statistic windows.)
 """
 
+
 import os
 import csv
 import json
+import pickle
 import numpy as np
 import tkinter as tk
 import matplotlib.pyplot as plt
 
+from datetime import datetime
 from matplotlib import colors
 from tkinter import filedialog
 from matplotlib.ticker import PercentFormatter
@@ -16,6 +19,13 @@ from matplotlib.ticker import PercentFormatter
 from infrastructure.logger import log_message
 from analysis_multimodal.Multimodal_analysis import get_events_from_bouts, create_parameter_panel, get_parameters_from_ui, identify_drug_sessions, create_control_panel, create_table_window, initialize_table
 
+_deps = {}
+
+def bind_bout_dependencies(deps):
+    _deps.clear()
+    _deps.update(deps)
+    globals().update(deps)
+    
 def show_bout_analysis(root, multi_animal_data, analysis_mode="running"):
     """
     Show bout analysis configuration window
@@ -344,7 +354,7 @@ def run_running_only_bout_analysis(row_data, params):
         plot_running_bout_speed_distribution(results, params, 'running_only_bout_analysis')
         log_message("Analysis completed successfully")
         if params['export_stats']:
-            export_running_bout_stats(results, params, 'running_only_bout_analysis')
+            export_running_bout_results_and_stats(results, params, 'running_only_bout_analysis')
     else:
         log_message("No valid results", "ERROR")
 
@@ -361,7 +371,7 @@ def run_running_drug_bout_analysis(row_data, params):
         plot_running_bout_speed_distribution(results, params, 'running_drug_bout_analysis')
         log_message("Analysis completed successfully")
         if params['export_stats']:
-            export_running_bout_stats(results, params, 'running_drug_bout_analysis')
+            export_running_bout_results_and_stats(results, params, 'running_drug_bout_analysis')
         
 def analyze_row_running_bouts(row_name, animals, params):
     """"Compute bout duration, mean speed and peak speed for each animal in the row duration statistic window, and return the results"""
@@ -675,14 +685,30 @@ def plot_running_bout_speed_distribution(results, params, event_type):
             plt.tight_layout()
             plt.show()
 
-def export_running_bout_stats(results, params, event_type):
-    """Export bout stats to CSV file"""
-    output_file = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")], title="Save Running Bout Analysis Results")
-    if not output_file:
-        log_message("No file selected. Running bout analysis results were not saved.", "WARNING")
-        return
+def export_running_bout_results_and_stats(results, params, event_type):
+    """Export bout results and statistics"""
+    save_dir = state.get("global_save_dir", '') if "state" in globals() else None
+    if not save_dir:
+        save_dir = filedialog.askdirectory(title='Select directory to save bout analysis results')
+        if not save_dir:
+            log_message("No directory selected. Running bout analysis results were not saved.", "WARNING")
+            return
+    else:
+        log_message(f"Using global save directory: {save_dir}", "INFO")
     
-    with open(output_file, mode='w', newline='') as file:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    filename1 = f"{event_type}_results_{timestamp}.pickle"
+    filename2 = f"{event_type}_statistics_{timestamp}.csv"
+    save_path1 = os.path.join(save_dir, filename1)
+    save_path2 = os.path.join(save_dir, filename2)
+    
+    with open(save_path1, 'wb') as f:
+        pickle.dump(results, f)
+        
+    log_message(f"Running bout analysis results saved to {save_path1}")
+            
+    with open(save_path2, mode='w', newline='') as file:
         writer = csv.writer(file)
         if event_type == 'running_only_bout_analysis':
             writer.writerow(['Row Name', 'Animal ID', 'Event Type', 'Trial', 'Bout Start', 'Bout End', 'Duration (s)', 'Mean Speed (cm/s)', 'Peak Speed (cm/s)'])
@@ -723,4 +749,4 @@ def export_running_bout_stats(results, params, event_type):
                         ])
                         i += 1
     
-    log_message(f"Running bout analysis results saved to {output_file}")
+    log_message(f"Running bout analysis statistics saved to {save_path2}")

@@ -134,7 +134,11 @@ def display_analysis_results(analysis_type, animal_data):
     if analysis_type == 'running_analysis':
         display_running_analysis_for_animal(animal_data)
     elif analysis_type == 'fiber_preprocessing':
-        display_fiber_results_for_animal(animal_data)
+        display_fiber_results_for_animal(animal_data, plot_type="motion_corrected")
+    elif analysis_type == 'dff':
+        display_fiber_results_for_animal(animal_data, plot_type="dff")
+    elif analysis_type == 'z-score':
+        display_fiber_results_for_animal(animal_data, plot_type="z-score")
 
 def display_running_analysis_for_animal(animal_data):
     """Display running analysis results for specific animal"""
@@ -151,17 +155,17 @@ def display_running_analysis_for_animal(animal_data):
         fiber_plot_window.animal_data = animal_data
         fiber_plot_window.update_plot()
 
-def display_fiber_results_for_animal(animal_data):
+def display_fiber_results_for_animal(animal_data, plot_type="raw"):
     """Display fiber preprocessing results for specific animal"""
     if fiber_plot_window:
         fiber_plot_window.animal_data = animal_data
         
         # Determine which plot type to show based on available data
-        if 'zscore_data' in animal_data and animal_data['zscore_data']:
+        if 'zscore_data' in animal_data and animal_data['zscore_data'] and plot_type == "z-score":
             fiber_plot_window.set_plot_type("zscore")
-        elif 'dff_data' in animal_data and animal_data['dff_data']:
+        elif 'dff_data' in animal_data and animal_data['dff_data'] and plot_type == "dff":
             fiber_plot_window.set_plot_type("dff")
-        elif 'preprocessed_data' in animal_data:
+        elif 'preprocessed_data' in animal_data and plot_type == "motion_corrected":
             fiber_plot_window.set_plot_type("motion_corrected")
         else:
             fiber_plot_window.set_plot_type("raw")

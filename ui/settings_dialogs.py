@@ -1,6 +1,9 @@
 import os
 import signal
+import pickle
 import tkinter as tk
+
+from datetime import datetime
 
 from analysis_multimodal.Multimodal_analysis import calculate_optogenetic_pulse_info, group_optogenetic_sessions, identify_drug_sessions, identify_optogenetic_events
 from infrastructure.logger import log_message, set_log_widget
@@ -623,13 +626,71 @@ def show_drug_name_config_dialog():
             font=("Microsoft YaHei", 8), justify=tk.LEFT).pack(side=tk.RIGHT, padx=10)
 
 def save_path_setting():
-    print(1)
+    save_dir = tk.filedialog.askdirectory(title='Select directory to save results')
+    if not save_dir:
+        log_message("Save path selection cancelled. No directory selected.", "INFO")
+        return
+    
+    state["global_save_dir"] = save_dir
+    log_message(f"Save path set to: {save_dir}", "INFO")
 
-def export_now_result():
-    print(1)
+def export_animal_data():
+    if not multi_animal_data:
+        log_message("No animal data to export. Please import data first.", "WARNING")
+        return
+    
+    save_dir = state.get("global_save_dir", '') if "state" in globals() else None
+    if not save_dir:
+        save_dir = tk.filedialog.askdirectory(title='Select directory to save results')
+        if not save_dir:
+            log_message("Export cancelled. No directory selected.", "INFO")
+            return
+    
+    else:
+        log_message(f"Using global save directory: {save_dir}", "INFO")
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"multi_animal_data_{timestamp}.pickle"
+    save_path = os.path.join(save_dir, filename)
+    
+    if not save_path:
+        log_message("Export cancelled. No file selected.", "INFO")
+        return
+    
+    try:
+        with open(save_path, 'wb') as f:
+            pickle.dump(multi_animal_data, f)
+        log_message(f"Animal data successfully exported to {save_path}", "INFO")
+    except Exception as e:
+        log_message(f"Error exporting animal data: {str(e)}", "ERROR")
 
+def save_log():
+    if not log_text_widget:
+        log_message("Log widget not initialized. Cannot save log.", "ERROR")
+        return
+    
+    save_dir = state.get("global_save_dir", '') if "state" in globals() else None
+    if not save_dir:
+        save_dir = tk.filedialog.askdirectory(title='Select directory to save log')
+        if not save_dir:
+            log_message("Log save cancelled. No directory selected.", "INFO")
+            return
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"analysis_log_{timestamp}.txt"
+    save_path = os.path.join(save_dir, filename)
+    
+    try:
+        with open(save_path, 'w', encoding='utf-8') as f:
+            log_content = log_text_widget.get("1.0", tk.END).strip()
+            f.write(log_content)
+        log_message(f"Log successfully saved to {save_path}", "INFO")
+    except Exception as e:
+        log_message(f"Error saving log: {str(e)}", "ERROR")
+    
 def on_closing():
     log_message("Main window closed, exiting the program...", "INFO")
+    save_log()
     root.quit()
     root.destroy()
     os.kill(os.getpid(), signal.SIGTERM)

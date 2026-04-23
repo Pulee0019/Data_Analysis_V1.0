@@ -14,6 +14,13 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 
 from infrastructure.logger import log_message
 
+_deps = {}
+
+def bind_multimodal_dependencies(deps):
+    _deps.clear()
+    _deps.update(deps)
+    globals().update(deps)
+    
 # Colors for different rows and fiber channels
 ROW_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', 
               '#1abc9c', '#e67e22', '#34495e', '#f1c40f', '#95a5a6']
@@ -522,7 +529,16 @@ def export_results(results, statistics_rows, analysis_type, event_type=None):
     df1 = rebuild_results(results)
     df2 = pd.DataFrame(statistics_rows)
     
-    save_dir = filedialog.askdirectory(title='Select directory to save statistics CSV')
+    save_dir = state.get("global_save_dir", '') if "state" in globals() else None
+    
+    if not save_dir:
+        save_dir = filedialog.askdirectory(title='Select directory to save results and statistics CSV')
+        if not save_dir:
+            log_message("Export cancelled. No directory selected.", "INFO")
+            return
+    
+    else:
+        log_message(f"Using global save directory: {save_dir}", "INFO")
     
     if save_dir:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

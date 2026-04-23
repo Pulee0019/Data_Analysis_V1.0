@@ -781,7 +781,7 @@ def apply_preprocessing_wrapper():
         
         # Update display for current animal
         if current_animal_index < len(multi_animal_data):
-            display_fiber_results_for_animal(multi_animal_data[current_animal_index])
+            display_fiber_results_for_animal(multi_animal_data[current_animal_index], "motion_corrected")
         
         # Show summary
         log_message(f"Fiber preprocessing completed: "
@@ -832,8 +832,7 @@ def calculate_and_plot_dff_wrapper():
         
         # Update display for current animal
         if current_animal_index < len(multi_animal_data):
-            if fiber_plot_window:
-                fiber_plot_window.set_plot_type("dff")
+            display_fiber_results_for_animal(multi_animal_data[current_animal_index], "dff")
         
         log_message(f"ΔF/F calculation completed: "
                    f"{successful_calculations} successful, {failed_calculations} failed", "INFO")
@@ -878,8 +877,7 @@ def calculate_and_plot_zscore_wrapper():
         
         # Update display for current animal
         if current_animal_index < len(multi_animal_data):
-            if fiber_plot_window:
-                fiber_plot_window.set_plot_type("zscore")
+            display_fiber_results_for_animal(multi_animal_data[current_animal_index], "z-score")
         
         log_message(f"Z-score calculation completed: "
                    f"{successful_calculations} successful, {failed_calculations} failed", "INFO")

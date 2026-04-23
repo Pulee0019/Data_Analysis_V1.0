@@ -977,8 +977,6 @@ def analyze_row_running_drug(row_name, animals, params):
         
         except Exception as e:
             log_message(f"Error processing {animal_id}: {str(e)}", "ERROR")
-            import traceback
-            traceback.print_exc()
     
     # Calculate means for each category
     # Build result structure

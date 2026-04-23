@@ -451,8 +451,6 @@ def calculate_dff(animal_data=None, target_signal="470", reference_signal="410",
         
     except Exception as e:
         log_message(f"ΔF/F calculation failed: {str(e)}", "ERROR")
-        import traceback
-        traceback.print_exc()
 
 def calculate_zscore(animal_data=None, target_signal="470", reference_signal="410", 
                      baseline_period=(0, 60), apply_baseline=False):
@@ -538,6 +536,4 @@ def calculate_zscore(animal_data=None, target_signal="470", reference_signal="41
         
     except Exception as e:
         log_message(f"Z-score calculation failed: {str(e)}", "ERROR")
-        import traceback
-        traceback.print_exc()
         return None

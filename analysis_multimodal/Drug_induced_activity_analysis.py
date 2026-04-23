@@ -588,8 +588,6 @@ def analyze_row_drug_induced(row_name, animals, params):
         
         except Exception as e:
             log_message(f"Error processing {animal_id}: {str(e)}", "ERROR")
-            import traceback
-            traceback.print_exc()
     
     if not combined_running and not any(combined_dff.values()) and not any(combined_zscore.values()):
         log_message(f"No valid episodes for {row_name}", "WARNING")

@@ -22,7 +22,9 @@ try:
     )
     from ui.bodypart_controller import create_trajectory_pointcloud
     from ui.settings_dialogs import (
-        export_now_result,
+        save_log,
+        save_path_setting,
+        export_animal_data,
         on_closing,
         select_experiment_mode,
         setup_log_display,
@@ -46,6 +48,9 @@ try:
     import ui.windows.visualization_windows as visualization_windows
     import workflows.analysis_workflows as analysis_workflows
     import workflows.data_workflows as data_workflows
+    import analysis_multimodal.Multimodal_analysis as multimodal_analysis
+    import analysis_multimodal.Bout_analysis as bout_analysis
+    
 except ModuleNotFoundError as exc:
     missing_name = exc.name or str(exc)
     print(
@@ -122,6 +127,7 @@ def bootstrap_globals(root):
         "display_running_analysis_for_animal": view_controller.display_running_analysis_for_animal,
         "display_fiber_results_for_animal": view_controller.display_fiber_results_for_animal,
     }
+    state["state"] = state
     return state
 
 
@@ -179,6 +185,8 @@ def bind_modules(state):
     bodypart_controller.bind_bodypart_dependencies(state)
     view_controller.bind_view_dependencies(state)
     settings_dialogs.bind_settings_dependencies(state)
+    multimodal_analysis.bind_multimodal_dependencies(state)
+    bout_analysis.bind_bout_dependencies(state)
 
 
 def build_menu(root, state):
@@ -191,7 +199,9 @@ def build_menu(root, state):
     file_menu.add_cascade(label="Import Animals", menu=import_animals_menu, state="normal")
     import_animals_menu.add_command(label="Import Single Animal", command=import_single_animal)
     import_animals_menu.add_command(label="Import Multiple Animals", command=import_multi_animals)
-    file_menu.add_command(label="Export", command=export_now_result)
+    file_menu.add_command(label="Select Save Path", command=save_path_setting)
+    file_menu.add_command(label="Export Animal Data", command=export_animal_data)
+    file_menu.add_command(label="Save Log", command=save_log)
     file_menu.add_command(label="Exit", command=root.quit)
 
     analysis_menu = tk.Menu(menubar, tearoff=0)
