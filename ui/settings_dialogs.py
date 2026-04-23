@@ -690,6 +690,7 @@ def save_log():
     
 def on_closing():
     log_message("Main window closed, exiting the program...", "INFO")
+    export_animal_data()
     save_log()
     root.quit()
     root.destroy()
