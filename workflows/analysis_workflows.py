@@ -180,7 +180,7 @@ def fiber_preprocessing():
     button_frame.pack(fill=tk.X, padx=5, pady=10)
     
     ttk.Button(button_frame, text="Apply Preprocessing",
-              command=lambda: apply_preprocessing_wrapper()).pack(side=tk.LEFT, padx=5)
+              command=lambda: apply_preprocessing_wrapper(prep_window)).pack(side=tk.LEFT, padx=5)
     ttk.Button(button_frame, text="Close",
               command=on_prep_window_close).pack(side=tk.RIGHT, padx=5)
 
@@ -719,7 +719,7 @@ def running_data_analysis():
     
     update_preview()
 
-def apply_preprocessing_wrapper():
+def apply_preprocessing_wrapper(prep_window):
     """Apply fiber preprocessing to ALL animals"""
     try:
         if not multi_animal_data:
@@ -786,6 +786,8 @@ def apply_preprocessing_wrapper():
         # Show summary
         log_message(f"Fiber preprocessing completed: "
                    f"{successful_preprocessing} successful, {failed_preprocessing} failed", "INFO")
+        
+        prep_window.destroy()
         
     except Exception as e:
         log_message(f"Batch fiber preprocessing failed: {str(e)}", "ERROR")
