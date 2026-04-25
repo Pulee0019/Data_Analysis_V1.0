@@ -8,6 +8,7 @@ import csv
 import json
 import pickle
 import numpy as np
+import pandas as pd
 import tkinter as tk
 import matplotlib.pyplot as plt
 
@@ -18,6 +19,7 @@ from matplotlib.ticker import PercentFormatter
 
 from infrastructure.logger import log_message
 from analysis_multimodal.Multimodal_analysis import get_events_from_bouts, create_parameter_panel, get_parameters_from_ui, identify_drug_sessions, create_control_panel, create_table_window, initialize_table
+from workflows.data_workflows import EXPERIMENT_MODE_AST2
 
 _deps = {}
 
@@ -375,6 +377,19 @@ def run_running_drug_bout_analysis(row_data, params):
         
 def analyze_row_running_bouts(row_name, animals, params):
     """"Compute bout duration, mean speed and peak speed for each animal in the row duration statistic window, and return the results"""
+    if current_experiment_mode != EXPERIMENT_MODE_AST2:
+        # Collect wavelengths
+        target_wavelengths = []
+        for animal_data in animals:
+            if 'target_signal' in animal_data:
+                signal = animal_data['target_signal']
+                wls = signal.split('+') if '+' in signal else [signal]
+                target_wavelengths.extend(wls)
+        target_wavelengths = sorted(list(set(target_wavelengths)))
+        
+        if not target_wavelengths:
+            target_wavelengths = ['470']
+        
     start_window = params.get('stats_start', 'start')
     end_window = params.get('stats_end', 'end')
     if start_window != 'start':
@@ -405,6 +420,17 @@ def analyze_row_running_bouts(row_name, animals, params):
             processed_data = animal_data.get('running_processed_data')
             running_speed = processed_data['filtered_speed'] if processed_data else ast2_data['data']['speed']
             
+            if current_experiment_mode != EXPERIMENT_MODE_AST2:
+                preprocessed_data = animal_data.get('preprocessed_data')
+                if preprocessed_data is None or preprocessed_data.empty:
+                    continue
+                
+                channels = animal_data.get('channels', {})
+                time_col = channels['time']
+                fiber_timestamps = preprocessed_data[time_col].values
+                dff_data = animal_data.get('dff_data', {})
+                active_channels = animal_data.get('active_channels', [])
+            
             for event in events:
                 event_start, event_end = event
                 if start_window != 'start':
@@ -426,12 +452,17 @@ def analyze_row_running_bouts(row_name, animals, params):
                 # Check if event falls within the statistic window
                 if event_start >= window_start and event_end <= window_end:
                     event_speeds = running_speed[(running_timestamps >= event_start) & (running_timestamps <= event_end)]
+                    speed_timestamps = running_timestamps[(running_timestamps >= event_start) & (running_timestamps <= event_end)]
+                    if current_experiment_mode != EXPERIMENT_MODE_AST2:
+                        bout_dffs, bout_zscores, event_fiber_timestamps = extract_bout_duration_fiber(fiber_timestamps, dff_data, active_channels, target_wavelengths, event_start, event_end)
+                        
                     if len(event_speeds) == 0:
                         continue
+                    
                     bout_duration = event_end - event_start
                     mean_speed = np.mean(event_speeds)
                     peak_speed = np.max(event_speeds)
-                    results.append({
+                    event_results = {
                         'row_name': row_name,
                         'animal_id': animal_id,
                         'bout_start': event_start,
@@ -439,8 +470,14 @@ def analyze_row_running_bouts(row_name, animals, params):
                         'duration_s': bout_duration,
                         'mean_speed_cm_s': mean_speed,
                         'peak_speed_cm_s': peak_speed,
-                        'bout_speeds': event_speeds
-                    })
+                        'bout_speeds': event_speeds,
+                        'speed_timestamps': speed_timestamps
+                    }
+                    if current_experiment_mode != EXPERIMENT_MODE_AST2:
+                        event_results['bout_dffs'] = bout_dffs
+                        event_results['bout_zscores'] = bout_zscores
+                        event_results['fiber_timestamps'] = event_fiber_timestamps
+                    results.append(event_results)
         
         except Exception as e:
             log_message(f"Error analyzing {animal_id}: {str(e)}", "ERROR")
@@ -449,6 +486,19 @@ def analyze_row_running_bouts(row_name, animals, params):
 
 def analyze_row_running_drug_bout(animals, params, row_name):
     """Analysis for running+drug bout analysis, compute bout duration, mean speed and peak speed for each animal in the row duration statistic window, and return the results, need auto identify drug sessions and analyze bouts in each drug session"""
+    if current_experiment_mode != EXPERIMENT_MODE_AST2:
+        # Collect wavelengths
+        target_wavelengths = []
+        for animal_data in animals:
+            if 'target_signal' in animal_data:
+                signal = animal_data['target_signal']
+                wls = signal.split('+') if '+' in signal else [signal]
+                target_wavelengths.extend(wls)
+        target_wavelengths = sorted(list(set(target_wavelengths)))
+        
+        if not target_wavelengths:
+            target_wavelengths = ['470']
+            
     start_window = params.get('stats_start', 'start')
     end_window = params.get('stats_end', 'end')
     if start_window != 'start':
@@ -614,10 +664,24 @@ def analyze_row_running_drug_bout(animals, params, row_name):
             processed_data = animal_data.get('running_processed_data')
             running_speed = processed_data['filtered_speed'] if processed_data else ast2_data['data']['speed']
             
+            if current_experiment_mode != EXPERIMENT_MODE_AST2:
+                preprocessed_data = animal_data.get('preprocessed_data')
+                if preprocessed_data is None or preprocessed_data.empty:
+                    continue
+                
+                channels = animal_data.get('channels', {})
+                time_col = channels['time']
+                fiber_timestamps = preprocessed_data[time_col].values
+                dff_data = animal_data.get('dff_data', {})
+                active_channels = animal_data.get('active_channels', [])
+            
             for category, cat_events in event_categories.items():
                 for event in cat_events:
                     event_start, event_end = event
                     event_speeds = running_speed[(running_timestamps >= event_start) & (running_timestamps <= event_end)]
+                    speed_timestamps = running_timestamps[(running_timestamps >= event_start) & (running_timestamps <= event_end)]
+                    if current_experiment_mode != EXPERIMENT_MODE_AST2:
+                        bout_dffs, bout_zscores, event_fiber_timestamps = extract_bout_duration_fiber(fiber_timestamps, dff_data, active_channels, target_wavelengths, event_start, event_end)
                     if len(event_speeds) == 0:
                         continue
                     bout_duration = event_end - event_start
@@ -627,7 +691,7 @@ def analyze_row_running_drug_bout(animals, params, row_name):
                     if category not in category_data:
                         category_data[category] = []
                     
-                    category_data[category].append({
+                    event_results = {
                         'row_name': row_name,
                         'animal_id': animal_id,
                         'bout_start': event_start,
@@ -635,8 +699,16 @@ def analyze_row_running_drug_bout(animals, params, row_name):
                         'duration_s': bout_duration,
                         'mean_speed_cm_s': mean_speed,
                         'peak_speed_cm_s': peak_speed,
-                        'bout_speeds': event_speeds
-                    })
+                        'bout_speeds': event_speeds,
+                        'speed_timestamps': speed_timestamps
+                    }
+                    
+                    if current_experiment_mode != EXPERIMENT_MODE_AST2:
+                        event_results['bout_dffs'] = bout_dffs
+                        event_results['bout_zscores'] = bout_zscores
+                        event_results['fiber_timestamps'] = event_fiber_timestamps
+
+                    category_data[category].append(event_results)
                     
         except Exception as e:
             log_message(f"Error analyzing {animal_id}: {str(e)}", "ERROR")
@@ -750,3 +822,28 @@ def export_running_bout_results_and_stats(results, params, event_type):
                         i += 1
     
     log_message(f"Running bout analysis statistics saved to {save_path2}")
+    
+def extract_bout_duration_fiber(fiber_timestamps, dff_data, active_channels, target_wavelengths, event_start, event_end):
+    """Extract fiber data during the bout duration, return a dict with different wavelengths as keys and fiber data as values"""
+    wavelength_dffs = {}
+    wavelength_zscores = {}
+    for wavelength in target_wavelengths:
+        for channel in active_channels:
+            dff_key = f"{channel}_{wavelength}"
+            if dff_key in dff_data:
+                data = dff_data[dff_key]
+                if isinstance(data, pd.Series):
+                    data = data.values
+                dff = data[(fiber_timestamps >= event_start) & (fiber_timestamps <= event_end)]
+                basal_dff = data[(fiber_timestamps >= event_start - 0.5) & (fiber_timestamps < event_start)]
+                if len(basal_dff) == 0:
+                    basal_dff = data[(fiber_timestamps > event_end) & (fiber_timestamps <= event_end + 0.5)]
+                    
+                if np.std(basal_dff) != 0:
+                    zscore = (dff - np.mean(basal_dff))/np.std(basal_dff)
+                else:
+                    zscore = (dff - np.mean(basal_dff))/1e-10
+                wavelength_dffs[wavelength] = dff
+                wavelength_zscores[wavelength] = zscore
+    
+    return wavelength_dffs, wavelength_zscores, fiber_timestamps[(fiber_timestamps >= event_start) & (fiber_timestamps <= event_end)]

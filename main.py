@@ -65,6 +65,7 @@ except ModuleNotFoundError as exc:
 def bootstrap_globals(root):
     state = {
         "root": root,
+        "global_save_dir": False,
         "analysis_manager": AnalysisResultsManager(),
         "EXPERIMENT_MODE_AST2": "ast2",
         "EXPERIMENT_MODE_FIBER_AST2": "fiber+ast2",
@@ -199,9 +200,10 @@ def build_menu(root, state):
     file_menu.add_cascade(label="Import Animals", menu=import_animals_menu, state="normal")
     import_animals_menu.add_command(label="Import Single Animal", command=import_single_animal)
     import_animals_menu.add_command(label="Import Multiple Animals", command=import_multi_animals)
-    file_menu.add_command(label="Select Save Path", command=save_path_setting)
-    file_menu.add_command(label="Export Animal Data", command=export_animal_data)
-    file_menu.add_command(label="Save Log", command=save_log)
+    export_menu = tk.Menu(file_menu, tearoff=0)
+    file_menu.add_cascade(label="Export", menu=export_menu)
+    export_menu.add_command(label="Animal Data", command=export_animal_data)
+    export_menu.add_command(label="Log", command=save_log)
     file_menu.add_command(label="Exit", command=root.quit)
 
     analysis_menu = tk.Menu(menubar, tearoff=0)
@@ -283,6 +285,7 @@ def build_menu(root, state):
 
     setting_menu = tk.Menu(menubar, tearoff=0)
     menubar.add_cascade(label="Settings", menu=setting_menu)
+    setting_menu.add_command(label="Default Path", command=save_path_setting)
     setting_menu.add_command(label="Experiment Type", command=select_experiment_mode)
     setting_menu.add_command(label="Event Configuration", command=show_event_config_dialog)
     setting_menu.add_command(label="Drug Configuration", command=show_drug_name_config_dialog, state="disabled")

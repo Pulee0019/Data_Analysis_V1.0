@@ -669,7 +669,7 @@ def save_log():
         log_message("Log widget not initialized. Cannot save log.", "ERROR")
         return
     
-    save_dir = state.get("global_save_dir", '') if "state" in globals() else None
+    save_dir = state.get("global_save_dir", False) if "state" in globals() else None
     if not save_dir:
         save_dir = tk.filedialog.askdirectory(title='Select directory to save log')
         if not save_dir:
@@ -690,9 +690,12 @@ def save_log():
     
 def on_closing():
     log_message("Main window closed, exiting the program...", "INFO")
-    if not state["global_save_dir"]:
+    if not state.get("global_save_dir", False):
         save_path_setting()
-    export_animal_data()
+    if not multi_animal_data:
+        log_message("No animal data to export.", "INFO")
+    else:
+        export_animal_data()
     save_log()
     root.quit()
     root.destroy()
