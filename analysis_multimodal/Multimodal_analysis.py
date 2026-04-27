@@ -13,6 +13,7 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
 from infrastructure.logger import log_message
+from workflows.data_workflows import EXPERIMENT_MODE_FIBER
 
 _deps = {}
 
@@ -96,10 +97,13 @@ def identify_optogenetic_events(fiber_events):
     opto_start_mask = (fiber_events['Name'].str.startswith(opto_event_name, na=False)) & (fiber_events['State'] == 0)
     opto_end_mask = (fiber_events['Name'].str.startswith(opto_event_name, na=False)) & (fiber_events['State'] == 1)
     
-    running_start_time = fiber_events.loc[
-        (fiber_events['Name'].str.startswith(running_start_name, na=False)) & (fiber_events['State'] == 0), 
-        'TimeStamp'
-    ].values
+    if current_experiment_mode != EXPERIMENT_MODE_FIBER:
+        running_start_time = fiber_events.loc[
+            (fiber_events['Name'].str.startswith(running_start_name, na=False)) & (fiber_events['State'] == 0), 
+            'TimeStamp'
+        ].values
+    else:
+        running_start_time = 0
 
     # Extract start events
     start_times = (fiber_events.loc[opto_start_mask, 'TimeStamp'].values - running_start_time) / 1000
@@ -171,16 +175,18 @@ def identify_drug_sessions(fiber_events):
     
     drug_sessions = []
     
-    running_start_time = fiber_events.loc[
-        (fiber_events['Name'].str.startswith(running_start_name, na=False)) & (fiber_events['State'] == 0), 
-        'TimeStamp'
-    ].values
-    
-    if len(running_start_time) == 0:
-        return drug_sessions
-    
-    running_start_time = running_start_time[0]
-    
+    if current_experiment_mode == EXPERIMENT_MODE_FIBER:
+        running_start_time = 0
+    else:
+        running_start_time = fiber_events.loc[
+            (fiber_events['Name'].str.startswith(running_start_name, na=False)) & (fiber_events['State'] == 0), 
+            'TimeStamp'
+        ].values
+        
+        if len(running_start_time) == 0:
+            return drug_sessions
+        
+        running_start_time = running_start_time[0]
     # Find all drug events with their event names
     for drug_event_name in drug_event_names:
         drug_start_mask = (fiber_events['Name'] == drug_event_name) & (fiber_events['State'] == 0)

@@ -11,6 +11,7 @@ from infrastructure.logger import log_message
 from core.io import h_AST2_raw2Speed, h_AST2_readData, load_fiber_data, load_fiber_events, read_dlc_file
 
 EXPERIMENT_MODE_AST2 = "ast2"
+EXPERIMENT_MODE_FIBER = "fiber"
 EXPERIMENT_MODE_FIBER_AST2 = "fiber+ast2"
 EXPERIMENT_MODE_FIBER_AST2_DLC = "fiber+ast2+dlc"
 
@@ -59,6 +60,8 @@ def import_multi_animals():
                 # Determine required files based on mode
                 if current_experiment_mode == EXPERIMENT_MODE_AST2:
                     required_files = ['ast2']
+                elif current_experiment_mode == EXPERIMENT_MODE_FIBER:
+                    required_files = ['fiber', 'fiber_events']
                 elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
                     required_files = ['fiber', 'fiber_events', 'ast2']
                 elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
@@ -70,6 +73,9 @@ def import_multi_animals():
                         continue
                     
                     if file_type in ['fiber', 'fiber_events', 'dlc'] and current_experiment_mode == EXPERIMENT_MODE_AST2:
+                        continue
+                    
+                    if file_type in ['ast2', 'dlc'] and current_experiment_mode == EXPERIMENT_MODE_FIBER:
                         continue
                     
                     found_file = None
@@ -90,7 +96,7 @@ def import_multi_animals():
                     continue
                 
                 fiber_result = None
-                if current_experiment_mode in [EXPERIMENT_MODE_FIBER_AST2, EXPERIMENT_MODE_FIBER_AST2_DLC] and 'fiber' in files_found:
+                if current_experiment_mode != EXPERIMENT_MODE_AST2 and 'fiber' in files_found:
                     # Process fiber data to get available channels
                     fiber_result = load_fiber_data(files_found['fiber'])
                     if not fiber_result or 'channel_data' not in fiber_result:
@@ -99,7 +105,7 @@ def import_multi_animals():
                     available_channels = list(fiber_result['channel_data'].keys())
 
                 fiber_events = None
-                if current_experiment_mode in [EXPERIMENT_MODE_FIBER_AST2, EXPERIMENT_MODE_FIBER_AST2_DLC] and 'fiber_events' in files_found:
+                if current_experiment_mode != EXPERIMENT_MODE_AST2 and 'fiber_events' in files_found:
                     fiber_events = load_fiber_events(files_found['fiber_events'])     
 
                 # Process DLC file (only if in full mode)
@@ -112,7 +118,7 @@ def import_multi_animals():
 
                 # Process AST2 file
                 ast2_data = None
-                if 'ast2' in files_found:
+                if current_experiment_mode == EXPERIMENT_MODE_AST2 and 'ast2' in files_found:
                     try:
                         header, raw_data = h_AST2_readData(files_found['ast2'])
                         if running_channel < len(raw_data):
@@ -166,17 +172,28 @@ def import_multi_animals():
                         selected_files.append(animal_data)
 
                 else:
-                    # If no fiber data, just create one entry without channel-specific data
-                    animal_data = {
-                        'animal_id': base_animal_id,
-                        'animal_single_channel_id': base_animal_id,  # No channel info
-                        'files': files_found.copy(),
-                        'processed': True,
-                        'event_time_absolute': False,
-                        'experiment_mode': current_experiment_mode
-                    }
-                    multi_animal_data.append(animal_data)
-                    selected_files.append(animal_data)
+                    # If no fiber data, just create one entry with running channel-specific data
+                    if ast2_data:
+                        for channel_num in range(len(ast2_data['header']['activeChIDs'])):
+                            animal_single_channel_id = f"{base_animal_id}-Ch{channel_num}"
+                            
+                            # Check for duplicates
+                            if any(d['animal_single_channel_id'] == animal_single_channel_id for d in multi_animal_data):
+                                log_message(f"Channel {channel_num} already exists for {base_animal_id}", "INFO")
+                                continue
+
+                            animal_data = {
+                                'animal_id': base_animal_id,
+                                'animal_single_channel_id': animal_single_channel_id,
+                                'channel_num': channel_num,
+                                'files': files_found.copy(),
+                                'ast2_data': ast2_data,
+                                'processed': True,
+                                'event_time_absolute': False,
+                                'experiment_mode': current_experiment_mode
+                            }
+                            multi_animal_data.append(animal_data)
+                            selected_files.append(animal_data)
 
         added_count = len(multi_animal_data) - before_count if 'before_count' in locals() else len(selected_files)
 
@@ -185,6 +202,8 @@ def import_multi_animals():
         else:
             if current_experiment_mode == EXPERIMENT_MODE_AST2:
                 mode_name = "AST2"
+            elif current_experiment_mode == EXPERIMENT_MODE_FIBER:
+                mode_name = "Fiber"
             elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
                 mode_name = "Fiber+AST2"
             else:
@@ -228,6 +247,8 @@ def import_single_animal():
         # Determine required files based on mode
         if current_experiment_mode == EXPERIMENT_MODE_AST2:
             required_files = ['ast2']
+        elif current_experiment_mode == EXPERIMENT_MODE_FIBER:
+            required_files = ['fiber', 'fiber_events']
         elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
             required_files = ['fiber', 'fiber_events', 'ast2']
         elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
@@ -240,6 +261,9 @@ def import_single_animal():
                 continue
             
             if file_type in ['fiber', 'fiber_events', 'dlc'] and current_experiment_mode == EXPERIMENT_MODE_AST2:
+                continue
+            
+            if file_type in ['ast2', 'dlc'] and current_experiment_mode == EXPERIMENT_MODE_FIBER:
                 continue
             
             found_file = None
@@ -263,7 +287,7 @@ def import_single_animal():
 
         # Process fiber data to get available channels
         fiber_result = None
-        if current_experiment_mode in [EXPERIMENT_MODE_FIBER_AST2, EXPERIMENT_MODE_FIBER_AST2_DLC] and 'fiber' in files_found:
+        if current_experiment_mode != EXPERIMENT_MODE_AST2 and 'fiber' in files_found:
             fiber_result = load_fiber_data(files_found['fiber'])
             if not fiber_result or 'channel_data' not in fiber_result:
                 return
@@ -271,7 +295,7 @@ def import_single_animal():
             available_channels = list(fiber_result['channel_data'].keys())
 
         fiber_events = None
-        if current_experiment_mode in [EXPERIMENT_MODE_FIBER_AST2, EXPERIMENT_MODE_FIBER_AST2_DLC] and 'fiber_events' in files_found:
+        if current_experiment_mode != EXPERIMENT_MODE_AST2 and 'fiber_events' in files_found:
             fiber_events = load_fiber_events(files_found['fiber_events'])
         
         # Process DLC file (only if in full mode)
@@ -284,7 +308,7 @@ def import_single_animal():
 
         # Process AST2 file
         ast2_data = None
-        if 'ast2' in files_found:
+        if current_experiment_mode == EXPERIMENT_MODE_AST2 and 'ast2' in files_found:
             try:
                 header, raw_data = h_AST2_readData(files_found['ast2'])
                 if running_channel < len(raw_data):
@@ -344,18 +368,28 @@ def import_single_animal():
                 selected_files.append(animal_data)
                     
         else:
-            # If no fiber data, just create one entry without channel-specific data
-            animal_data = {
-                'animal_id': base_animal_id,
-                'animal_single_channel_id': base_animal_id,  # No channel info
-                'files': files_found.copy(),
-                'processed': True,
-                'event_time_absolute': False,
-                'experiment_mode': current_experiment_mode
-            }
+            # If no fiber data, just create one entry with running channel-specific data
+            if ast2_data:
+                for channel_num in range(len(ast2_data['header']['activeChIDs'])):
+                    animal_single_channel_id = f"{base_animal_id}-Ch{channel_num}"
+                    
+                    # Check for duplicates
+                    if any(d['animal_single_channel_id'] == animal_single_channel_id for d in multi_animal_data):
+                        log_message(f"Channel {channel_num} already exists for {base_animal_id}", "INFO")
+                        continue
 
-            multi_animal_data.append(animal_data)
-            selected_files.append(animal_data)
+                    animal_data = {
+                        'animal_id': base_animal_id,
+                        'animal_single_channel_id': animal_single_channel_id,
+                        'channel_num': channel_num,
+                        'files': files_found.copy(),
+                        'ast2_data': ast2_data,
+                        'processed': True,
+                        'event_time_absolute': False,
+                        'experiment_mode': current_experiment_mode
+                    }
+                    multi_animal_data.append(animal_data)
+                    selected_files.append(animal_data)
 
         added_count = len(multi_animal_data) - before_count
 
@@ -363,6 +397,8 @@ def import_single_animal():
             show_channel_selection_dialog()
             if current_experiment_mode == EXPERIMENT_MODE_AST2:
                 mode_name = "AST2" 
+            elif current_experiment_mode == EXPERIMENT_MODE_FIBER:
+                mode_name = "Fiber"
             elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
                 mode_name = "Fiber+AST2"
             elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
@@ -414,16 +450,16 @@ def show_channel_selection_dialog():
         log_message("No animal data available for channel selection", "WARNING")
         dialog.destroy()
         return
-    
     # Header row
     header_frame = ttk.Frame(scrollable_frame)
     header_frame.pack(fill="x", padx=5, pady=5)
     
     ttk.Label(header_frame, text="Enable", width=11, font=("Arial", 9, "bold")).grid(row=0, column=0, padx=2)
     ttk.Label(header_frame, text="Animal ID-Channel ID", width=25, font=("Arial", 9, "bold")).grid(row=0, column=1, padx=2)
-    ttk.Label(header_frame, text="Running Ch", width=13, font=("Arial", 9, "bold")).grid(row=0, column=2, padx=2)
-    ttk.Label(header_frame, text="Invert", width=10, font=("Arial", 9, "bold")).grid(row=0, column=3, padx=2)
-    ttk.Label(header_frame, text="Diameter(cm)", width=12, font=("Arial", 9, "bold")).grid(row=0, column=4, padx=2)
+    if current_experiment_mode != EXPERIMENT_MODE_FIBER:
+        ttk.Label(header_frame, text="Running Ch", width=13, font=("Arial", 9, "bold")).grid(row=0, column=2, padx=2)
+        ttk.Label(header_frame, text="Invert", width=10, font=("Arial", 9, "bold")).grid(row=0, column=3, padx=2)
+        ttk.Label(header_frame, text="Diameter(cm)", width=12, font=("Arial", 9, "bold")).grid(row=0, column=4, padx=2)
     
     ttk.Separator(scrollable_frame, orient='horizontal').pack(fill='x', pady=5)
     
@@ -443,42 +479,43 @@ def show_channel_selection_dialog():
         # Animal-Channel ID label
         ttk.Label(row_frame, text=animal_single_channel_id, width=25).grid(row=0, column=1, padx=2)
         
-        # Running channel selection
-        available_channels = []
-        if 'ast2_data' in animal_data and animal_data['ast2_data']:
-            header = animal_data['ast2_data']['header']
-            if 'activeChIDs' in header:
-                available_channels = header['activeChIDs']
-            else:
-                if 'files' in animal_data and 'ast2' in animal_data['files']:
-                    try:
-                        header, raw_data = h_AST2_readData(animal_data['files']['ast2'])
-                        available_channels = list(range(len(raw_data)))
-                    except:
-                        available_channels = [0, 1, 2, 3]
-        
-        if not available_channels:
-            available_channels = [0, 1, 2, 3]
-        
-        saved_running_channel = channel_memory.get(f"{animal_single_channel_id}_running_channel", running_channel)
-        running_channel_var = tk.StringVar(value=str(saved_running_channel))
-        running_channel_vars[animal_single_channel_id] = running_channel_var
-        
-        running_combo = ttk.Combobox(row_frame, textvariable=running_channel_var,
-                                    values=available_channels, state="readonly", width=10)
-        running_combo.grid(row=0, column=2, padx=2)
-        
-        # Invert checkbox
-        saved_invert = channel_memory.get(f"{animal_single_channel_id}_invert_running", invert_running)
-        invert_var = tk.BooleanVar(value=saved_invert)
-        invert_running_vars[animal_single_channel_id] = invert_var
-        ttk.Checkbutton(row_frame, variable=invert_var, width=8).grid(row=0, column=3, padx=2)
-        
-        # Diameter entry
-        saved_diameter = channel_memory.get(f"{animal_single_channel_id}_diameter", treadmill_diameter)
-        diameter_var = tk.StringVar(value=str(saved_diameter))
-        diameter_vars[animal_single_channel_id] = diameter_var
-        ttk.Entry(row_frame, textvariable=diameter_var, width=10).grid(row=0, column=4, padx=2)
+        if current_experiment_mode != EXPERIMENT_MODE_FIBER:
+            # Running channel selection
+            available_channels = []
+            if 'ast2_data' in animal_data and animal_data['ast2_data']:
+                header = animal_data['ast2_data']['header']
+                if 'activeChIDs' in header:
+                    available_channels = header['activeChIDs']
+                else:
+                    if 'files' in animal_data and 'ast2' in animal_data['files']:
+                        try:
+                            header, raw_data = h_AST2_readData(animal_data['files']['ast2'])
+                            available_channels = list(range(len(raw_data)))
+                        except:
+                            available_channels = [0, 1, 2, 3]
+            
+            if not available_channels:
+                available_channels = [0, 1, 2, 3]
+            
+            saved_running_channel = channel_memory.get(f"{animal_single_channel_id}_running_channel", running_channel)
+            running_channel_var = tk.StringVar(value=str(saved_running_channel))
+            running_channel_vars[animal_single_channel_id] = running_channel_var
+            
+            running_combo = ttk.Combobox(row_frame, textvariable=running_channel_var,
+                                        values=available_channels, state="readonly", width=10)
+            running_combo.grid(row=0, column=2, padx=2)
+            
+            # Invert checkbox
+            saved_invert = channel_memory.get(f"{animal_single_channel_id}_invert_running", invert_running)
+            invert_var = tk.BooleanVar(value=saved_invert)
+            invert_running_vars[animal_single_channel_id] = invert_var
+            ttk.Checkbutton(row_frame, variable=invert_var, width=8).grid(row=0, column=3, padx=2)
+            
+            # Diameter entry
+            saved_diameter = channel_memory.get(f"{animal_single_channel_id}_diameter", treadmill_diameter)
+            diameter_var = tk.StringVar(value=str(saved_diameter))
+            diameter_vars[animal_single_channel_id] = diameter_var
+            ttk.Entry(row_frame, textvariable=diameter_var, width=10).grid(row=0, column=4, padx=2)
     
     # Button frame
     btn_frame = ttk.Frame(dialog)
@@ -590,11 +627,53 @@ def finalize_channel_selection(dialog):
         
         # Align data
         if 'fiber_data' in animal_data and animal_data['fiber_data'] is not None:
-            alignment_success = align_data(animal_data)
-            if not alignment_success:
-                log_message(f"Failed to align data for {animal_single_channel_id}", "WARNING")
+            if 'ast2_data' in animal_data and animal_data['ast2_data'] is not None:
+                alignment_success = align_data(animal_data)
+                if not alignment_success:
+                    log_message(f"Failed to align data for {animal_single_channel_id}", "WARNING")
+                    if 'fiber_data' in animal_data:
+                        animal_data['fiber_data_trimmed'] = animal_data['fiber_data']
+            else:
+                log_message(f"No AST2 data to align for {animal_single_channel_id}, skipping alignment", "INFO")
                 if 'fiber_data' in animal_data:
+                    fiber_data = animal_data.get('fiber_data')
+                    channels = animal_data.get('channels', {})
+                    # Get events column from fiber data
+                    events_col = channels.get('events')
+                    opto_event_name = event_config.get('opto_event', 'Input3')
+                    drug_event_names = event_config.get('drug_event', 'Event1')
+                    if events_col is None or events_col not in fiber_data.columns:
+                        log_message("Events column not found in fiber data", "ERROR")
+                        return False
                     animal_data['fiber_data_trimmed'] = animal_data['fiber_data']
+                    global input3_events, drug_events
+
+                    input3_events = fiber_data[fiber_data[events_col].str.startswith(opto_event_name, na=False)]
+                    if len(input3_events) < 1:
+                        multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="disabled")
+                        log_message("Could not find Input3 events for optogenetic analysis", "INFO")
+                        setting_menu.entryconfig("Optogenetic Configuration", state="disabled")
+                    else:
+                        multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="normal")
+                        setting_menu.entryconfig("Optogenetic Configuration", state="normal")
+                    
+                    drug_events = fiber_data[fiber_data[events_col].str.contains('|'.join(drug_event_names), na=False)]
+                    if len(drug_events) < 1:
+                        multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="disabled")
+                        setting_menu.entryconfig("Drug Configuration", state="disabled")
+                        log_message("Could not find Event2 events for drug analysis", "INFO")
+                    else:
+                        multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="normal")
+                        setting_menu.entryconfig("Drug Configuration", state="normal")
+
+                    if len(input3_events) < 1 or len(drug_events) < 1:
+                        optogenetics_induced_menu.entryconfig("Optogenetics + Drug", state="disabled")
+                    elif len(input3_events) >= 1 and len(drug_events) >= 1:
+                        optogenetics_induced_menu.entryconfig("Optogenetics + Drug", state="normal")
+
+                    if animal_data is not None:
+                        animal_data['input3_events'] = input3_events
+                        animal_data['drug_events'] = drug_events
         
         enabled_animal_data.append(animal_data)
     

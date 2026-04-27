@@ -7,11 +7,16 @@ from datetime import datetime
 
 from analysis_multimodal.Multimodal_analysis import calculate_optogenetic_pulse_info, group_optogenetic_sessions, identify_drug_sessions, identify_optogenetic_events
 from infrastructure.logger import log_message, set_log_widget
+from ui.view_controller import clear_all
 import ui.windows.visualization_windows as visualization_windows
 import workflows.data_workflows as data_workflows
 import workflows.analysis_workflows as analysis_workflows
 import ui.bodypart_controller as bodypart_controller
 import ui.view_controller as view_controller
+import analysis_multimodal.Bout_analysis as bout_analysis
+import analysis_multimodal.Drug_induced_activity_analysis as drug_induced_analysis
+import analysis_multimodal.Optogenetic_induced_activity_analysis as optogenetic_induced_analysis
+import analysis_multimodal.Multimodal_analysis as multimodal_analysis
 
 _deps = {}
 
@@ -74,8 +79,23 @@ def select_experiment_mode():
                          font=("Arial", 9), fg="gray", justify=tk.LEFT)
     mode1_desc.pack(anchor="w", padx=20)
 
-    # Mode 2: Fiber + AST2
+    # Mode 2: Fiber
     mode2_radio = tk.Radiobutton(
+        mode_frame,
+        text="Fiber",
+        variable=mode_var,
+        value=EXPERIMENT_MODE_FIBER,
+        font=("Arial", 10),
+        justify=tk.LEFT
+    )
+    mode2_radio.pack(anchor="w", pady=5)
+    mode2_desc = tk.Label(mode_frame,
+                         text="  • Fiber photometry data",
+                         font=("Arial", 9), fg="gray", justify=tk.LEFT)
+    mode2_desc.pack(anchor="w", padx=20)
+
+    # Mode 3: Fiber + AST2
+    mode3_radio = tk.Radiobutton(
         mode_frame,
         text="Fiber + AST2",
         variable=mode_var,
@@ -83,15 +103,15 @@ def select_experiment_mode():
         font=("Arial", 10),
         justify=tk.LEFT
     )
-    mode2_radio.pack(anchor="w", pady=5)
+    mode3_radio.pack(anchor="w", pady=5)
     
-    mode2_desc = tk.Label(mode_frame, 
+    mode3_desc = tk.Label(mode_frame, 
                          text="  • Fiber photometry data\n  • Running wheel data (AST2)",
                          font=("Arial", 9), fg="gray", justify=tk.LEFT)
-    mode2_desc.pack(anchor="w", padx=20)
+    mode3_desc.pack(anchor="w", padx=20)
     
-    # Mode 3: Fiber + AST2 + DLC
-    mode3_radio = tk.Radiobutton(
+    # Mode 4: Fiber + AST2 + DLC
+    mode4_radio = tk.Radiobutton(
         mode_frame,
         text="Fiber + AST2 + DLC",
         variable=mode_var,
@@ -99,12 +119,12 @@ def select_experiment_mode():
         font=("Arial", 10),
         justify=tk.LEFT
     )
-    mode3_radio.pack(anchor="w", pady=(15, 5))
+    mode4_radio.pack(anchor="w", pady=(15, 5))
     
-    mode3_desc = tk.Label(mode_frame, 
+    mode4_desc = tk.Label(mode_frame, 
                          text="  • Fiber photometry data\n  • Running wheel data (AST2)\n  • DeepLabCut behavioral tracking",
                          font=("Arial", 9), fg="gray", justify=tk.LEFT)
-    mode3_desc.pack(anchor="w", padx=20)
+    mode4_desc.pack(anchor="w", padx=20)
     
     def apply_mode():
         global current_experiment_mode
@@ -128,7 +148,11 @@ def select_experiment_mode():
         analysis_workflows.bind_analysis_dependencies(globals())
         bodypart_controller.bind_bodypart_dependencies(globals())
         view_controller.bind_view_dependencies(globals())
+        bout_analysis.bind_bout_dependencies(globals())
         bind_settings_dependencies(globals())
+        drug_induced_analysis.bind_drug_induced_dependencies(globals())
+        optogenetic_induced_analysis.bind_optogenetic_induced_dependencies(globals())
+        multimodal_analysis.bind_multimodal_dependencies(globals())
         
         # Update UI based on mode
         update_ui_for_mode()
@@ -170,6 +194,17 @@ def update_ui_for_mode():
         multimodal_menu.entryconfig("Bout Analysis", state="normal")
         bout_menu.entryconfig("Running", state="normal")
         bout_menu.entryconfig("Running + Drug", state="disabled")
+    elif current_experiment_mode == EXPERIMENT_MODE_FIBER:
+        analysis_menu.entryconfig("Behavior Analysis", state="disabled")
+        analysis_menu.entryconfig("Running Data Analysis", state="disabled")
+        analysis_menu.entryconfig("Fiber Data Preprocessing", state="normal")
+        analysis_menu.entryconfig("Fiber Data Analysis", state="normal")
+        multimodal_menu.entryconfig("Running-Induced Activity Analysis", state="disabled")
+        multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="normal")
+        multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="normal")
+        multimodal_menu.entryconfig("Bout Analysis", state="disabled")
+        bout_menu.entryconfig("Running", state="disabled")
+        bout_menu.entryconfig("Running + Drug", state="disabled")
     elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
         analysis_menu.entryconfig("Behavior Analysis", state="disabled")
         analysis_menu.entryconfig("Running Data Analysis", state="normal")
@@ -199,7 +234,7 @@ def update_ui_for_mode():
             widget.destroy()
         
         info_label = tk.Label(left_frame, 
-                             text="Fiber + AST2 Mode\n\nBodypart tracking\nnot available",
+                             text="Not Fiber+AST2+DLC Mode\n\nBodypart tracking\nnot available",
                              bg="#e0e0e0", fg="#666666",
                              font=("Arial", 10))
         info_label.pack(pady=50)

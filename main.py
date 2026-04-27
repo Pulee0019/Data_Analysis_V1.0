@@ -40,7 +40,7 @@ try:
         fiber_preprocessing,
         running_data_analysis,
     )
-    from workflows.data_workflows import import_multi_animals, import_single_animal
+    from workflows.data_workflows import import_multi_animals, import_single_animal, show_channel_selection_dialog
 
     import ui.bodypart_controller as bodypart_controller
     import ui.settings_dialogs as settings_dialogs
@@ -50,7 +50,9 @@ try:
     import workflows.data_workflows as data_workflows
     import analysis_multimodal.Multimodal_analysis as multimodal_analysis
     import analysis_multimodal.Bout_analysis as bout_analysis
-    
+    import analysis_multimodal.Drug_induced_activity_analysis as drug_induced_analysis
+    import analysis_multimodal.Optogenetic_induced_activity_analysis as optogenetic_induced_analysis
+
 except ModuleNotFoundError as exc:
     missing_name = exc.name or str(exc)
     print(
@@ -68,6 +70,7 @@ def bootstrap_globals(root):
         "global_save_dir": False,
         "analysis_manager": AnalysisResultsManager(),
         "EXPERIMENT_MODE_AST2": "ast2",
+        "EXPERIMENT_MODE_FIBER": "fiber",
         "EXPERIMENT_MODE_FIBER_AST2": "fiber+ast2",
         "EXPERIMENT_MODE_FIBER_AST2_DLC": "fiber+ast2+dlc",
         "current_experiment_mode": "fiber+ast2",
@@ -188,6 +191,8 @@ def bind_modules(state):
     settings_dialogs.bind_settings_dependencies(state)
     multimodal_analysis.bind_multimodal_dependencies(state)
     bout_analysis.bind_bout_dependencies(state)
+    drug_induced_analysis.bind_drug_induced_dependencies(state)
+    optogenetic_induced_analysis.bind_optogenetic_induced_dependencies(state)
 
 
 def build_menu(root, state):
@@ -200,6 +205,7 @@ def build_menu(root, state):
     file_menu.add_cascade(label="Import Animals", menu=import_animals_menu, state="normal")
     import_animals_menu.add_command(label="Import Single Animal", command=import_single_animal)
     import_animals_menu.add_command(label="Import Multiple Animals", command=import_multi_animals)
+    import_animals_menu.add_command(label="Show Channel Selection", command=lambda: show_channel_selection_dialog())
     export_menu = tk.Menu(file_menu, tearoff=0)
     file_menu.add_cascade(label="Export", menu=export_menu)
     export_menu.add_command(label="Animal Data", command=export_animal_data)
