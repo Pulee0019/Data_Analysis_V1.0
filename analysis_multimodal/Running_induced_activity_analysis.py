@@ -1423,10 +1423,18 @@ def plot_running_results(results, params):
         # Row 2: Heatmaps
         ax_run_heat = fig.add_subplot(2, NUM_COLS, 4)
         all_run, counts = [], []
+        run_vmin, run_vmax = None, None
         for data in results.values():
             if "running" in data and len(data["running"]["episodes"]) > 0:
                 all_run.extend(data["running"]["episodes"])
                 counts.append(len(data["running"]["episodes"]))
+                if run_vmin is None and run_vmax is None:
+                    run_vmin = min(data["running"]["mean"] - data["running"]["sem"])
+                    run_vmax = max(data["running"]["mean"] + data["running"]["sem"])
+                else:
+                    run_vmin = min(run_vmin, min(data["running"]["mean"] - data["running"]["sem"]))
+                    run_vmax = max(run_vmax, max(data["running"]["mean"] + data["running"]["sem"]))
+                
         if all_run:
             boundaries = []
             acc = 0
@@ -1435,7 +1443,7 @@ def plot_running_results(results, params):
                 boundaries.append(acc)
             draw_heatmap(ax_run_heat, np.array(all_run), time_array,
                           "viridis", "Speed (cm/s)",
-                          extra_lines=boundaries if boundaries else None)
+                          extra_lines=boundaries if boundaries else None, vmin=run_vmin, vmax=run_vmax)
             ax_run_heat.set_title("Running Speed Heatmap")
         else:
             ax_run_heat.axis("off")
@@ -1443,11 +1451,18 @@ def plot_running_results(results, params):
  
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         all_dff, counts = [], []
+        dff_vmin, dff_vmax = None, None
         for data in results.values():
             if wl in data["dff"]:
                 ep = data["dff"][wl]["episodes"]
                 all_dff.extend(ep)
                 counts.append(len(ep))
+                if dff_vmin is None and dff_vmax is None:
+                    dff_vmin = min(data["dff"][wl]["mean"] - data["dff"][wl]["sem"])
+                    dff_vmax = max(data["dff"][wl]["mean"] + data["dff"][wl]["sem"])
+                else:
+                    dff_vmin = min(dff_vmin, min(data["dff"][wl]["mean"] - data["dff"][wl]["sem"]))
+                    dff_vmax = max(dff_vmax, max(data["dff"][wl]["mean"] + data["dff"][wl]["sem"]))
         if all_dff:
             boundaries = []
             acc = 0
@@ -1456,7 +1471,7 @@ def plot_running_results(results, params):
                 boundaries.append(acc)
             draw_heatmap(ax_dff_heat, np.array(all_dff), time_array,
                           "coolwarm", "ΔF/F",
-                          extra_lines=boundaries if boundaries else None)
+                          extra_lines=boundaries if boundaries else None, vmin=dff_vmin, vmax=dff_vmax)
             ax_dff_heat.set_title(f"Fiber ΔF/F Heatmap {wl}nm")
         else:
             ax_dff_heat.axis("off")
@@ -1464,11 +1479,18 @@ def plot_running_results(results, params):
  
         ax_zs_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_zs, counts = [], []
+        zs_vmin, zs_vmax = None, None
         for data in results.values():
             if wl in data["zscore"]:
                 ep = data["zscore"][wl]["episodes"]
                 all_zs.extend(ep)
                 counts.append(len(ep))
+                if zs_vmin is None and zs_vmax is None:
+                    zs_vmin = min(data["zscore"][wl]["mean"] - data["zscore"][wl]["sem"])
+                    zs_vmax = max(data["zscore"][wl]["mean"] + data["zscore"][wl]["sem"])
+                else:
+                    zs_vmin = min(zs_vmin, min(data["zscore"][wl]["mean"] - data["zscore"][wl]["sem"]))
+                    zs_vmax = max(zs_vmax, max(data["zscore"][wl]["mean"] + data["zscore"][wl]["sem"]))
         if all_zs:
             boundaries = []
             acc = 0
@@ -1477,7 +1499,7 @@ def plot_running_results(results, params):
                 boundaries.append(acc)
             draw_heatmap(ax_zs_heat, np.array(all_zs), time_array,
                           "coolwarm", "Z-score",
-                          extra_lines=boundaries if boundaries else None)
+                          extra_lines=boundaries if boundaries else None, vmin=zs_vmin, vmax=zs_vmax)
             ax_zs_heat.set_title(f"Fiber Z-score Heatmap {wl}nm")
         else:
             ax_zs_heat.axis("off")
@@ -1571,8 +1593,10 @@ def create_single_row_window_running(row_name, data, params):
         # Row 2: Heatmaps
         ax_run_heat = fig.add_subplot(2, NUM_COLS, 4)
         if "running" in data and len(data["running"]["episodes"]) > 0:
+            run_vmin = min(data["running"]["mean"] - data["running"]["sem"])
+            run_vmax = max(data["running"]["mean"] + data["running"]["sem"])
             draw_heatmap(ax_run_heat, data["running"]["episodes"],
-                          time_array, "viridis", "Speed (cm/s)")
+                          time_array, "viridis", "Speed (cm/s)", vmin=run_vmin, vmax=run_vmax)
             ax_run_heat.set_title(f"{row_name} - Running Speed Heatmap")
         else:
             ax_run_heat.axis("off")
@@ -1580,8 +1604,10 @@ def create_single_row_window_running(row_name, data, params):
  
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         if wl in data["dff"]:
+            dff_vmin = min(data["dff"][wl]["mean"] - data["dff"][wl]["sem"])
+            dff_vmax = max(data["dff"][wl]["mean"] + data["dff"][wl]["sem"])
             draw_heatmap(ax_dff_heat, data["dff"][wl]["episodes"],
-                          time_array, "coolwarm", "ΔF/F")
+                          time_array, "coolwarm", "ΔF/F", vmin=dff_vmin, vmax=dff_vmax)
             ax_dff_heat.set_title(f"{row_name} - Fiber ΔF/F Heatmap {wl}nm")
         else:
             ax_dff_heat.axis("off")
@@ -1589,8 +1615,10 @@ def create_single_row_window_running(row_name, data, params):
  
         ax_zs_heat = fig.add_subplot(2, NUM_COLS, 6)
         if wl in data["zscore"]:
+            zs_vmin = min(data["zscore"][wl]["mean"] - data["zscore"][wl]["sem"])
+            zs_vmax = max(data["zscore"][wl]["mean"] + data["zscore"][wl]["sem"])
             draw_heatmap(ax_zs_heat, data["zscore"][wl]["episodes"],
-                          time_array, "coolwarm", "Z-score")
+                          time_array, "coolwarm", "Z-score", vmin=zs_vmin, vmax=zs_vmax)
             ax_zs_heat.set_title(f"{row_name} - Fiber Z-score Heatmap {wl}nm")
         else:
             ax_zs_heat.axis("off")
@@ -1714,18 +1742,25 @@ def plot_running_drug_results(results, params):
         ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
         all_running_episodes = []
         category_boundaries = []
+        run_vmin, run_vmax = None, None
         for category in all_categories:
             category_episodes = []
             for row_name, data in results.items():
                 if category in data and len(data[category]['running']['episodes']) > 0:
                     category_episodes.extend(data[category]['running']['episodes'])
+                    if run_vmin is None and run_vmax is None:
+                        run_vmin = min(data[category]['running']['mean'] - data[category]['running']['sem'])
+                        run_vmax = max(data[category]['running']['mean'] + data[category]['running']['sem'])
+                    else:
+                        run_vmin = min(run_vmin, min(data[category]['running']['mean'] - data[category]['running']['sem']))
+                        run_vmax = max(run_vmax, max(data[category]['running']['mean'] + data[category]['running']['sem']))
             if category_episodes:
                 all_running_episodes.extend(category_episodes)
                 if all_running_episodes:
                     category_boundaries.append(len(all_running_episodes))
         if all_running_episodes:
             draw_heatmap(ax_running_heat, np.array(all_running_episodes), time_array,
-                         'viridis', 'Speed (cm/s)',
+                         'viridis', 'Speed (cm/s)', vmin=run_vmin, vmax=run_vmax,
                          extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
             ax_running_heat.set_title('Running Speed Heatmap')
         else:
@@ -1735,18 +1770,25 @@ def plot_running_drug_results(results, params):
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         all_dff_episodes = []
         category_boundaries = []
+        dff_vmin, dff_vmax = None, None
         for category in all_categories:
             category_episodes = []
             for row_name, data in results.items():
                 if category in data and wl in data[category]['dff']:
                     category_episodes.extend(data[category]['dff'][wl]['episodes'])
+                    if dff_vmin is None and dff_vmax is None:
+                        dff_vmin = min(data[category]['dff'][wl]['mean'] - data[category]['dff'][wl]['sem'])
+                        dff_vmax = max(data[category]['dff'][wl]['mean'] + data[category]['dff'][wl]['sem'])
+                    else:
+                        dff_vmin = min(dff_vmin, min(data[category]['dff'][wl]['mean'] - data[category]['dff'][wl]['sem']))
+                        dff_vmax = max(dff_vmax, max(data[category]['dff'][wl]['mean'] + data[category]['dff'][wl]['sem']))
             if category_episodes:
                 all_dff_episodes.extend(category_episodes)
                 if all_dff_episodes:
                     category_boundaries.append(len(all_dff_episodes))
         if all_dff_episodes:
             draw_heatmap(ax_dff_heat, np.array(all_dff_episodes), time_array,
-                         'coolwarm', 'ΔF/F',
+                         'coolwarm', 'ΔF/F', vmin=dff_vmin, vmax=dff_vmax,
                          extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
             ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
         else:
@@ -1756,18 +1798,25 @@ def plot_running_drug_results(results, params):
         ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_zscore_episodes = []
         category_boundaries = []
+        zs_vmin, zs_vmax = None, None
         for category in all_categories:
             category_episodes = []
             for row_name, data in results.items():
                 if category in data and wl in data[category]['zscore']:
                     category_episodes.extend(data[category]['zscore'][wl]['episodes'])
+                    if zs_vmin is None and zs_vmax is None:
+                        zs_vmin = min(data[category]['zscore'][wl]['mean'] - data[category]['zscore'][wl]['sem'])
+                        zs_vmax = max(data[category]['zscore'][wl]['mean'] + data[category]['zscore'][wl]['sem'])
+                    else:
+                        zs_vmin = min(zs_vmin, min(data[category]['zscore'][wl]['mean'] - data[category]['zscore'][wl]['sem']))
+                        zs_vmax = max(zs_vmax, max(data[category]['zscore'][wl]['mean'] + data[category]['zscore'][wl]['sem']))
             if category_episodes:
                 all_zscore_episodes.extend(category_episodes)
                 if all_zscore_episodes:
                     category_boundaries.append(len(all_zscore_episodes))
         if all_zscore_episodes:
             draw_heatmap(ax_zscore_heat, np.array(all_zscore_episodes), time_array,
-                         'coolwarm', 'Z-score',
+                         'coolwarm', 'Z-score', vmin=zs_vmin, vmax=zs_vmax,
                          extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
             ax_zscore_heat.set_title(f'Fiber Z-score Heatmap {wl}nm')
         else:
@@ -1880,14 +1929,21 @@ def create_single_row_window_running_drug(row_name, data, params):
         ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
         all_running_episodes = []
         category_boundaries = []
+        run_vmin, run_vmax = None, None
         for category in drug_categories:
             if category in data and len(data[category]['running']['episodes']) > 0:
                 all_running_episodes.extend(data[category]['running']['episodes'])
+                if run_vmin is None and run_vmax is None:
+                    run_vmin = min(data[category]['running']['mean'] - data[category]['running']['sem'])
+                    run_vmax = max(data[category]['running']['mean'] + data[category]['running']['sem'])
+                else:
+                    run_vmin = min(run_vmin, min(data[category]['running']['mean'] - data[category]['running']['sem']))
+                    run_vmax = max(run_vmax, max(data[category]['running']['mean'] + data[category]['running']['sem']))
                 if all_running_episodes:
                     category_boundaries.append(len(all_running_episodes))
         if all_running_episodes:
             draw_heatmap(ax_running_heat, np.array(all_running_episodes), time_array,
-                         'viridis', 'Speed (cm/s)',
+                         'viridis', 'Speed (cm/s)', vmin=run_vmin, vmax=run_vmax,
                          extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
             ax_running_heat.set_title(f'{row_name} - Running Speed Heatmap (Multi-Drug)')
         else:
@@ -1897,14 +1953,21 @@ def create_single_row_window_running_drug(row_name, data, params):
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         all_dff_episodes = []
         category_boundaries = []
+        dff_vmin, dff_vmax = None, None
         for category in drug_categories:
             if category in data and wl in data[category]['dff']:
                 all_dff_episodes.extend(data[category]['dff'][wl]['episodes'])
+                if dff_vmin is None and dff_vmax is None:
+                    dff_vmin = min(data[category]['dff'][wl]['mean'] - data[category]['dff'][wl]['sem'])
+                    dff_vmax = max(data[category]['dff'][wl]['mean'] + data[category]['dff'][wl]['sem'])
+                else:
+                    dff_vmin = min(dff_vmin, min(data[category]['dff'][wl]['mean'] - data[category]['dff'][wl]['sem']))
+                    dff_vmax = max(dff_vmax, max(data[category]['dff'][wl]['mean'] + data[category]['dff'][wl]['sem']))
                 if all_dff_episodes:
                     category_boundaries.append(len(all_dff_episodes))
         if all_dff_episodes:
             draw_heatmap(ax_dff_heat, np.array(all_dff_episodes), time_array,
-                         'coolwarm', 'ΔF/F',
+                         'coolwarm', 'ΔF/F', vmin=dff_vmin, vmax=dff_vmax,
                          extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
             ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm (Multi-Drug)')
         else:
@@ -1914,14 +1977,21 @@ def create_single_row_window_running_drug(row_name, data, params):
         ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_zscore_episodes = []
         category_boundaries = []
+        zs_vmin, zs_vmax = None, None
         for category in drug_categories:
             if category in data and wl in data[category]['zscore']:
                 all_zscore_episodes.extend(data[category]['zscore'][wl]['episodes'])
+                if zs_vmin is None and zs_vmax is None:
+                    zs_vmin = min(data[category]['zscore'][wl]['mean'] - data[category]['zscore'][wl]['sem'])
+                    zs_vmax = max(data[category]['zscore'][wl]['mean'] + data[category]['zscore'][wl]['sem'])
+                else:
+                    zs_vmin = min(zs_vmin, min(data[category]['zscore'][wl]['mean'] - data[category]['zscore'][wl]['sem']))
+                    zs_vmax = max(zs_vmax, max(data[category]['zscore'][wl]['mean'] + data[category]['zscore'][wl]['sem']))
                 if all_zscore_episodes:
                     category_boundaries.append(len(all_zscore_episodes))
         if all_zscore_episodes:
             draw_heatmap(ax_zscore_heat, np.array(all_zscore_episodes), time_array,
-                         'coolwarm', 'Z-score',
+                         'coolwarm', 'Z-score', vmin=zs_vmin, vmax=zs_vmax,
                          extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
             ax_zscore_heat.set_title(f'{row_name} - Fiber Z-score Heatmap {wl}nm (Multi-Drug)')
         else:
@@ -2042,25 +2112,41 @@ def plot_running_optogenetics_results(results, params):
         ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
         all_with_opto = []
         all_without_opto = []
+        with_opto_run_vmin, with_opto_run_vmax = None, None
+        without_opto_run_vmin, without_opto_run_vmax = None, None
         for row_name, data in results.items():
             if len(data['with_opto']['running']['episodes']) > 0:
                 all_with_opto.extend(data['with_opto']['running']['episodes'])
+                if with_opto_run_vmin is None or with_opto_run_vmax is None:
+                    with_opto_run_vmin = min(data['with_opto']['running']['mean'] - data['with_opto']['running']['sem'])
+                    with_opto_run_vmax = max(data['with_opto']['running']['mean'] + data['with_opto']['running']['sem'])
+                else:
+                    with_opto_run_vmin = min(with_opto_run_vmin, min(data['with_opto']['running']['mean'] - data['with_opto']['running']['sem']))
+                    with_opto_run_vmax = max(with_opto_run_vmax, max(data['with_opto']['running']['mean'] + data['with_opto']['running']['sem']))
             if len(data['without_opto']['running']['episodes']) > 0:
                 all_without_opto.extend(data['without_opto']['running']['episodes'])
+                if without_opto_run_vmin is None or without_opto_run_vmax is None:
+                    without_opto_run_vmin = min(data['without_opto']['running']['mean'] - data['without_opto']['running']['sem'])
+                    without_opto_run_vmax = max(data['without_opto']['running']['mean'] + data['without_opto']['running']['sem'])
+                else:
+                    without_opto_run_vmin = min(without_opto_run_vmin, min(data['without_opto']['running']['mean'] - data['without_opto']['running']['sem']))
+                    without_opto_run_vmax = max(without_opto_run_vmax, max(data['without_opto']['running']['mean'] + data['without_opto']['running']['sem']))
         if all_with_opto and all_without_opto:
             combined = np.vstack([np.array(all_with_opto), np.array(all_without_opto)])
             n_with = len(all_with_opto)
+            combined_vmin = min(with_opto_run_vmin, without_opto_run_vmin) if with_opto_run_vmin is not None and without_opto_run_vmin is not None else (with_opto_run_vmin if with_opto_run_vmin is not None else without_opto_run_vmin)
+            combined_vmax = max(with_opto_run_vmax, without_opto_run_vmax) if with_opto_run_vmax is not None and without_opto_run_vmax is not None else (with_opto_run_vmax if with_opto_run_vmax is not None else without_opto_run_vmax)
             draw_heatmap(ax_running_heat, combined, time_array,
-                         'viridis', 'Speed (cm/s)',
+                         'viridis', 'Speed (cm/s)', vmin=combined_vmin, vmax=combined_vmax,
                          extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
             ax_running_heat.set_title('Running Speed Heatmap')
         elif all_with_opto:
             draw_heatmap(ax_running_heat, np.array(all_with_opto), time_array,
-                         'viridis', 'Speed (cm/s)')
+                         'viridis', 'Speed (cm/s)', vmin=with_opto_run_vmin, vmax=with_opto_run_vmax)
             ax_running_heat.set_title('Running Speed Heatmap')
         elif all_without_opto:
             draw_heatmap(ax_running_heat, np.array(all_without_opto), time_array,
-                         'viridis', 'Speed (cm/s)')
+                         'viridis', 'Speed (cm/s)', vmin=without_opto_run_vmin, vmax=without_opto_run_vmax)
             ax_running_heat.set_title('Running Speed Heatmap')
         else:
             ax_running_heat.axis('off')
@@ -2069,25 +2155,41 @@ def plot_running_optogenetics_results(results, params):
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         all_with_opto_dff = []
         all_without_opto_dff = []
+        with_opto_dff_vmin, with_opto_dff_vmax = None, None
+        without_opto_dff_vmin, without_opto_dff_vmax = None, None
         for row_name, data in results.items():
             if wl in data['with_opto']['dff']:
                 all_with_opto_dff.extend(data['with_opto']['dff'][wl]['episodes'])
+                if with_opto_dff_vmin is None or with_opto_dff_vmax is None:
+                    with_opto_dff_vmin = min(data['with_opto']['dff'][wl]['mean'] - data['with_opto']['dff'][wl]['sem'])
+                    with_opto_dff_vmax = max(data['with_opto']['dff'][wl]['mean'] + data['with_opto']['dff'][wl]['sem'])
+                else:
+                    with_opto_dff_vmin = min(with_opto_dff_vmin, min(data['with_opto']['dff'][wl]['mean'] - data['with_opto']['dff'][wl]['sem']))
+                    with_opto_dff_vmax = max(with_opto_dff_vmax, max(data['with_opto']['dff'][wl]['mean'] + data['with_opto']['dff'][wl]['sem']))
             if wl in data['without_opto']['dff']:
                 all_without_opto_dff.extend(data['without_opto']['dff'][wl]['episodes'])
+                if without_opto_dff_vmin is None or without_opto_dff_vmax is None:
+                    without_opto_dff_vmin = min(data['without_opto']['dff'][wl]['mean'] - data['without_opto']['dff'][wl]['sem'])
+                    without_opto_dff_vmax = max(data['without_opto']['dff'][wl]['mean'] + data['without_opto']['dff'][wl]['sem'])
+                else:
+                    without_opto_dff_vmin = min(without_opto_dff_vmin, min(data['without_opto']['dff'][wl]['mean'] - data['without_opto']['dff'][wl]['sem']))
+                    without_opto_dff_vmax = max(without_opto_dff_vmax, max(data['without_opto']['dff'][wl]['mean'] + data['without_opto']['dff'][wl]['sem']))
         if all_with_opto_dff and all_without_opto_dff:
             combined_dff = np.vstack([np.array(all_with_opto_dff), np.array(all_without_opto_dff)])
             n_with = len(all_with_opto_dff)
+            combined_vmin = min(with_opto_dff_vmin, without_opto_dff_vmin) if with_opto_dff_vmin is not None and without_opto_dff_vmin is not None else (with_opto_dff_vmin if with_opto_dff_vmin is not None else without_opto_dff_vmin)
+            combined_vmax = max(with_opto_dff_vmax, without_opto_dff_vmax) if with_opto_dff_vmax is not None and without_opto_dff_vmax is not None else (with_opto_dff_vmax if with_opto_dff_vmax is not None else without_opto_dff_vmax)
             draw_heatmap(ax_dff_heat, combined_dff, time_array,
-                         'coolwarm', 'ΔF/F',
+                         'coolwarm', 'ΔF/F', vmin=combined_vmin, vmax=combined_vmax,
                          extra_lines=[n_with] if n_with > 0 and len(combined_dff) > n_with else None)
             ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
         elif all_with_opto_dff:
             draw_heatmap(ax_dff_heat, np.array(all_with_opto_dff), time_array,
-                         'coolwarm', 'ΔF/F')
+                         'coolwarm', 'ΔF/F', vmin=with_opto_dff_vmin, vmax=with_opto_dff_vmax)
             ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
         elif all_without_opto_dff:
             draw_heatmap(ax_dff_heat, np.array(all_without_opto_dff), time_array,
-                         'coolwarm', 'ΔF/F')
+                         'coolwarm', 'ΔF/F', vmin=without_opto_dff_vmin, vmax=without_opto_dff_vmax)
             ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
         else:
             ax_dff_heat.axis('off')
@@ -2096,25 +2198,41 @@ def plot_running_optogenetics_results(results, params):
         ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_with_opto_zscore = []
         all_without_opto_zscore = []
+        with_opto_zs_vmin, with_opto_zs_vmax = None, None
+        without_opto_zs_vmin, without_opto_zs_vmax = None, None
         for row_name, data in results.items():
             if wl in data['with_opto']['zscore']:
                 all_with_opto_zscore.extend(data['with_opto']['zscore'][wl]['episodes'])
+                if with_opto_zs_vmin is None or with_opto_zs_vmax is None:
+                    with_opto_zs_vmin = min(data['with_opto']['zscore'][wl]['mean'] - data['with_opto']['zscore'][wl]['sem'])
+                    with_opto_zs_vmax = max(data['with_opto']['zscore'][wl]['mean'] + data['with_opto']['zscore'][wl]['sem'])
+                else:
+                    with_opto_zs_vmin = min(with_opto_zs_vmin, min(data['with_opto']['zscore'][wl]['mean'] - data['with_opto']['zscore'][wl]['sem']))
+                    with_opto_zs_vmax = max(with_opto_zs_vmax, max(data['with_opto']['zscore'][wl]['mean'] + data['with_opto']['zscore'][wl]['sem']))
             if wl in data['without_opto']['zscore']:
                 all_without_opto_zscore.extend(data['without_opto']['zscore'][wl]['episodes'])
+                if without_opto_zs_vmin is None or without_opto_zs_vmax is None:
+                    without_opto_zs_vmin = min(data['without_opto']['zscore'][wl]['mean'] - data['without_opto']['zscore'][wl]['sem'])
+                    without_opto_zs_vmax = max(data['without_opto']['zscore'][wl]['mean'] + data['without_opto']['zscore'][wl]['sem'])
+                else:
+                    without_opto_zs_vmin = min(without_opto_zs_vmin, min(data['without_opto']['zscore'][wl]['mean'] - data['without_opto']['zscore'][wl]['sem']))
+                    without_opto_zs_vmax = max(without_opto_zs_vmax, max(data['without_opto']['zscore'][wl]['mean'] + data['without_opto']['zscore'][wl]['sem']))
         if all_with_opto_zscore and all_without_opto_zscore:
             combined_zscore = np.vstack([np.array(all_with_opto_zscore), np.array(all_without_opto_zscore)])
             n_with = len(all_with_opto_zscore)
+            combined_vmin = min(with_opto_zs_vmin, without_opto_zs_vmin) if with_opto_zs_vmin is not None and without_opto_zs_vmin is not None else (with_opto_zs_vmin if with_opto_zs_vmin is not None else without_opto_zs_vmin)
+            combined_vmax = max(with_opto_zs_vmax, without_opto_zs_vmax) if with_opto_zs_vmax is not None and without_opto_zs_vmax is not None else (with_opto_zs_vmax if with_opto_zs_vmax is not None else without_opto_zs_vmax)
             draw_heatmap(ax_zscore_heat, combined_zscore, time_array,
-                         'coolwarm', 'Z-score',
+                         'coolwarm', 'Z-score', vmin=combined_vmin, vmax=combined_vmax,
                          extra_lines=[n_with] if n_with > 0 and len(combined_zscore) > n_with else None)
             ax_zscore_heat.set_title(f'Fiber Z-score Heatmap {wl}nm')
         elif all_with_opto_zscore:
             draw_heatmap(ax_zscore_heat, np.array(all_with_opto_zscore), time_array,
-                         'coolwarm', 'Z-score')
+                         'coolwarm', 'Z-score', vmin=with_opto_zs_vmin, vmax=with_opto_zs_vmax)
             ax_zscore_heat.set_title(f'Fiber Z-score Heatmap {wl}nm')
         elif all_without_opto_zscore:
             draw_heatmap(ax_zscore_heat, np.array(all_without_opto_zscore), time_array,
-                         'coolwarm', 'Z-score')
+                         'coolwarm', 'Z-score', vmin=without_opto_zs_vmin, vmax=without_opto_zs_vmax)
             ax_zscore_heat.set_title(f'Fiber Z-score Heatmap {wl}nm')
         else:
             ax_zscore_heat.axis('off')
@@ -2219,18 +2337,24 @@ def create_single_row_window_running_optogenetics(row_name, data, params):
         ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
         with_run = data['with_opto']['running']['episodes']
         without_run = data['without_opto']['running']['episodes']
+        with_run_vmin = min(data['with_opto']['running']['mean'] - data['with_opto']['running']['sem']) if len(with_run) > 0 else None
+        with_run_vmax = max(data['with_opto']['running']['mean'] + data['with_opto']['running']['sem']) if len(with_run) > 0 else None
+        without_run_vmin = min(data['without_opto']['running']['mean'] - data['without_opto']['running']['sem']) if len(without_run) > 0 else None
+        without_run_vmax = max(data['without_opto']['running']['mean'] + data['without_opto']['running']['sem']) if len(without_run) > 0 else None
+        combined_vmin = min(with_run_vmin, without_run_vmin) if with_run_vmin is not None and without_run_vmin is not None else (with_run_vmin if with_run_vmin is not None else without_run_vmin)
+        combined_vmax = max(with_run_vmax, without_run_vmax) if with_run_vmax is not None and without_run_vmax is not None else (with_run_vmax if with_run_vmax is not None else without_run_vmax)
         if len(with_run) > 0 and len(without_run) > 0:
             combined = np.vstack([with_run, without_run])
             n_with = len(with_run)
             draw_heatmap(ax_running_heat, combined, time_array,
-                         'viridis', 'Speed (cm/s)',
+                         'viridis', 'Speed (cm/s)', vmin=combined_vmin, vmax=combined_vmax,
                          extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
             ax_running_heat.set_title(f'{row_name} - Running Speed Heatmap')
         elif len(with_run) > 0:
-            draw_heatmap(ax_running_heat, with_run, time_array, 'viridis', 'Speed (cm/s)')
+            draw_heatmap(ax_running_heat, with_run, time_array, 'viridis', 'Speed (cm/s)', vmin=combined_vmin, vmax=combined_vmax)
             ax_running_heat.set_title(f'{row_name} - Running Speed Heatmap')
         elif len(without_run) > 0:
-            draw_heatmap(ax_running_heat, without_run, time_array, 'viridis', 'Speed (cm/s)')
+            draw_heatmap(ax_running_heat, without_run, time_array, 'viridis', 'Speed (cm/s)', vmin=combined_vmin, vmax=combined_vmax)
             ax_running_heat.set_title(f'{row_name} - Running Speed Heatmap')
         else:
             ax_running_heat.text(0.5, 0.5, 'No running data available',
@@ -2245,18 +2369,24 @@ def create_single_row_window_running_optogenetics(row_name, data, params):
                 len(data['without_opto']['dff'][wl]['episodes']) > 0):
             combined = np.vstack([data['with_opto']['dff'][wl]['episodes'],
                                   data['without_opto']['dff'][wl]['episodes']])
+            with_opto_dff_vmin = min(data['with_opto']['dff'][wl]['mean'] - data['with_opto']['dff'][wl]['sem'])
+            with_opto_dff_vmax = max(data['with_opto']['dff'][wl]['mean'] + data['with_opto']['dff'][wl]['sem'])
+            without_opto_dff_vmin = min(data['without_opto']['dff'][wl]['mean'] - data['without_opto']['dff'][wl]['sem'])
+            without_opto_dff_vmax = max(data['without_opto']['dff'][wl]['mean'] + data['without_opto']['dff'][wl]['sem'])
+            combined_vmin = min(with_opto_dff_vmin, without_opto_dff_vmin) if with_opto_dff_vmin is not None and without_opto_dff_vmin is not None else (with_opto_dff_vmin if with_opto_dff_vmin is not None else without_opto_dff_vmin)
+            combined_vmax = max(with_opto_dff_vmax, without_opto_dff_vmax) if with_opto_dff_vmax is not None and without_opto_dff_vmax is not None else (with_opto_dff_vmax if with_opto_dff_vmax is not None else without_opto_dff_vmax)
             n_with = len(data['with_opto']['dff'][wl]['episodes'])
             draw_heatmap(ax_dff_heat, combined, time_array,
-                         'coolwarm', 'ΔF/F',
+                         'coolwarm', 'ΔF/F', vmin=combined_vmin, vmax=combined_vmax,
                          extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
             ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm')
         elif wl in data['with_opto']['dff'] and len(data['with_opto']['dff'][wl]['episodes']) > 0:
             draw_heatmap(ax_dff_heat, data['with_opto']['dff'][wl]['episodes'],
-                         time_array, 'coolwarm', 'ΔF/F')
+                         time_array, 'coolwarm', 'ΔF/F', vmin=combined_vmin, vmax=combined_vmax)
             ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm')
         elif wl in data['without_opto']['dff'] and len(data['without_opto']['dff'][wl]['episodes']) > 0:
             draw_heatmap(ax_dff_heat, data['without_opto']['dff'][wl]['episodes'],
-                         time_array, 'coolwarm', 'ΔF/F')
+                         time_array, 'coolwarm', 'ΔF/F', vmin=combined_vmin, vmax=combined_vmax)
             ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm')
         else:
             ax_dff_heat.text(0.5, 0.5, f'No dFF data for {wl}nm',
@@ -2272,17 +2402,23 @@ def create_single_row_window_running_optogenetics(row_name, data, params):
             combined = np.vstack([data['with_opto']['zscore'][wl]['episodes'],
                                   data['without_opto']['zscore'][wl]['episodes']])
             n_with = len(data['with_opto']['zscore'][wl]['episodes'])
+            with_opto_zs_vmin = min(data['with_opto']['zscore'][wl]['mean'] - data['with_opto']['zscore'][wl]['sem'])
+            with_opto_zs_vmax = max(data['with_opto']['zscore'][wl]['mean'] + data['with_opto']['zscore'][wl]['sem'])
+            without_opto_zs_vmin = min(data['without_opto']['zscore'][wl]['mean'] - data['without_opto']['zscore'][wl]['sem'])
+            without_opto_zs_vmax = max(data['without_opto']['zscore'][wl]['mean'] + data['without_opto']['zscore'][wl]['sem'])
+            combined_vmin = min(with_opto_zs_vmin, without_opto_zs_vmin) if with_opto_zs_vmin is not None and without_opto_zs_vmin is not None else (with_opto_zs_vmin if with_opto_zs_vmin is not None else without_opto_zs_vmin)
+            combined_vmax = max(with_opto_zs_vmax, without_opto_zs_vmax) if with_opto_zs_vmax is not None and without_opto_zs_vmax is not None else (with_opto_zs_vmax if with_opto_zs_vmax is not None else without_opto_zs_vmax)
             draw_heatmap(ax_zscore_heat, combined, time_array,
-                         'coolwarm', 'Z-score',
+                         'coolwarm', 'Z-score', vmin=combined_vmin, vmax=combined_vmax,
                          extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
             ax_zscore_heat.set_title(f'{row_name} - Fiber Z-score Heatmap {wl}nm')
         elif wl in data['with_opto']['zscore'] and len(data['with_opto']['zscore'][wl]['episodes']) > 0:
             draw_heatmap(ax_zscore_heat, data['with_opto']['zscore'][wl]['episodes'],
-                         time_array, 'coolwarm', 'Z-score')
+                         time_array, 'coolwarm', 'Z-score', vmin=combined_vmin, vmax=combined_vmax)
             ax_zscore_heat.set_title(f'{row_name} - Fiber Z-score Heatmap {wl}nm')
         elif wl in data['without_opto']['zscore'] and len(data['without_opto']['zscore'][wl]['episodes']) > 0:
             draw_heatmap(ax_zscore_heat, data['without_opto']['zscore'][wl]['episodes'],
-                         time_array, 'coolwarm', 'Z-score')
+                         time_array, 'coolwarm', 'Z-score', vmin=combined_vmin, vmax=combined_vmax)
             ax_zscore_heat.set_title(f'{row_name} - Fiber Z-score Heatmap {wl}nm')
         else:
             ax_zscore_heat.text(0.5, 0.5, f'No z-score data for {wl}nm',
@@ -2398,15 +2534,16 @@ def analyze_row_running_optogenetics_drug(row_name, animals, params,
                 continue
             
             # Get drug names and times
-            drug_info = []
+            drug_infos = []
             for idx, session_info in enumerate(drug_sessions):
                 session_id = f"{animal_id}_Session{idx+1}"
-                drug_name = drug_name_config.get(session_id, f"Drug{idx+1}")
+                drug_info = drug_name_config.get(session_id, f"Drug{idx+1}")
+                drug_name = drug_info['name']
                 drug_time = session_info['time']
-                drug_info.append({'name': drug_name, 'time': drug_time, 'idx': idx})
+                drug_infos.append({'name': drug_name, 'time': drug_time, 'idx': idx})
             
             # Sort by time
-            drug_info.sort(key=lambda x: x['time'])
+            drug_infos.sort(key=lambda x: x['time'])
             
             # Get running events
             running_events = get_events_from_bouts(animal_data, params['full_event_type'], duration=True)
@@ -2419,17 +2556,17 @@ def analyze_row_running_optogenetics_drug(row_name, animals, params,
             
             for start, end in running_events:
                 # Determine drug category
-                if start < drug_info[0]['time']:
+                if start < drug_infos[0]['time']:
                     category = 'baseline'
                 else:
                     # Find which drug period
-                    for i in range(len(drug_info)):
-                        if start >= drug_info[i]['time']:
+                    for i in range(len(drug_infos)):
+                        if start >= drug_infos[i]['time']:
                             if i == 0:
-                                category = drug_info[0]['name']
+                                category = drug_infos[i]['name']
                             else:
-                                previous_drugs = ' + '.join([d['name'] for d in drug_info[:i]])
-                                category = f"{drug_info[i]['name']} after {previous_drugs}"
+                                previous_drugs = ' + '.join([d['name'] for d in drug_infos[:i]])
+                                category = f"{drug_infos[i]['name']} after {previous_drugs}"
                             break
                 
                 if category not in event_categories:
@@ -2735,6 +2872,7 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
         fig.suptitle(f"Wavelength {wl} nm — {window_title}", fontsize=11, fontweight="bold")
  
         # Row 1: Traces
+        run_vmin, run_vmax = None, None
         ax_running = fig.add_subplot(2, NUM_COLS, 1)
         for idx, (row_name, data) in enumerate(results.items()):
             if category not in data:
@@ -2749,6 +2887,12 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
                                        category_data[condition1_key]['running']['mean'] - category_data[condition1_key]['running']['sem'],
                                        category_data[condition1_key]['running']['mean'] + category_data[condition1_key]['running']['sem'],
                                        color=row_color, alpha=0.5)
+                if run_vmin is None and run_vmax is None:
+                    run_vmin = np.nanmin(category_data[condition1_key]['running']['mean'] - category_data[condition1_key]['running']['sem'])
+                    run_vmax = np.nanmax(category_data[condition1_key]['running']['mean'] + category_data[condition1_key]['running']['sem'])
+                else:
+                    run_vmin = min(run_vmin, np.nanmin(category_data[condition1_key]['running']['mean'] - category_data[condition1_key]['running']['sem']))
+                    run_vmax = max(run_vmax, np.nanmax(category_data[condition1_key]['running']['mean'] + category_data[condition1_key]['running']['sem']))
             if condition2_key in category_data and category_data[condition2_key]['running']['mean'] is not None:
                 ax_running.plot(time_array, category_data[condition2_key]['running']['mean'],
                               color=row_color, linestyle='-', linewidth=2, alpha=0.5,
@@ -2757,6 +2901,12 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
                                        category_data[condition2_key]['running']['mean'] - category_data[condition2_key]['running']['sem'],
                                        category_data[condition2_key]['running']['mean'] + category_data[condition2_key]['running']['sem'],
                                        color=row_color, alpha=0.2)
+                if run_vmin is None and run_vmax is None:
+                    run_vmin = np.nanmin(category_data[condition2_key]['running']['mean'] - category_data[condition2_key]['running']['sem'])
+                    run_vmax = np.nanmax(category_data[condition2_key]['running']['mean'] + category_data[condition2_key]['running']['sem'])
+                else:
+                    run_vmin = min(run_vmin, np.nanmin(category_data[condition2_key]['running']['mean'] - category_data[condition2_key]['running']['sem']))
+                    run_vmax = max(run_vmax, np.nanmax(category_data[condition2_key]['running']['mean'] + category_data[condition2_key]['running']['sem']))
         ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_running.set_xlim(time_array[0], time_array[-1])
         ax_running.set_xlabel('Time (s)')
@@ -2764,7 +2914,8 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
         ax_running.set_title(f'{category} - Running Speed Comparison')
         ax_running.legend(fontsize=8, ncol=2)
         ax_running.grid(False)
- 
+
+        dff_vmin, dff_vmax = None, None
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
         for idx, (row_name, data) in enumerate(results.items()):
             if category not in data:
@@ -2779,6 +2930,12 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
                                    category_data[condition1_key]['dff'][wl]['mean'] - category_data[condition1_key]['dff'][wl]['sem'],
                                    category_data[condition1_key]['dff'][wl]['mean'] + category_data[condition1_key]['dff'][wl]['sem'],
                                    color=row_color, alpha=0.5)
+                if dff_vmin is None and dff_vmax is None:
+                    dff_vmin = np.nanmin(category_data[condition1_key]['dff'][wl]['mean'] - category_data[condition1_key]['dff'][wl]['sem'])
+                    dff_vmax = np.nanmax(category_data[condition1_key]['dff'][wl]['mean'] + category_data[condition1_key]['dff'][wl]['sem'])
+                else:
+                    dff_vmin = min(dff_vmin, np.nanmin(category_data[condition1_key]['dff'][wl]['mean'] - category_data[condition1_key]['dff'][wl]['sem']))
+                    dff_vmax = max(dff_vmax, np.nanmax(category_data[condition1_key]['dff'][wl]['mean'] + category_data[condition1_key]['dff'][wl]['sem']))
             if condition2_key in category_data and wl in category_data[condition2_key]['dff']:
                 ax_dff.plot(time_array, category_data[condition2_key]['dff'][wl]['mean'],
                           color=row_color, linewidth=2, linestyle='-', alpha=0.5,
@@ -2787,6 +2944,12 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
                                    category_data[condition2_key]['dff'][wl]['mean'] - category_data[condition2_key]['dff'][wl]['sem'],
                                    category_data[condition2_key]['dff'][wl]['mean'] + category_data[condition2_key]['dff'][wl]['sem'],
                                    color=row_color, alpha=0.2)
+                if dff_vmin is None and dff_vmax is None:
+                    dff_vmin = np.nanmin(category_data[condition2_key]['dff'][wl]['mean'] - category_data[condition2_key]['dff'][wl]['sem'])
+                    dff_vmax = np.nanmax(category_data[condition2_key]['dff'][wl]['mean'] + category_data[condition2_key]['dff'][wl]['sem'])
+                else:
+                    dff_vmin = min(dff_vmin, np.nanmin(category_data[condition2_key]['dff'][wl]['mean'] - category_data[condition2_key]['dff'][wl]['sem']))
+                    dff_vmax = max(dff_vmax, np.nanmax(category_data[condition2_key]['dff'][wl]['mean'] + category_data[condition2_key]['dff'][wl]['sem']))
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
@@ -2794,7 +2957,8 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
         ax_dff.set_title(f'{category} - Fiber ΔF/F {wl}nm Comparison')
         ax_dff.legend(fontsize=8, ncol=2)
         ax_dff.grid(False)
- 
+
+        zs_vmin, zs_vmax = None, None
         ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
         for idx, (row_name, data) in enumerate(results.items()):
             if category not in data:
@@ -2809,6 +2973,12 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
                                       category_data[condition1_key]['zscore'][wl]['mean'] - category_data[condition1_key]['zscore'][wl]['sem'],
                                       category_data[condition1_key]['zscore'][wl]['mean'] + category_data[condition1_key]['zscore'][wl]['sem'],
                                       color=row_color, alpha=0.5)
+                if zs_vmin is None and zs_vmax is None:
+                    zs_vmin = np.nanmin(category_data[condition1_key]['zscore'][wl]['mean'] - category_data[condition1_key]['zscore'][wl]['sem'])
+                    zs_vmax = np.nanmax(category_data[condition1_key]['zscore'][wl]['mean'] + category_data[condition1_key]['zscore'][wl]['sem'])
+                else:
+                    zs_vmin = min(zs_vmin, np.nanmin(category_data[condition1_key]['zscore'][wl]['mean'] - category_data[condition1_key]['zscore'][wl]['sem']))
+                    zs_vmax = max(zs_vmax, np.nanmax(category_data[condition1_key]['zscore'][wl]['mean'] + category_data[condition1_key]['zscore'][wl]['sem']))
             if condition2_key in category_data and wl in category_data[condition2_key]['zscore']:
                 ax_zscore.plot(time_array, category_data[condition2_key]['zscore'][wl]['mean'],
                              color=row_color, linewidth=2, linestyle='-', alpha=0.5,
@@ -2817,6 +2987,12 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
                                       category_data[condition2_key]['zscore'][wl]['mean'] - category_data[condition2_key]['zscore'][wl]['sem'],
                                       category_data[condition2_key]['zscore'][wl]['mean'] + category_data[condition2_key]['zscore'][wl]['sem'],
                                       color=row_color, alpha=0.2)
+                if zs_vmin is None and zs_vmax is None:
+                    zs_vmin = np.nanmin(category_data[condition2_key]['zscore'][wl]['mean'] - category_data[condition2_key]['zscore'][wl]['sem'])
+                    zs_vmax = np.nanmax(category_data[condition2_key]['zscore'][wl]['mean'] + category_data[condition2_key]['zscore'][wl]['sem'])
+                else:
+                    zs_vmin = min(zs_vmin, np.nanmin(category_data[condition2_key]['zscore'][wl]['mean'] - category_data[condition2_key]['zscore'][wl]['sem']))
+                    zs_vmax = max(zs_vmax, np.nanmax(category_data[condition2_key]['zscore'][wl]['mean'] + category_data[condition2_key]['zscore'][wl]['sem']))
         ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_zscore.set_xlim(time_array[0], time_array[-1])
         ax_zscore.set_xlabel('Time (s)')
@@ -2842,7 +3018,7 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
             if combined is not None:
                 n_cond1 = len(all_cond1)
                 draw_heatmap(ax_running_heat, combined, time_array,
-                             'viridis', 'Speed (cm/s)',
+                             'viridis', 'Speed (cm/s)', vmin=run_vmin, vmax=run_vmax,
                              extra_lines=[n_cond1] if n_cond1 > 0 and len(combined) > n_cond1 else None)
                 ax_running_heat.set_title(f'{category} - Running Speed Heatmap')
         else:
@@ -2867,7 +3043,7 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
             if combined_dff is not None:
                 n_cond1 = len(all_cond1_dff)
                 draw_heatmap(ax_dff_heat, combined_dff, time_array,
-                             'coolwarm', 'ΔF/F',
+                             'coolwarm', 'ΔF/F', vmin=dff_vmin, vmax=dff_vmax,
                              extra_lines=[n_cond1] if n_cond1 > 0 and len(combined_dff) > n_cond1 else None)
                 ax_dff_heat.set_title(f'{category} - Fiber ΔF/F Heatmap {wl}nm')
         else:
@@ -2892,7 +3068,7 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
             if combined_zscore is not None:
                 n_cond1 = len(all_cond1_zscore)
                 draw_heatmap(ax_zscore_heat, combined_zscore, time_array,
-                             'coolwarm', 'Z-score',
+                             'coolwarm', 'Z-score', vmin=zs_vmin, vmax=zs_vmax,
                              extra_lines=[n_cond1] if n_cond1 > 0 and len(combined_zscore) > n_cond1 else None)
                 ax_zscore_heat.set_title(f'{category} - Fiber Z-score Heatmap {wl}nm')
         else:
@@ -2926,6 +3102,7 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
         fig.suptitle(f"Wavelength {wl} nm — {window_title}", fontsize=11, fontweight="bold")
  
         # Row 1: Traces
+        run_vmin, run_vmax = None, None
         ax_running = fig.add_subplot(2, NUM_COLS, 1)
         for idx, (row_name, data) in enumerate(results.items()):
             row_color = ROW_COLORS[idx % len(ROW_COLORS)]
@@ -2942,6 +3119,12 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
                                            category_data[condition_key]['running']['mean'] - category_data[condition_key]['running']['sem'],
                                            category_data[condition_key]['running']['mean'] + category_data[condition_key]['running']['sem'],
                                            color=row_color, alpha=alpha*0.5)
+                    if run_vmin is None and run_vmax is None:
+                        run_vmin = np.nanmin(category_data[condition_key]['running']['mean'] - category_data[condition_key]['running']['sem'])
+                        run_vmax = np.nanmax(category_data[condition_key]['running']['mean'] + category_data[condition_key]['running']['sem'])
+                    else:
+                        run_vmin = min(run_vmin, np.nanmin(category_data[condition_key]['running']['mean'] - category_data[condition_key]['running']['sem']))
+                        run_vmax = max(run_vmax, np.nanmax(category_data[condition_key]['running']['mean'] + category_data[condition_key]['running']['sem']))
         ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_running.set_xlim(time_array[0], time_array[-1])
         ax_running.set_xlabel('Time (s)')
@@ -2950,6 +3133,7 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
         ax_running.legend(fontsize=7, ncol=2)
         ax_running.grid(False)
  
+        dff_vmin, dff_vmax = None, None
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
         for idx, (row_name, data) in enumerate(results.items()):
             row_color = ROW_COLORS[idx % len(ROW_COLORS)]
@@ -2966,6 +3150,12 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
                                        category_data[condition_key]['dff'][wl]['mean'] - category_data[condition_key]['dff'][wl]['sem'],
                                        category_data[condition_key]['dff'][wl]['mean'] + category_data[condition_key]['dff'][wl]['sem'],
                                        color=row_color, alpha=alpha*0.5)
+                    if dff_vmin is None and dff_vmax is None:
+                        dff_vmin = np.nanmin(category_data[condition_key]['dff'][wl]['mean'] - category_data[condition_key]['dff'][wl]['sem'])
+                        dff_vmax = np.nanmax(category_data[condition_key]['dff'][wl]['mean'] + category_data[condition_key]['dff'][wl]['sem'])
+                    else:
+                        dff_vmin = min(dff_vmin, np.nanmin(category_data[condition_key]['dff'][wl]['mean'] - category_data[condition_key]['dff'][wl]['sem']))
+                        dff_vmax = max(dff_vmax, np.nanmax(category_data[condition_key]['dff'][wl]['mean'] + category_data[condition_key]['dff'][wl]['sem']))
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
@@ -2974,6 +3164,8 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
         ax_dff.legend(fontsize=7, ncol=2)
         ax_dff.grid(False)
  
+        
+        zs_vmin, zs_vmax = None, None
         ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
         for idx, (row_name, data) in enumerate(results.items()):
             row_color = ROW_COLORS[idx % len(ROW_COLORS)]
@@ -2990,6 +3182,12 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
                                           category_data[condition_key]['zscore'][wl]['mean'] - category_data[condition_key]['zscore'][wl]['sem'],
                                           category_data[condition_key]['zscore'][wl]['mean'] + category_data[condition_key]['zscore'][wl]['sem'],
                                           color=row_color, alpha=alpha*0.5)
+                    if zs_vmin is None and zs_vmax is None:
+                        zs_vmin = np.nanmin(category_data[condition_key]['zscore'][wl]['mean'] - category_data[condition_key]['zscore'][wl]['sem'])
+                        zs_vmax = np.nanmax(category_data[condition_key]['zscore'][wl]['mean'] + category_data[condition_key]['zscore'][wl]['sem'])
+                    else:
+                        zs_vmin = min(zs_vmin, np.nanmin(category_data[condition_key]['zscore'][wl]['mean'] - category_data[condition_key]['zscore'][wl]['sem']))
+                        zs_vmax = max(zs_vmax, np.nanmax(category_data[condition_key]['zscore'][wl]['mean'] + category_data[condition_key]['zscore'][wl]['sem']))
         ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_zscore.set_xlim(time_array[0], time_array[-1])
         ax_zscore.set_xlabel('Time (s)')
@@ -3016,7 +3214,7 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
                     category_boundaries.append(len(all_episodes))
         if all_episodes:
             draw_heatmap(ax_running_heat, np.array(all_episodes), time_array,
-                         'viridis', 'Speed (cm/s)',
+                         'viridis', 'Speed (cm/s)', vmin=run_vmin, vmax=run_vmax,
                          extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
             ax_running_heat.set_title(f'{window_title} - Running Speed Heatmap')
         else:
@@ -3042,7 +3240,7 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
                     category_boundaries.append(len(all_episodes))
         if all_episodes:
             draw_heatmap(ax_dff_heat, np.array(all_episodes), time_array,
-                         'coolwarm', 'ΔF/F',
+                         'coolwarm', 'ΔF/F', vmin=dff_vmin, vmax=dff_vmax,
                          extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
             ax_dff_heat.set_title(f'{window_title} - Fiber ΔF/F Heatmap {wl}nm')
         else:
@@ -3068,7 +3266,7 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
                     category_boundaries.append(len(all_episodes))
         if all_episodes:
             draw_heatmap(ax_zscore_heat, np.array(all_episodes), time_array,
-                         'coolwarm', 'Z-score',
+                         'coolwarm', 'Z-score', vmin=zs_vmin, vmax=zs_vmax,
                          extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
             ax_zscore_heat.set_title(f'{window_title} - Fiber Z-score Heatmap {wl}nm')
         else:
@@ -3119,6 +3317,8 @@ def create_single_row_category_window(row_name, data, params, category, window_t
         fig.suptitle(f"Wavelength {wl} nm — {window_title}", fontsize=11, fontweight="bold")
  
         # Row 1: Traces
+        with_run_vmin, with_run_vmax = None, None
+        without_run_vmin, without_run_vmax = None, None
         ax_running = fig.add_subplot(2, NUM_COLS, 1)
         if 'with_opto' in category_data and category_data['with_opto']['running']['mean'] is not None:
             ax_running.plot(time_array, category_data['with_opto']['running']['mean'],
@@ -3127,6 +3327,12 @@ def create_single_row_category_window(row_name, data, params, category, window_t
                                    category_data['with_opto']['running']['mean'] - category_data['with_opto']['running']['sem'],
                                    category_data['with_opto']['running']['mean'] + category_data['with_opto']['running']['sem'],
                                    color="#000000", alpha=0.5)
+            if with_run_vmin is None and with_run_vmax is None:
+                with_run_vmin = np.nanmin(category_data['with_opto']['running']['mean'] - category_data['with_opto']['running']['sem'])
+                with_run_vmax = np.nanmax(category_data['with_opto']['running']['mean'] + category_data['with_opto']['running']['sem'])
+            else:
+                with_run_vmin = min(with_run_vmin, np.nanmin(category_data['with_opto']['running']['mean'] - category_data['with_opto']['running']['sem']))
+                with_run_vmax = max(with_run_vmax, np.nanmax(category_data['with_opto']['running']['mean'] + category_data['with_opto']['running']['sem']))
         if 'without_opto' in category_data and category_data['without_opto']['running']['mean'] is not None:
             ax_running.plot(time_array, category_data['without_opto']['running']['mean'],
                           color="#000000", linewidth=2, linestyle='-', alpha=0.5, label='Without Opto')
@@ -3134,6 +3340,12 @@ def create_single_row_category_window(row_name, data, params, category, window_t
                                    category_data['without_opto']['running']['mean'] - category_data['without_opto']['running']['sem'],
                                    category_data['without_opto']['running']['mean'] + category_data['without_opto']['running']['sem'],
                                    color="#000000", alpha=0.3)
+            if without_run_vmin is None and without_run_vmax is None:
+                without_run_vmin = np.nanmin(category_data['without_opto']['running']['mean'] - category_data['without_opto']['running']['sem'])
+                without_run_vmax = np.nanmax(category_data['without_opto']['running']['mean'] + category_data['without_opto']['running']['sem'])
+            else:
+                without_run_vmin = min(without_run_vmin, np.nanmin(category_data['without_opto']['running']['mean'] - category_data['without_opto']['running']['sem']))
+                without_run_vmax = max(without_run_vmax, np.nanmax(category_data['without_opto']['running']['mean'] + category_data['without_opto']['running']['sem']))
         ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
         ax_running.set_xlim(time_array[0], time_array[-1])
         ax_running.set_xlabel('Time (s)')
@@ -3142,6 +3354,8 @@ def create_single_row_category_window(row_name, data, params, category, window_t
         ax_running.legend()
         ax_running.grid(False)
  
+        with_dff_vmin, with_dff_vmax = None, None
+        without_dff_vmin, without_dff_vmax = None, None
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
         if 'with_opto' in category_data and wl in category_data['with_opto']['dff']:
             ax_dff.plot(time_array, category_data['with_opto']['dff'][wl]['mean'],
@@ -3150,6 +3364,12 @@ def create_single_row_category_window(row_name, data, params, category, window_t
                                category_data['with_opto']['dff'][wl]['mean'] - category_data['with_opto']['dff'][wl]['sem'],
                                category_data['with_opto']['dff'][wl]['mean'] + category_data['with_opto']['dff'][wl]['sem'],
                                color=color, alpha=0.5)
+            if with_dff_vmin is None and with_dff_vmax is None:
+                with_dff_vmin = np.nanmin(category_data['with_opto']['dff'][wl]['mean'] - category_data['with_opto']['dff'][wl]['sem'])
+                with_dff_vmax = np.nanmax(category_data['with_opto']['dff'][wl]['mean'] + category_data['with_opto']['dff'][wl]['sem'])
+            else:
+                with_dff_vmin = min(with_dff_vmin, np.nanmin(category_data['with_opto']['dff'][wl]['mean'] - category_data['with_opto']['dff'][wl]['sem']))
+                with_dff_vmax = max(with_dff_vmax, np.nanmax(category_data['with_opto']['dff'][wl]['mean'] + category_data['with_opto']['dff'][wl]['sem']))
         if 'without_opto' in category_data and wl in category_data['without_opto']['dff']:
             ax_dff.plot(time_array, category_data['without_opto']['dff'][wl]['mean'],
                       color=color, linewidth=2, linestyle='-', alpha=0.5, label='Without Opto')
@@ -3157,6 +3377,12 @@ def create_single_row_category_window(row_name, data, params, category, window_t
                                category_data['without_opto']['dff'][wl]['mean'] - category_data['without_opto']['dff'][wl]['sem'],
                                category_data['without_opto']['dff'][wl]['mean'] + category_data['without_opto']['dff'][wl]['sem'],
                                color=color, alpha=0.3)
+            if without_dff_vmin is None and without_dff_vmax is None:
+                without_dff_vmin = np.nanmin(category_data['without_opto']['dff'][wl]['mean'] - category_data['without_opto']['dff'][wl]['sem'])
+                without_dff_vmax = np.nanmax(category_data['without_opto']['dff'][wl]['mean'] + category_data['without_opto']['dff'][wl]['sem'])
+            else:
+                without_dff_vmin = min(without_dff_vmin, np.nanmin(category_data['without_opto']['dff'][wl]['mean'] - category_data['without_opto']['dff'][wl]['sem']))
+                without_dff_vmax = max(without_dff_vmax, np.nanmax(category_data['without_opto']['dff'][wl]['mean'] + category_data['without_opto']['dff'][wl]['sem']))
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
@@ -3165,6 +3391,8 @@ def create_single_row_category_window(row_name, data, params, category, window_t
         ax_dff.legend()
         ax_dff.grid(False)
  
+        with_zs_vmin, with_zs_vmax = None, None
+        without_zs_vmin, without_zs_vmax = None, None
         ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
         if 'with_opto' in category_data and wl in category_data['with_opto']['zscore']:
             ax_zscore.plot(time_array, category_data['with_opto']['zscore'][wl]['mean'],
@@ -3173,6 +3401,12 @@ def create_single_row_category_window(row_name, data, params, category, window_t
                                   category_data['with_opto']['zscore'][wl]['mean'] - category_data['with_opto']['zscore'][wl]['sem'],
                                   category_data['with_opto']['zscore'][wl]['mean'] + category_data['with_opto']['zscore'][wl]['sem'],
                                   color=color, alpha=0.5)
+            if with_zs_vmin is None and with_zs_vmax is None:
+                with_zs_vmin = np.nanmin(category_data['with_opto']['zscore'][wl]['mean'] - category_data['with_opto']['zscore'][wl]['sem'])
+                with_zs_vmax = np.nanmax(category_data['with_opto']['zscore'][wl]['mean'] + category_data['with_opto']['zscore'][wl]['sem'])
+            else:
+                with_zs_vmin = min(with_zs_vmin, np.nanmin(category_data['with_opto']['zscore'][wl]['mean'] - category_data['with_opto']['zscore'][wl]['sem']))
+                with_zs_vmax = max(with_zs_vmax, np.nanmax(category_data['with_opto']['zscore'][wl]['mean'] + category_data['with_opto']['zscore'][wl]['sem']))
         if 'without_opto' in category_data and wl in category_data['without_opto']['zscore']:
             ax_zscore.plot(time_array, category_data['without_opto']['zscore'][wl]['mean'],
                          color=color, linewidth=2, linestyle='-', alpha=0.5, label='Without Opto')
@@ -3180,6 +3414,12 @@ def create_single_row_category_window(row_name, data, params, category, window_t
                                   category_data['without_opto']['zscore'][wl]['mean'] - category_data['without_opto']['zscore'][wl]['sem'],
                                   category_data['without_opto']['zscore'][wl]['mean'] + category_data['without_opto']['zscore'][wl]['sem'],
                                   color=color, alpha=0.3)
+            if without_zs_vmin is None and without_zs_vmax is None:
+                without_zs_vmin = np.nanmin(category_data['without_opto']['zscore'][wl]['mean'] - category_data['without_opto']['zscore'][wl]['sem'])
+                without_zs_vmax = np.nanmax(category_data['without_opto']['zscore'][wl]['mean'] + category_data['without_opto']['zscore'][wl]['sem'])
+            else:
+                without_zs_vmin = min(without_zs_vmin, np.nanmin(category_data['without_opto']['zscore'][wl]['mean'] - category_data['without_opto']['zscore'][wl]['sem']))
+                without_zs_vmax = max(without_zs_vmax, np.nanmax(category_data['without_opto']['zscore'][wl]['mean'] + category_data['without_opto']['zscore'][wl]['sem']))
         ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
         ax_zscore.set_xlim(time_array[0], time_array[-1])
         ax_zscore.set_xlabel('Time (s)')
@@ -3199,8 +3439,12 @@ def create_single_row_category_window(row_name, data, params, category, window_t
         if with_episodes or without_episodes:
             combined = np.array(with_episodes + without_episodes)
             n_with = len(with_episodes)
+            combined_run_vmin = min(with_run_vmin if with_run_vmin is not None else np.inf,
+                                   without_run_vmin if without_run_vmin is not None else np.inf)
+            combined_run_vmax = max(with_run_vmax if with_run_vmax is not None else -np.inf,
+                                   without_run_vmax if without_run_vmax is not None else -np.inf)
             draw_heatmap(ax_running_heat, combined, time_array,
-                         'viridis', 'Speed (cm/s)',
+                         'viridis', 'Speed (cm/s)', vmin=combined_run_vmin, vmax=combined_run_vmax,
                          extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
             ax_running_heat.set_title(f'{category} - Running Speed Heatmap')
             ax_running_heat.legend(loc='upper right', fontsize=8)
@@ -3215,8 +3459,12 @@ def create_single_row_category_window(row_name, data, params, category, window_t
         if with_dff or without_dff:
             combined = np.array(with_dff + without_dff)
             n_with = len(with_dff)
+            combined_dff_vmin = min(with_dff_vmin if with_dff_vmin is not None else np.inf,
+                                   without_dff_vmin if without_dff_vmin is not None else np.inf)
+            combined_dff_vmax = max(with_dff_vmax if with_dff_vmax is not None else -np.inf,
+                                   without_dff_vmax if without_dff_vmax is not None else -np.inf)
             draw_heatmap(ax_dff_heat, combined, time_array,
-                         'coolwarm', 'ΔF/F',
+                         'coolwarm', 'ΔF/F', vmin=combined_dff_vmin, vmax=combined_dff_vmax,
                          extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
             ax_dff_heat.set_title(f'{category} - Fiber ΔF/F Heatmap {wl}nm')
             ax_dff_heat.legend(loc='upper right', fontsize=8)
@@ -3231,8 +3479,12 @@ def create_single_row_category_window(row_name, data, params, category, window_t
         if with_zscore or without_zscore:
             combined = np.array(with_zscore + without_zscore)
             n_with = len(with_zscore)
+            combined_zs_vmin = min(with_zs_vmin if with_zs_vmin is not None else np.inf,
+                                   without_zs_vmin if without_zs_vmin is not None else np.inf)
+            combined_zs_vmax = max(with_zs_vmax if with_zs_vmax is not None else -np.inf,
+                                   without_zs_vmax if without_zs_vmax is not None else -np.inf)
             draw_heatmap(ax_zscore_heat, combined, time_array,
-                         'coolwarm', 'Z-score',
+                         'coolwarm', 'Z-score', vmin=combined_zs_vmin, vmax=combined_zs_vmax,
                          extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
             ax_zscore_heat.set_title(f'{category} - Fiber Z-score Heatmap {wl}nm')
             ax_zscore_heat.legend(loc='upper right', fontsize=8)
@@ -3256,6 +3508,8 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
         fig.suptitle(f"Wavelength {wl} nm — {window_title}", fontsize=11, fontweight="bold")
  
         # Row 1: Traces
+        with_run_vmin, with_run_vmax = None, None
+        without_run_vmin, without_run_vmax = None, None
         ax_running = fig.add_subplot(2, NUM_COLS, 1)
         for cat_idx, category in enumerate(drug_categories):
             if category not in data:
@@ -3272,6 +3526,12 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
                                        category_data['with_opto']['running']['mean'] - category_data['with_opto']['running']['sem'],
                                        category_data['with_opto']['running']['mean'] + category_data['with_opto']['running']['sem'],
                                        color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=alpha*0.3)
+                if with_run_vmin is None and with_run_vmax is None:
+                    with_run_vmin = np.nanmin(category_data['with_opto']['running']['mean'] - category_data['with_opto']['running']['sem'])
+                    with_run_vmax = np.nanmax(category_data['with_opto']['running']['mean'] + category_data['with_opto']['running']['sem'])
+                else:
+                    with_run_vmin = min(with_run_vmin, np.nanmin(category_data['with_opto']['running']['mean'] - category_data['with_opto']['running']['sem']))
+                    with_run_vmax = max(with_run_vmax, np.nanmax(category_data['with_opto']['running']['mean'] + category_data['with_opto']['running']['sem']))
             if 'without_opto' in category_data and category_data['without_opto']['running']['mean'] is not None:
                 alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
                 log_message(f"Plotting {row_name} - {category} - {cat_idx} without opto with alpha {alpha}")
@@ -3283,6 +3543,12 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
                                        category_data['without_opto']['running']['mean'] - category_data['without_opto']['running']['sem'],
                                        category_data['without_opto']['running']['mean'] + category_data['without_opto']['running']['sem'],
                                        color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=alpha*0.3)
+                if without_run_vmin is None and without_run_vmax is None:
+                    without_run_vmin = np.nanmin(category_data['without_opto']['running']['mean'] - category_data['without_opto']['running']['sem'])
+                    without_run_vmax = np.nanmax(category_data['without_opto']['running']['mean'] + category_data['without_opto']['running']['sem'])
+                else:
+                    without_run_vmin = min(without_run_vmin, np.nanmin(category_data['without_opto']['running']['mean'] - category_data['without_opto']['running']['sem']))
+                    without_run_vmax = max(without_run_vmax, np.nanmax(category_data['without_opto']['running']['mean'] + category_data['without_opto']['running']['sem']))
         ax_running.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_running.set_xlim(time_array[0], time_array[-1])
         ax_running.set_xlabel('Time (s)')
@@ -3291,6 +3557,8 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
         ax_running.legend(fontsize=7, ncol=2)
         ax_running.grid(False)
  
+        with_dff_vmin, with_dff_vmax = None, None
+        without_dff_vmin, without_dff_vmax = None, None
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
         for cat_idx, category in enumerate(drug_categories):
             if category not in data:
@@ -3307,6 +3575,12 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
                                    category_data['with_opto']['dff'][wl]['mean'] - category_data['with_opto']['dff'][wl]['sem'],
                                    category_data['with_opto']['dff'][wl]['mean'] + category_data['with_opto']['dff'][wl]['sem'],
                                    color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=alpha*0.3)
+                if with_dff_vmin is None and with_dff_vmax is None:
+                    with_dff_vmin = np.nanmin(category_data['with_opto']['dff'][wl]['mean'] - category_data['with_opto']['dff'][wl]['sem'])
+                    with_dff_vmax = np.nanmax(category_data['with_opto']['dff'][wl]['mean'] + category_data['with_opto']['dff'][wl]['sem'])
+                else:
+                    with_dff_vmin = min(with_dff_vmin, np.nanmin(category_data['with_opto']['dff'][wl]['mean'] - category_data['with_opto']['dff'][wl]['sem']))
+                    with_dff_vmax = max(with_dff_vmax, np.nanmax(category_data['with_opto']['dff'][wl]['mean'] + category_data['with_opto']['dff'][wl]['sem']))
             if 'without_opto' in category_data and wl in category_data['without_opto']['dff']:
                 alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
                 log_message(f"Plotting {row_name} - {category} - {cat_idx} without opto with alpha {alpha}")
@@ -3318,6 +3592,12 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
                                    category_data['without_opto']['dff'][wl]['mean'] - category_data['without_opto']['dff'][wl]['sem'],
                                    category_data['without_opto']['dff'][wl]['mean'] + category_data['without_opto']['dff'][wl]['sem'],
                                    color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=alpha*0.3)
+                if without_dff_vmin is None and without_dff_vmax is None:
+                    without_dff_vmin = np.nanmin(category_data['without_opto']['dff'][wl]['mean'] - category_data['without_opto']['dff'][wl]['sem'])
+                    without_dff_vmax = np.nanmax(category_data['without_opto']['dff'][wl]['mean'] + category_data['without_opto']['dff'][wl]['sem'])
+                else:
+                    without_dff_vmin = min(without_dff_vmin, np.nanmin(category_data['without_opto']['dff'][wl]['mean'] - category_data['without_opto']['dff'][wl]['sem']))
+                    without_dff_vmax = max(without_dff_vmax, np.nanmax(category_data['without_opto']['dff'][wl]['mean'] + category_data['without_opto']['dff'][wl]['sem']))
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
@@ -3326,6 +3606,8 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
         ax_dff.legend(fontsize=6, ncol=2)
         ax_dff.grid(False)
  
+        with_zs_vmin, with_zs_vmax = None, None
+        without_zs_vmin, without_zs_vmax = None, None
         ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
         for cat_idx, category in enumerate(drug_categories):
             if category not in data:
@@ -3342,6 +3624,12 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
                                       category_data['with_opto']['zscore'][wl]['mean'] - category_data['with_opto']['zscore'][wl]['sem'],
                                       category_data['with_opto']['zscore'][wl]['mean'] + category_data['with_opto']['zscore'][wl]['sem'],
                                       color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=alpha*0.3)
+                if with_zs_vmin is None and with_zs_vmax is None:
+                    with_zs_vmin = np.nanmin(category_data['with_opto']['zscore'][wl]['mean'] - category_data['with_opto']['zscore'][wl]['sem'])
+                    with_zs_vmax = np.nanmax(category_data['with_opto']['zscore'][wl]['mean'] + category_data['with_opto']['zscore'][wl]['sem'])
+                else:
+                    with_zs_vmin = min(with_zs_vmin, np.nanmin(category_data['with_opto']['zscore'][wl]['mean'] - category_data['with_opto']['zscore'][wl]['sem']))
+                    with_zs_vmax = max(with_zs_vmax, np.nanmax(category_data['with_opto']['zscore'][wl]['mean'] + category_data['with_opto']['zscore'][wl]['sem']))
             if 'without_opto' in category_data and wl in category_data['without_opto']['zscore']:
                 alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
                 log_message(f"Plotting {row_name} - {category} - {cat_idx} without opto with alpha {alpha}")
@@ -3353,6 +3641,12 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
                                       category_data['without_opto']['zscore'][wl]['mean'] - category_data['without_opto']['zscore'][wl]['sem'],
                                       category_data['without_opto']['zscore'][wl]['mean'] + category_data['without_opto']['zscore'][wl]['sem'],
                                       color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=alpha*0.3)
+                if without_zs_vmin is None and without_zs_vmax is None:
+                    without_zs_vmin = np.nanmin(category_data['without_opto']['zscore'][wl]['mean'] - category_data['without_opto']['zscore'][wl]['sem'])
+                    without_zs_vmax = np.nanmax(category_data['without_opto']['zscore'][wl]['mean'] + category_data['without_opto']['zscore'][wl]['sem'])
+                else:
+                    without_zs_vmin = min(without_zs_vmin, np.nanmin(category_data['without_opto']['zscore'][wl]['mean'] - category_data['without_opto']['zscore'][wl]['sem']))
+                    without_zs_vmax = max(without_zs_vmax, np.nanmax(category_data['without_opto']['zscore'][wl]['mean'] + category_data['without_opto']['zscore'][wl]['sem']))
         ax_zscore.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_zscore.set_xlim(time_array[0], time_array[-1])
         ax_zscore.set_xlabel('Time (s)')
@@ -3383,8 +3677,12 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
             extra += [b for b in condition_boundaries[:-1]]
             extra += [b for b in category_boundaries[:-1]]
             extra = sorted(set(extra)) if extra else None
+            combined_run_vmin = min(with_run_vmin if with_run_vmin is not None else np.inf,
+                                   without_run_vmin if without_run_vmin is not None else np.inf)
+            combined_run_vmax = max(with_run_vmax if with_run_vmax is not None else -np.inf,
+                                   without_run_vmax if without_run_vmax is not None else -np.inf)
             draw_heatmap(ax_running_heat, np.array(all_running_episodes), time_array,
-                         'viridis', 'Speed (cm/s)', extra_lines=extra if extra else None)
+                         'viridis', 'Speed (cm/s)', extra_lines=extra if extra else None, vmin=combined_run_vmin, vmax=combined_run_vmax)
             # category label ticks
             y_positions = []
             current_y = 0
@@ -3430,8 +3728,12 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
                     category_boundaries_dff.append(len(all_dff_episodes))
         if all_dff_episodes:
             extra = sorted(set(condition_boundaries_dff[:-1] + category_boundaries_dff[:-1])) if (condition_boundaries_dff[:-1] + category_boundaries_dff[:-1]) else None
+            combined_dff_vmin = min(with_dff_vmin if with_dff_vmin is not None else np.inf,
+                                   without_dff_vmin if without_dff_vmin is not None else np.inf)
+            combined_dff_vmax = max(with_dff_vmax if with_dff_vmax is not None else -np.inf,
+                                   without_dff_vmax if without_dff_vmax is not None else -np.inf)
             draw_heatmap(ax_dff_heat, np.array(all_dff_episodes), time_array,
-                         'coolwarm', 'ΔF/F', extra_lines=extra)
+                         'coolwarm', 'ΔF/F', extra_lines=extra, vmin=combined_dff_vmin, vmax=combined_dff_vmax)
             y_positions = []
             current_y = 0
             for i, category in enumerate(drug_categories):
@@ -3476,8 +3778,12 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
                     category_boundaries_zscore.append(len(all_zscore_episodes))
         if all_zscore_episodes:
             extra = sorted(set(condition_boundaries_zscore[:-1] + category_boundaries_zscore[:-1])) if (condition_boundaries_zscore[:-1] + category_boundaries_zscore[:-1]) else None
+            combined_zs_vmin = min(with_zs_vmin if with_zs_vmin is not None else np.inf,
+                                   without_zs_vmin if without_zs_vmin is not None else np.inf)
+            combined_zs_vmax = max(with_zs_vmax if with_zs_vmax is not None else -np.inf,
+                                   without_zs_vmax if without_zs_vmax is not None else -np.inf)
             draw_heatmap(ax_zscore_heat, np.array(all_zscore_episodes), time_array,
-                         'coolwarm', 'Z-score', extra_lines=extra)
+                         'coolwarm', 'Z-score', extra_lines=extra, vmin=combined_zs_vmin, vmax=combined_zs_vmax)
             y_positions = []
             current_y = 0
             for i, category in enumerate(drug_categories):

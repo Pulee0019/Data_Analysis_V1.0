@@ -926,6 +926,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
         column_idx = [1, 2, 3, 4, 5, 6] if current_experiment_mode != EXPERIMENT_MODE_FIBER else [1, 1, 2, 3, 3, 4]
         # Row 1: Traces
         if current_experiment_mode != EXPERIMENT_MODE_FIBER:
+            run_vmin, run_vmax = None, None
             ax_run = fig.add_subplot(2, NUM_COLS, column_idx[0])
             if analysis_mode == "optogenetics+drug":
                 for param_idx, (param_name, param_data) in enumerate(results.items()):
@@ -962,6 +963,14 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                                     label=param_name)
                         ax_run.fill_between(time_array, mean - sem, mean + sem,
                                             color=row_color, alpha=0.5)
+            
+            if run_vmin is None and run_vmax is None:
+                run_vmin = min(mean-sem)
+                run_vmax = max(mean+sem)
+            else:
+                run_vmin = min(run_vmin, np.min(mean-sem))
+                run_vmax = max(run_vmax, np.max(mean+sem))
+                
             ax_run.axvline(x=0, color="#808080", linestyle="--", alpha=0.8, label="Opto Stim")
             ax_run.set_xlim(time_array[0], time_array[-1])
             ax_run.set_xlabel("Time (s)")
@@ -970,6 +979,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
             ax_run.legend(fontsize=6, ncol=2)
             ax_run.grid(False)
 
+        dff_vmin, dff_vmax = None, None
         ax_dff = fig.add_subplot(2, NUM_COLS, column_idx[1])
         if analysis_mode == "optogenetics+drug":
             for param_idx, (param_name, param_data) in enumerate(results.items()):
@@ -1006,6 +1016,14 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                                 label=param_name)
                     ax_dff.fill_between(time_array, mean - sem, mean + sem,
                                         color=row_color, alpha=0.5)
+        
+        if dff_vmin is None and dff_vmax is None:
+            dff_vmin = min(mean-sem)
+            dff_vmax = max(mean+sem)
+        else:
+            dff_vmin = min(dff_vmin, np.min(mean-sem))
+            dff_vmax = max(dff_vmax, np.max(mean+sem))
+            
         ax_dff.axvline(x=0, color="#808080", linestyle="--", alpha=0.8, label="Opto Stim")
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel("Time (s)")
@@ -1014,6 +1032,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
         ax_dff.legend(fontsize=6, ncol=2)
         ax_dff.grid(False)
 
+        zscore_vmin, zscore_vmax = None, None
         ax_zs = fig.add_subplot(2, NUM_COLS, column_idx[2])
         if analysis_mode == "optogenetics+drug":
             for param_idx, (param_name, param_data) in enumerate(results.items()):
@@ -1050,6 +1069,14 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                                label=param_name)
                     ax_zs.fill_between(time_array, mean - sem, mean + sem,
                                        color=row_color, alpha=0.5)
+        
+        if zscore_vmin is None and zscore_vmax is None:
+            zscore_vmin = min(mean-sem)
+            zscore_vmax = max(mean+sem)
+        else:
+            zscore_vmin = min(zscore_vmin, np.min(mean-sem))
+            zscore_vmax = max(zscore_vmax, np.max(mean+sem))
+            
         ax_zs.axvline(x=0, color="#808080", linestyle="--", alpha=0.8, label="Opto Stim")
         ax_zs.set_xlim(time_array[0], time_array[-1])
         ax_zs.set_xlabel("Time (s)")
@@ -1075,7 +1102,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                         all_run.extend(ep)
             if all_run:
                 draw_heatmap(ax_run_heat, np.array(all_run),
-                            time_array, "viridis", "Speed (cm/s)")
+                            time_array, "viridis", "Speed (cm/s)", vmin=run_vmin, vmax=run_vmax)
                 ax_run_heat.set_title("Running Speed Heatmap")
             else:
                 ax_run_heat.text(0.5, 0.5, "No running data",
@@ -1101,7 +1128,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                     all_dff.extend(ep)
         if all_dff:
             draw_heatmap(ax_dff_heat, np.array(all_dff),
-                         time_array, "coolwarm", "ΔF/F")
+                         time_array, "coolwarm", "ΔF/F", vmin=dff_vmin, vmax=dff_vmax)
             ax_dff_heat.set_title(f"Fiber ΔF/F Heatmap {wavelength}nm")
         else:
             ax_dff_heat.text(0.5, 0.5, f"No dFF data for {wavelength}nm",
@@ -1127,7 +1154,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                     all_zs.extend(ep)
         if all_zs:
             draw_heatmap(ax_zs_heat, np.array(all_zs),
-                         time_array, "coolwarm", "Z-score")
+                         time_array, "coolwarm", "Z-score", vmin=zscore_vmin, vmax=zscore_vmax)
             ax_zs_heat.set_title(f"Fiber Z-score Heatmap {wavelength}nm")
         else:
             ax_zs_heat.text(0.5, 0.5, f"No z-score data for {wavelength}nm",
@@ -1184,6 +1211,7 @@ def create_single_param_window(param_name, param_data, params,
         column_idx = [1, 2, 3, 4, 5, 6] if current_experiment_mode != EXPERIMENT_MODE_FIBER else [1, 1, 2, 3, 3, 4]
         # Row 1: Traces
         if current_experiment_mode != EXPERIMENT_MODE_FIBER:
+            run_vmin, run_vmax = None, None
             ax_run = fig.add_subplot(2, NUM_COLS, column_idx[0])
             if analysis_mode == "optogenetics+drug":
                 drug_timings = list(param_data.keys())
@@ -1230,11 +1258,20 @@ def create_single_param_window(param_name, param_data, params,
                                 fontsize=12, color="#666666")
                     ax_run.axis("off")
                 ax_run.set_title(f"{param_name} - Running Speed")
+            
+            if run_vmin is None and run_vmax is None:
+                run_vmin = min(mean-sem)
+                run_vmax = max(mean+sem)
+            else:
+                run_vmin = min(run_vmin, np.min(mean-sem))
+                run_vmax = max(run_vmax, np.max(mean+sem))
+                
             ax_run.set_xlim(time_array[0], time_array[-1])
             ax_run.set_xlabel("Time (s)")
             ax_run.set_ylabel("Speed (cm/s)")
             ax_run.grid(False)
 
+        dff_vmin, dff_vmax = None, None
         ax_dff = fig.add_subplot(2, NUM_COLS, column_idx[1])
         if analysis_mode == "optogenetics+drug":
             drug_timings = list(param_data.keys())
@@ -1282,11 +1319,20 @@ def create_single_param_window(param_name, param_data, params,
                             fontsize=12, color="#666666")
                 ax_dff.axis("off")
             ax_dff.set_title(f"{param_name} - Fiber ΔF/F {wavelength}nm")
+        
+        if dff_vmin is None and dff_vmax is None:
+            dff_vmin = min(mean-sem)
+            dff_vmax = max(mean+sem)
+        else:
+            dff_vmin = min(dff_vmin, np.min(mean-sem))
+            dff_vmax = max(dff_vmax, np.max(mean+sem))
+            
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel("Time (s)")
         ax_dff.set_ylabel("ΔF/F")
         ax_dff.grid(False)
 
+        zs_vmin, zs_vmax = None, None
         ax_zs = fig.add_subplot(2, NUM_COLS, column_idx[2])
         if analysis_mode == "optogenetics+drug":
             drug_timings = list(param_data.keys())
@@ -1334,6 +1380,14 @@ def create_single_param_window(param_name, param_data, params,
                            fontsize=12, color="#666666")
                 ax_zs.axis("off")
             ax_zs.set_title(f"{param_name} - Fiber Z-score {wavelength}nm")
+        
+        if zs_vmin is None and zs_vmax is None:
+            zs_vmin = min(mean-sem)
+            zs_vmax = max(mean+sem)
+        else:
+            zs_vmin = min(zs_vmin, np.min(mean-sem))
+            zs_vmax = max(zs_vmax, np.max(mean+sem))
+            
         ax_zs.set_xlim(time_array[0], time_array[-1])
         ax_zs.set_xlabel("Time (s)")
         ax_zs.set_ylabel("Z-score")
@@ -1354,7 +1408,7 @@ def create_single_param_window(param_name, param_data, params,
                 boundaries = []
             if all_run:
                 draw_heatmap(ax_run_heat, np.array(all_run), time_array,
-                            "viridis", "Speed (cm/s)",
+                            "viridis", "Speed (cm/s)", vmin=run_vmin, vmax=run_vmax,
                             extra_lines=boundaries[:-1] if boundaries else None)
                 ax_run_heat.set_title(f"{param_name} - Running Speed Heatmap")
             else:
@@ -1379,7 +1433,7 @@ def create_single_param_window(param_name, param_data, params,
             boundaries = []
         if all_dff:
             draw_heatmap(ax_dff_heat, np.array(all_dff), time_array,
-                          "coolwarm", "ΔF/F",
+                          "coolwarm", "ΔF/F", vmin=dff_vmin, vmax=dff_vmax,
                           extra_lines=boundaries[:-1] if boundaries else None)
             ax_dff_heat.set_title(
                 f"{param_name} - Fiber ΔF/F Heatmap {wavelength}nm")
@@ -1406,7 +1460,7 @@ def create_single_param_window(param_name, param_data, params,
             boundaries = []
         if all_zs:
             draw_heatmap(ax_zs_heat, np.array(all_zs), time_array,
-                          "coolwarm", "Z-score",
+                          "coolwarm", "Z-score", vmin=zs_vmin, vmax=zs_vmax,
                           extra_lines=boundaries[:-1] if boundaries else None)
             ax_zs_heat.set_title(
                 f"{param_name} - Fiber Z-score Heatmap {wavelength}nm")

@@ -526,7 +526,7 @@ def running_data_analysis():
         post_buf                 = bout_vars["post_buffer"].get()
         locomotion_duration      = bout_vars["locomotion_duration"].get()
         move_direction_threshold = bout_vars["move_direction_threshold"].get()
-        only_running             = bool(only_running_var.get())
+        only_running             = only_running_var.get()
         
         processed_data = preprocess_running_data(ast2_data, filter_settings)
         if not processed_data:
@@ -635,7 +635,7 @@ def running_data_analysis():
             post_buf                 = bout_vars["post_buffer"].get()
             locomotion_duration      = bout_vars["locomotion_duration"].get()
             move_direction_threshold = bout_vars["move_direction_threshold"].get()
-            only_running             = bool(only_running_var.get())
+            only_running             = only_running_var.get()
             
             if only_running_var.get():
                 multimodal_menu.entryconfig("Bout Analysis", state="normal")

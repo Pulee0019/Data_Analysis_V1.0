@@ -52,6 +52,7 @@ def running_bout_analysis_classify(running_speed,
     if only_running:
         final_bouts_without_edges = final_bouts
     else:
+        log_message("Excluding bouts at edges for general classification...")
         final_bouts_without_edges = exclude_bout_edges(final_bouts, len(speed))
     
     rest_flag = abs(speed) < threshold
@@ -72,6 +73,7 @@ def running_bout_analysis_classify(running_speed,
         locomotion, reset, jerk, other = running_bout_classify(final_bouts_without_edges, speed, timestamps, general_threshold, pre_locomotion_buffer, post_locomotion_buffer, locomotion_duration, sample_rate)
     
     if not only_running:
+        log_message("Excluding bouts at edges for locomotion, reset, jerk, other, and rest classifications...")
         locomotion = exclude_bout_edges(locomotion, len(speed))
         reset = exclude_bout_edges(reset, len(speed))
         jerk = exclude_bout_edges(jerk, len(speed))

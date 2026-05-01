@@ -46,13 +46,18 @@ def get_events_from_bouts(animal_data, event_type, duration=False):
         event_kind = 'onset'
         bout_direction = bout_direction_with_type.split('_')[-1]  # Extract direction (e.g., 'forward' or 'backward')
         bout_type = bout_direction_with_type.replace(f"_{bout_direction}", '_bouts')  # Get bout type (e.g., 'general_bouts')
+        if duration:
+            event_kind = 'duration'
         
     elif event_type.endswith('_offsets'):
         bout_direction_with_type = event_type.replace('_offsets', '')
         bout_direction = bout_direction_with_type.split('_')[-1]  # Extract direction (e.g., 'forward' or 'backward')
         bout_type = bout_direction_with_type.replace(f"_{bout_direction}", '_bouts')  # Get bout type (e.g., 'general_bouts')
         event_kind = 'offset'
-    elif duration:
+        if duration:
+            event_kind = 'duration'
+        
+    else:
         event_kind = 'duration'
         bout_direction = event_type.split('_')[-1]  # Extract direction (e.g., 'forward' or 'backward')
         bout_type = event_type.replace(f"_{bout_direction}", '_bouts')  # Get bout type (e.g., 'general_bouts')
@@ -381,6 +386,9 @@ def calculate_running_episodes(events, running_timestamps, running_speed,
     # Running episodes
     running_episodes = []
     for event in events:
+        if event - plot_pre < running_timestamps[0] or event + plot_post > running_timestamps[-1]:
+            log_message(f"Event at {event:.2f}s is too close to the edge of running data and will be skipped", "WARNING")
+            continue
         start_idx = np.argmin(np.abs(running_timestamps - (event - plot_pre)))
         end_idx = np.argmin(np.abs(running_timestamps - (event + plot_post)))
         
@@ -409,6 +417,9 @@ def calculate_running_episodes(events, running_timestamps, running_speed,
                     data = data.values
                 
                 for event in events:
+                    if event - plot_pre < fiber_timestamps[0] or event + plot_post > fiber_timestamps[-1]:
+                        log_message(f"Event at {event:.2f}s is too close to the edge of fiber data and will be skipped", "WARNING")
+                        continue
                     # Calculate baseline statistics from custom window
                     baseline_start_time = event + baseline_start
                     baseline_end_time = event + baseline_end
@@ -955,18 +966,18 @@ def embed_figure(parent_frame, fig, row_in_frame):
     return canvas
  
 def draw_heatmap(ax, episodes_array, time_array, cmap, label,
-                  extra_lines=None):
+                  extra_lines=None, vmin=None, vmax=None):
     n = len(episodes_array)
     if n == 1:
         plot_arr = np.vstack([episodes_array[0], episodes_array[0]])
         im = ax.imshow(plot_arr, aspect="auto", interpolation="nearest",
                        extent=[time_array[0], time_array[-1], 0, 1],
-                       cmap=cmap, origin="lower")
+                       cmap=cmap, origin="lower", vmin=vmin, vmax=vmax)
         ax.set_yticks(np.arange(0, 2, 1))
     else:
         im = ax.imshow(episodes_array, aspect="auto", interpolation="nearest",
                        extent=[time_array[0], time_array[-1], 0, n],
-                       cmap=cmap, origin="lower")
+                       cmap=cmap, origin="lower", vmin=vmin, vmax=vmax)
         if n <= 10:
             ax.set_yticks(np.arange(0, n + 1, 1))
     ax.axvline(x=0, color="#FF0000", linestyle="--", alpha=0.8)

@@ -104,6 +104,9 @@ def show_bout_analysis(root, multi_animal_data, analysis_mode="running"):
         'show_stats_window': True,
         'stats_start': "start",
         'stats_end': "end",
+        'show_plot_window': True,
+        'plot_start': 0,
+        'plot_end': 0,
         'show_bout_type': True,
         'bout_types': available_bout_types,
         'show_bout_directions': True,
@@ -123,7 +126,7 @@ def show_bout_analysis(root, multi_animal_data, analysis_mode="running"):
     table_manager = TableManager(root, table_frame, btn_frame, multi_animal_data, analysis_mode)
         
     def run_analysis():
-        params = get_parameters_from_ui(param_frame, require_statistics_window=True, require_bout_type=True, require_bout_direction=True)
+        params = get_parameters_from_ui(param_frame, require_plot_window=True,require_statistics_window=True, require_bout_type=True, require_bout_direction=True)
         if params:
             # Add full_event_type
             params['full_event_type'] = f"{params['bout_type'].replace('_bouts', '')}_{params['bout_direction']}"
@@ -454,7 +457,7 @@ def analyze_row_running_bouts(row_name, animals, params):
                     event_speeds = running_speed[(running_timestamps >= event_start) & (running_timestamps <= event_end)]
                     speed_timestamps = running_timestamps[(running_timestamps >= event_start) & (running_timestamps <= event_end)]
                     if current_experiment_mode != EXPERIMENT_MODE_AST2:
-                        bout_dffs, bout_zscores, event_fiber_timestamps = extract_bout_duration_fiber(fiber_timestamps, dff_data, active_channels, target_wavelengths, event_start, event_end)
+                        bout_dffs, bout_zscores, event_fiber_timestamps = extract_bout_duration_fiber(fiber_timestamps, dff_data, active_channels, target_wavelengths, params['plot_pre'], params['plot_post'], event_start, event_end)
                         
                     if len(event_speeds) == 0:
                         continue
@@ -678,10 +681,18 @@ def analyze_row_running_drug_bout(animals, params, row_name):
             for category, cat_events in event_categories.items():
                 for event in cat_events:
                     event_start, event_end = event
-                    event_speeds = running_speed[(running_timestamps >= event_start) & (running_timestamps <= event_end)]
-                    speed_timestamps = running_timestamps[(running_timestamps >= event_start) & (running_timestamps <= event_end)]
+                    if event_start - params['plot_pre'] <= running_timestamps[0]:
+                        event_speeds = running_speed[(running_timestamps >= running_timestamps[0]) & (running_timestamps <= event_end + params['plot_post'])]
+                        speed_timestamps = running_timestamps[(running_timestamps >= running_timestamps[0]) & (running_timestamps <= event_end + params['plot_post'])]
+                    elif event_end + params['plot_post'] >= running_timestamps[-1]:
+                        event_speeds = running_speed[(running_timestamps >= event_start - params['plot_pre']) & (running_timestamps <= running_timestamps[-1])]
+                        speed_timestamps = running_timestamps[(running_timestamps >= event_start - params['plot_pre']) & (running_timestamps <= running_timestamps[-1])]
+                    else:
+                        event_speeds = running_speed[(running_timestamps >= event_start - params['plot_pre']) & (running_timestamps <= event_end + params['plot_post'])]
+                        speed_timestamps = running_timestamps[(running_timestamps >= event_start - params['plot_pre']) & (running_timestamps <= event_end + params['plot_post'])]
+                        
                     if current_experiment_mode != EXPERIMENT_MODE_AST2:
-                        bout_dffs, bout_zscores, event_fiber_timestamps = extract_bout_duration_fiber(fiber_timestamps, dff_data, active_channels, target_wavelengths, event_start, event_end)
+                        bout_dffs, bout_zscores, event_fiber_timestamps = extract_bout_duration_fiber(fiber_timestamps, dff_data, active_channels, target_wavelengths, params['plot_pre'], params['plot_post'], event_start, event_end)
                     if len(event_speeds) == 0:
                         continue
                     bout_duration = event_end - event_start
@@ -719,7 +730,16 @@ def plot_running_bout_speed_distribution(results, params, event_type):
     """Plot speed histogram distribution for all bouts in different rows"""
     if event_type == 'running_only_bout_analysis':
         for row_name, row_result in results.items():
-            all_bout_speeds = np.concatenate([res['bout_speeds'] for res in row_result if 'bout_speeds' in res])
+            all_bout_speeds = []
+            for res in row_result:
+                if 'bout_speeds' in res:
+                    bout_start = res['bout_start']
+                    bout_end = res['bout_end']
+                    mask = (res['speed_timestamps'] >= bout_start) & (res['speed_timestamps'] <= bout_end)
+                    bout_speeds = res['bout_speeds'][mask]
+                    all_bout_speeds.append(bout_speeds)
+                    
+            all_bout_speeds = np.concatenate(all_bout_speeds)
             ax = plt.figure(figsize=(9, 6)).add_subplot(1, 1, 1)
             N, bins, patches = ax.hist(all_bout_speeds, bins=30, alpha=1, density=True)
             fracs = N / N.max()
@@ -739,7 +759,15 @@ def plot_running_bout_speed_distribution(results, params, event_type):
             colors_list = plt.cm.tab10.colors  # Get a list of 10 distinct colors
             i = 1
             for category, cat_results in category_data.items():
-                all_bout_speeds = np.concatenate([res['bout_speeds'] for res in cat_results if 'bout_speeds' in res])
+                all_bout_speeds = []
+                for res in cat_results:
+                    if 'bout_speeds' in res:
+                        bout_start = res['bout_start']
+                        bout_end = res['bout_end']
+                        mask = (res['speed_timestamps'] >= bout_start) & (res['speed_timestamps'] <= bout_end)
+                        bout_speeds = res['bout_speeds'][mask]
+                        all_bout_speeds.append(bout_speeds)
+                all_bout_speeds = np.concatenate(all_bout_speeds)
                 if len(all_bout_speeds) == 0:
                     continue
                 N, bins, patches = ax.hist(all_bout_speeds, bins=30, alpha=0.5, density=True, label=category, color=colors_list[i % len(colors_list)])
@@ -823,7 +851,7 @@ def export_running_bout_results_and_stats(results, params, event_type):
     
     log_message(f"Running bout analysis statistics saved to {save_path2}")
     
-def extract_bout_duration_fiber(fiber_timestamps, dff_data, active_channels, target_wavelengths, event_start, event_end):
+def extract_bout_duration_fiber(fiber_timestamps, dff_data, active_channels, target_wavelengths, plot_pre, plot_post, event_start, event_end):
     """Extract fiber data during the bout duration, return a dict with different wavelengths as keys and fiber data as values"""
     wavelength_dffs = {}
     wavelength_zscores = {}
@@ -834,10 +862,15 @@ def extract_bout_duration_fiber(fiber_timestamps, dff_data, active_channels, tar
                 data = dff_data[dff_key]
                 if isinstance(data, pd.Series):
                     data = data.values
-                dff = data[(fiber_timestamps >= event_start) & (fiber_timestamps <= event_end)]
-                basal_dff = data[(fiber_timestamps >= event_start - 0.5) & (fiber_timestamps < event_start)]
-                if len(basal_dff) == 0:
-                    basal_dff = data[(fiber_timestamps > event_end) & (fiber_timestamps <= event_end + 0.5)]
+                if event_start - plot_pre <= fiber_timestamps[0]:
+                    dff = data[(fiber_timestamps >= fiber_timestamps[0]) & (fiber_timestamps <= event_end + plot_post)]
+                    basal_dff = data[(fiber_timestamps >= event_end) & (fiber_timestamps < event_end + plot_post)]
+                elif event_end + plot_post >= fiber_timestamps[-1]:
+                    dff = data[(fiber_timestamps >= event_start - plot_pre) & (fiber_timestamps <= fiber_timestamps[-1])]
+                    basal_dff = data[(fiber_timestamps > event_start - plot_pre) & (fiber_timestamps <= event_start)]
+                else:
+                    dff = data[(fiber_timestamps >= event_start - plot_pre) & (fiber_timestamps <= event_end + plot_post)]
+                    basal_dff = data[(fiber_timestamps >= event_start - plot_pre) & (fiber_timestamps < event_start)]
                     
                 if np.std(basal_dff) != 0:
                     zscore = (dff - np.mean(basal_dff))/np.std(basal_dff)
@@ -846,4 +879,4 @@ def extract_bout_duration_fiber(fiber_timestamps, dff_data, active_channels, tar
                 wavelength_dffs[wavelength] = dff
                 wavelength_zscores[wavelength] = zscore
     
-    return wavelength_dffs, wavelength_zscores, fiber_timestamps[(fiber_timestamps >= event_start) & (fiber_timestamps <= event_end)]
+    return wavelength_dffs, wavelength_zscores, fiber_timestamps[(fiber_timestamps >= event_start - plot_pre) & (fiber_timestamps <= event_end + plot_post)]

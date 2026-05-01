@@ -417,7 +417,7 @@ def show_channel_selection_dialog():
     """Modified to show each channel as a separate row with its own settings"""
     dialog = tk.Toplevel(root)
     dialog.title("Configure Single-Channel Settings")
-    dialog.geometry("600x340")
+    dialog.geometry("650x340")
     dialog.transient(root)
     dialog.grab_set()
     
@@ -455,7 +455,7 @@ def show_channel_selection_dialog():
     header_frame.pack(fill="x", padx=5, pady=5)
     
     ttk.Label(header_frame, text="Enable", width=11, font=("Arial", 9, "bold")).grid(row=0, column=0, padx=2)
-    ttk.Label(header_frame, text="Animal ID-Channel ID", width=25, font=("Arial", 9, "bold")).grid(row=0, column=1, padx=2)
+    ttk.Label(header_frame, text="Animal ID-Channel ID", width=35, font=("Arial", 9, "bold")).grid(row=0, column=1, padx=2)
     if current_experiment_mode != EXPERIMENT_MODE_FIBER:
         ttk.Label(header_frame, text="Running Ch", width=13, font=("Arial", 9, "bold")).grid(row=0, column=2, padx=2)
         ttk.Label(header_frame, text="Invert", width=10, font=("Arial", 9, "bold")).grid(row=0, column=3, padx=2)
@@ -477,7 +477,7 @@ def show_channel_selection_dialog():
         ttk.Checkbutton(row_frame, variable=enable_var, width=8).grid(row=0, column=0, padx=2)
         
         # Animal-Channel ID label
-        ttk.Label(row_frame, text=animal_single_channel_id, width=25).grid(row=0, column=1, padx=2)
+        ttk.Label(row_frame, text=animal_single_channel_id, width=35).grid(row=0, column=1, padx=2)
         
         if current_experiment_mode != EXPERIMENT_MODE_FIBER:
             # Running channel selection

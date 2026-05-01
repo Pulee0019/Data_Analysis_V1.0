@@ -721,6 +721,7 @@ def plot_drug_induced_results(results, params):
         column_idx = [1, 2, 3, 4, 5, 6] if current_experiment_mode != EXPERIMENT_MODE_FIBER else [1, 1, 2, 3, 3, 4]
         # Row 1: Traces
         if current_experiment_mode != EXPERIMENT_MODE_FIBER:
+            run_vmin, run_vmax = None, None
             ax_run = fig.add_subplot(2, NUM_COLS, column_idx[0])
             for idx, (row_name, data) in enumerate(results.items()):
                 row_color = ROW_COLORS[idx % len(ROW_COLORS)]
@@ -731,6 +732,12 @@ def plot_drug_induced_results(results, params):
                         arr = arr[np.newaxis, :]
                     mean = np.nanmean(arr, axis=0)
                     sem = np.nanstd(arr, axis=0) / np.sqrt(arr.shape[0])
+                    if run_vmin is None and run_vmax is None:
+                        run_vmin = np.min(mean - sem)
+                        run_vmax = np.max(mean + sem)
+                    else:
+                        run_vmin = min(run_vmin, np.min(mean - sem))
+                        run_vmax = max(run_vmax, np.max(mean + sem))
                     ax_run.plot(time_array, mean, color=row_color,
                                 linewidth=2, label=row_name)
                     ax_run.fill_between(time_array, mean - sem, mean + sem,
@@ -744,6 +751,8 @@ def plot_drug_induced_results(results, params):
             ax_run.legend(fontsize=7)
             ax_run.grid(False)
 
+        
+        dff_vmin, dff_vmax = None, None
         ax_dff = fig.add_subplot(2, NUM_COLS, column_idx[1])
         for idx, (row_name, data) in enumerate(results.items()):
             row_color = ROW_COLORS[idx % len(ROW_COLORS)]
@@ -754,6 +763,12 @@ def plot_drug_induced_results(results, params):
                     arr = arr[np.newaxis, :]
                 mean = np.nanmean(arr, axis=0)
                 sem = np.nanstd(arr, axis=0) / np.sqrt(arr.shape[0])
+                if dff_vmin is None and dff_vmax is None:
+                    dff_vmin = np.min(mean - sem)
+                    dff_vmax = np.max(mean + sem)
+                else:
+                    dff_vmin = min(dff_vmin, np.min(mean - sem))
+                    dff_vmax = max(dff_vmax, np.max(mean + sem))
                 ax_dff.plot(time_array, mean, color=row_color,
                             linewidth=2, label=row_name)
                 ax_dff.fill_between(time_array, mean - sem, mean + sem,
@@ -767,6 +782,7 @@ def plot_drug_induced_results(results, params):
         ax_dff.legend(fontsize=7)
         ax_dff.grid(False)
 
+        zs_vmin, zs_vmax = None, None
         ax_zs = fig.add_subplot(2, NUM_COLS, column_idx[2])
         for idx, (row_name, data) in enumerate(results.items()):
             row_color = ROW_COLORS[idx % len(ROW_COLORS)]
@@ -777,6 +793,12 @@ def plot_drug_induced_results(results, params):
                     arr = arr[np.newaxis, :]
                 mean = np.nanmean(arr, axis=0)
                 sem = np.nanstd(arr, axis=0) / np.sqrt(arr.shape[0])
+                if zs_vmin is None and zs_vmax is None:
+                    zs_vmin = np.min(mean - sem)
+                    zs_vmax = np.max(mean + sem)
+                else:
+                    zs_vmin = min(zs_vmin, np.min(mean - sem))
+                    zs_vmax = max(zs_vmax, np.max(mean + sem))
                 ax_zs.plot(time_array, mean, color=row_color,
                            linewidth=2, label=row_name)
                 ax_zs.fill_between(time_array, mean - sem, mean + sem,
@@ -806,7 +828,7 @@ def plot_drug_induced_results(results, params):
                     acc += c
                     boundaries.append(acc)
                 draw_heatmap(ax_run_heat, np.array(all_run), time_array,
-                            "viridis", "Speed (cm/s)",
+                            "viridis", "Speed (cm/s)", vmin=run_vmin, vmax=run_vmax,
                             extra_lines=boundaries if boundaries else None)
                 ax_run_heat.set_title("Running Speed Heatmap")
             else:
@@ -831,7 +853,7 @@ def plot_drug_induced_results(results, params):
                 acc += c
                 boundaries.append(acc)
             draw_heatmap(ax_dff_heat, np.array(all_dff), time_array,
-                         "coolwarm", "ΔF/F",
+                         "coolwarm", "ΔF/F", vmin=dff_vmin, vmax=dff_vmax,
                          extra_lines=boundaries if boundaries else None)
             ax_dff_heat.set_title(f"Fiber ΔF/F Heatmap {wavelength}nm")
         else:
@@ -856,7 +878,7 @@ def plot_drug_induced_results(results, params):
                 acc += c
                 boundaries.append(acc)
             draw_heatmap(ax_zs_heat, np.array(all_zs), time_array,
-                         "coolwarm", "Z-score",
+                         "coolwarm", "Z-score", vmin=zs_vmin, vmax=zs_vmax,
                          extra_lines=boundaries if boundaries else None)
             ax_zs_heat.set_title(f"Fiber Z-score Heatmap {wavelength}nm")
         else:
@@ -891,6 +913,7 @@ def create_single_row_window(row_name, data, params):
         column_idx = [1, 2, 3, 4, 5, 6] if current_experiment_mode != EXPERIMENT_MODE_FIBER else [1, 1, 2, 3, 3, 4]
         # Row 1: Traces
         if current_experiment_mode != EXPERIMENT_MODE_FIBER:
+            run_vmin, run_vmax = None, None
             ax_run = fig.add_subplot(2, NUM_COLS, column_idx[0])
             run_episodes = data.get("running", [])
             if len(run_episodes) > 0:
@@ -899,6 +922,12 @@ def create_single_row_window(row_name, data, params):
                     run_arr = run_arr[np.newaxis, :]
                 mean = np.nanmean(run_arr, axis=0)
                 sem = np.nanstd(run_arr, axis=0) / np.sqrt(run_arr.shape[0])
+                if run_vmin is None and run_vmax is None:
+                    run_vmin = np.min(mean - sem)
+                    run_vmax = np.max(mean + sem)
+                else:
+                    run_vmin = min(run_vmin, np.min(mean - sem))
+                    run_vmax = max(run_vmax, np.max(mean + sem))
                 ax_run.plot(time_array, mean, color="#000000", linewidth=2, label="Mean")
                 ax_run.fill_between(time_array, mean - sem, mean + sem,
                                     color="#000000", alpha=0.3)
@@ -917,6 +946,7 @@ def create_single_row_window(row_name, data, params):
                 ax_run.axis("off")
             ax_run.set_title(f"{row_name} - Running Speed")
 
+        dff_vmin, dff_vmax = None, None
         ax_dff = fig.add_subplot(2, NUM_COLS, column_idx[1])
         episodes = data["dff"].get(wavelength, [])
         if len(episodes) > 0:
@@ -925,6 +955,12 @@ def create_single_row_window(row_name, data, params):
                 arr = arr[np.newaxis, :]
             mean = np.nanmean(arr, axis=0)
             sem  = np.nanstd(arr, axis=0) / np.sqrt(arr.shape[0])
+            if dff_vmin is None and dff_vmax is None:
+                dff_vmin = np.min(mean - sem)
+                dff_vmax = np.max(mean + sem)
+            else:
+                dff_vmin = min(dff_vmin, np.min(mean - sem))
+                dff_vmax = max(dff_vmax, np.max(mean + sem))
             ax_dff.plot(time_array, mean, color=color, linewidth=2, label="Mean")
             ax_dff.fill_between(time_array, mean - sem, mean + sem,
                                 color=color, alpha=0.3)
@@ -943,6 +979,8 @@ def create_single_row_window(row_name, data, params):
             ax_dff.axis("off")
         ax_dff.set_title(f"{row_name} - Fiber ΔF/F {wavelength}nm")
 
+        
+        zs_vmin, zs_vmax = None, None
         ax_zs = fig.add_subplot(2, NUM_COLS, column_idx[2])
         episodes = data["zscore"].get(wavelength, [])
         if len(episodes) > 0:
@@ -951,6 +989,12 @@ def create_single_row_window(row_name, data, params):
                 arr = arr[np.newaxis, :]
             mean = np.nanmean(arr, axis=0)
             sem  = np.nanstd(arr, axis=0) / np.sqrt(arr.shape[0])
+            if zs_vmin is None and zs_vmax is None:
+                zs_vmin = np.min(mean - sem)
+                zs_vmax = np.max(mean + sem)
+            else:
+                zs_vmin = min(zs_vmin, np.min(mean - sem))
+                zs_vmax = max(zs_vmax, np.max(mean + sem))
             ax_zs.plot(time_array, mean, color=color, linewidth=2, label="Mean")
             ax_zs.fill_between(time_array, mean - sem, mean + sem,
                                color=color, alpha=0.3)
@@ -974,7 +1018,7 @@ def create_single_row_window(row_name, data, params):
             ax_run_heat = fig.add_subplot(2, NUM_COLS, column_idx[3])
             if len(run_episodes) > 0:
                 draw_heatmap(ax_run_heat, np.array(run_episodes),
-                            time_array, "viridis", "Speed (cm/s)")
+                            time_array, "viridis", "Speed (cm/s)", vmin=run_vmin, vmax=run_vmax)
                 ax_run_heat.set_title(f"{row_name} - Running Speed Heatmap")
             else:
                 ax_run_heat.text(0.5, 0.5, "No running data",
@@ -988,7 +1032,7 @@ def create_single_row_window(row_name, data, params):
         episodes = data["dff"].get(wavelength, [])
         if len(episodes) > 0:
             draw_heatmap(ax_dff_heat, np.array(episodes),
-                          time_array, "coolwarm", "ΔF/F")
+                          time_array, "coolwarm", "ΔF/F", vmin=dff_vmin, vmax=dff_vmax)
             ax_dff_heat.set_title(
                 f"{row_name} - Fiber ΔF/F Heatmap {wavelength}nm")
         else:
@@ -1004,7 +1048,7 @@ def create_single_row_window(row_name, data, params):
         episodes = data["zscore"].get(wavelength, [])
         if len(episodes) > 0:
             draw_heatmap(ax_zs_heat, np.array(episodes),
-                          time_array, "coolwarm", "Z-score")
+                          time_array, "coolwarm", "Z-score", vmin=zs_vmin, vmax=zs_vmax)
             ax_zs_heat.set_title(
                 f"{row_name} - Fiber Z-score Heatmap {wavelength}nm")
         else:
