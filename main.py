@@ -4,6 +4,9 @@ import sys
 import tkinter as tk
 
 try:
+    import workflows
+    print(f"Version: {workflows.__version__}")
+    print(f"Author: {workflows.__author__}")
     from analysis_core.Behavior_analysis import displacement_analysis, position_analysis, x_displacement_analysis
     from analysis_multimodal.Drug_induced_activity_analysis import show_drug_induced_analysis
     from analysis_multimodal.Optogenetic_induced_activity_analysis import show_optogenetic_induced_analysis

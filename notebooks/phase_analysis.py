@@ -1,7 +1,7 @@
 import pickle
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.signal import find_peaks, peak_prominences
+from scipy.signal import find_peaks
 
 data_directory = r"C:\Users\Pulee\Desktop\multi_animal_data_20260427_155431.pickle"
 with open(data_directory, "rb") as f:
