@@ -1065,9 +1065,6 @@ def analyze_row_running_optogenetics(row_name, animals, params, all_optogenetic_
             if not opto_sessions:
                 continue
             
-            # Use first session (assuming one session per animal for simplicity)
-            opto_session = opto_sessions[0]
-            
             # Get running events
             running_events = get_events_from_bouts(animal_data, params['full_event_type'], duration = True)
             if not running_events:
@@ -1076,21 +1073,16 @@ def analyze_row_running_optogenetics(row_name, animals, params, all_optogenetic_
             
             # Categorize running events
             with_opto_events, without_opto_events = get_events_within_optogenetic(
-                opto_session, running_events, params['full_event_type']
+                opto_sessions, running_events, params['full_event_type']
             )
             
             # Get session parameters for unique ID
-            freq, pulse_width, duration = calculate_optogenetic_pulse_info(opto_session, animal_id)
+            freq, pulse_width, duration = calculate_optogenetic_pulse_info(opto_sessions[0], animal_id)
             power = 0
             for param_id, pwr in power_values.items():
                 if param_id.startswith(f"{animal_id}_{freq:.1f}Hz_{pulse_width*1000:.0f}ms_{duration:.1f}s"):
                     power = pwr
                     break
-            
-            # Create unique IDs
-            base_param = create_opto_parameter_string(freq, pulse_width, duration, power)
-            with_opto_id = f"{animal_id}_{base_param}_with_{params['full_event_type']}"
-            without_opto_id = f"{animal_id}_{base_param}_without_{params['full_event_type']}"
             
             # Get data
             ast2_data = animal_data.get('ast2_data_adjusted')
@@ -1140,7 +1132,7 @@ def analyze_row_running_optogenetics(row_name, animals, params, all_optogenetic_
                                     # Add statistics for with-opto events
                                     statistics_rows.append({
                                         'row': row_name,
-                                        'animal_single_channel_id': with_opto_id,
+                                        'animal_single_channel_id': animal_id,
                                         'event_type': params['full_event_type'],
                                         'channel': channel,
                                         'wavelength': wl,
@@ -1177,7 +1169,7 @@ def analyze_row_running_optogenetics(row_name, animals, params, all_optogenetic_
                                     # Add statistics for without-opto events
                                     statistics_rows.append({
                                         'row': row_name,
-                                        'animal_single_channel_id': without_opto_id,
+                                        'animal_single_channel_id': animal_id,
                                         'event_type': params['full_event_type'],
                                         'channel': channel,
                                         'wavelength': wl,
@@ -2529,9 +2521,6 @@ def analyze_row_running_optogenetics_drug(row_name, animals, params,
             if not opto_sessions:
                 continue
             
-            # Use first session
-            opto_session = opto_sessions[0]
-            
             # Get drug sessions
             drug_sessions = identify_drug_sessions(animal_data['fiber_events'])
             
@@ -2580,13 +2569,13 @@ def analyze_row_running_optogenetics_drug(row_name, animals, params,
                 event_categories[category].append((start, end))
                 if category not in all_drug_categories:
                     all_drug_categories.append(category)
-            
+
             log_message(f"{animal_id} all drug categories: {', '.join(all_drug_categories)}")
             
             # For each category, further divide by with/without opto
             for category, category_events in event_categories.items():
                 with_opto, without_opto = get_events_within_optogenetic(
-                    opto_session, category_events, params['full_event_type']
+                    opto_sessions, category_events, params['full_event_type']
                 )
                 
                 # Initialize category storage if needed

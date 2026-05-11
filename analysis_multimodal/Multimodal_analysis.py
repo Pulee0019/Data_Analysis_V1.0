@@ -331,13 +331,13 @@ def get_events_within_optogenetic(session_events, running_events, event_type):
     opto_periods = []
     start_time = None
     
-    for time, ev_type in session_events:
-        if ev_type == 'start' and start_time is None:
-            start_time = time
-        elif ev_type == 'end' and start_time is not None:
-            opto_periods.append((start_time, time))
-            start_time = None
-    
+    for session_event in session_events:
+        for time, ev_type in session_event:
+            if ev_type == 'start' and start_time is None:
+                start_time = time
+            elif ev_type == 'end' and start_time is not None:
+                opto_periods.append((start_time, time))
+                start_time = None
     # Parse event type to get bout type and event kind
     if event_type.endswith('_onsets'):
         bout_direction_with_type = event_type.replace('_onsets', '')
@@ -355,7 +355,7 @@ def get_events_within_optogenetic(session_events, running_events, event_type):
         event_within_opto = False
         
         for opto_start, opto_end in opto_periods:
-            if start <= opto_start <= end and event_kind == 'onset' or start <= opto_end <= end and event_kind == 'offset':
+            if start <= opto_start <= end  or start <= opto_end <= end or (opto_start <= start and opto_end >= end):
                 event_within_opto = True
                 break
         

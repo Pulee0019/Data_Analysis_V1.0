@@ -53,7 +53,11 @@ FTA/
 > You can select experiment type, configure event label, configure drug name and configure optogenetics power in setting.
 > 
 ### 3.1.1 Experiment Type
-> Include running only and full analysis, running only need the fiber photometry data and ast2 data, full analysis need the running only needed data and deeplabcut behaviour tracking data.
+> Include AST2, Fiber, Fiber + AST2 and Fiber + AST2 + DLC mode
+#### AST2 mode only need the ast2 data (xxx.ast2).
+#### Fiber mode only need the fiber photometry data (fluorescence.csv and event.csv).
+#### Fiber + AST2 mode need the fiber photometry data and ast2 data.
+#### Fiber + AST2 + DLC need the fiber photometry data, ast2 data and behaviour video analyzed by deeplabcut.
 > 
 ![experiment type](https://github.com/Pulee0019/Data_Analysis_V1.0/blob/main/imgs/experiment%20type.png)
 ### 3.1.2 Event Configuration
@@ -61,7 +65,7 @@ FTA/
 >
 ![event configuration](https://github.com/Pulee0019/Data_Analysis_V1.0/blob/main/imgs/event%20configuration.png)
 ### 3.1.3 Optogenetic configuration
-> This function will automatically detect the optogenetics sessions and its' parameters exclude power, so you need enter the power of corresponding session after importing data.
+> This function will automatically detect the optogenetics sessions and its' parameters exclude power, so you need enter the power of corresponding session after importing data with optogenetic event immediately.
 >
 ![optogenetics configuration](https://github.com/Pulee0019/Data_Analysis_V1.0/blob/main/imgs/optogenetics%20configuration.png)
 ### 3.1.4 Drug configuration
@@ -99,6 +103,13 @@ Typical directory structure:
             Fluorescence-unaligned.csv
             Outputs.csv
 ```
+### 3.2.3 Show channel selection
+#### For **AST2** mode, the **Animal ID-Channel ID** display the running single channel id, you can configure the **Enable** to activate/deativate target channel, **Running Ch** should change to same as channel id, **Invert** to get opposite speed and diameter to compute running speed.
+![show channel selection1](https://github.com/Pulee0019/Data_Analysis_V1.0/blob/main/imgs/show%20channel%20selection1.png)
+#### For **Fiber** mode, the **Animal ID-Channel ID** display the fiber single channel id, you can configure the **Enable** to activate/deativate target channel.
+![show channel selection2](https://github.com/Pulee0019/Data_Analysis_V1.0/blob/main/imgs/show%20channel%20selection2.png)
+#### For **Fiber + AST2** and **Fiber + AST2 + DLC** mode, the **Animal ID-Channel ID** display the fiber single channel id, you can configure the **Enable** to activate/deativate target channel, **Running Ch** should change to same as channel id, **Invert** to get opposite speed and diameter to compute running speed.
+![show channel selection3](https://github.com/Pulee0019/Data_Analysis_V1.0/blob/main/imgs/show%20channel%20selection3.png)
 ## 3.3 Analysis
 > Include Running Data Analysis, Fiber Data Preprocessing, Fiber Data Analysis and Behaviour Analysis (Only activate in full analysis).
 > 
@@ -167,7 +178,7 @@ Typical directory structure:
 ### 3.4.4 Bout Analysis
 > Include Running and Running+Drug. Running is used when compare different days/drug admininstration in different recordings. Running+Drug is used when compare drug effect on running in single recordings.
 
-> Different from multimodal analysis described above, the plot window can enter a string (such as start, end, start+1000, end-1000), to acquire same window length for the bout statistic of duration, peak and mean. Also for the histgram disturbution of bout speed.
+> Different from multimodal analysis described above, the statistics window can enter a string (such as start, end, start+1000, end-1000), to acquire same window length for the bout statistic of duration, peak and mean. Also for the histgram disturbution of bout speed.
 
 ![bout analysis1](https://github.com/Pulee0019/Data_Analysis_V1.0/blob/main/imgs/bout%20analysis1.png)
 > Click the menu, the window of animal assignment and parameter setting will pop up.
