@@ -1180,6 +1180,32 @@ class FiberVisualizationWindow:
                         all_time_data.extend(time_data)
                         all_value_data.extend(data_source[baseline_col].values)
                         has_plotted_data = True
+                        
+                # Plot 410nm reference
+                ref_410 = channel_data[channel_num].get('410')
+                if ref_410 and ref_410 in fiber_data.columns:
+                    self.ax.plot(time_data, fiber_data[ref_410], 
+                            color=wavelength_colors['410']['main'], alpha=0.5, 
+                            linewidth=1.0, linestyle='--', label=f'CH{channel_num} 410nm (ref)')
+                    all_time_data.extend(time_data)
+                    all_value_data.extend(fiber_data[ref_410].values)
+                    
+                # Plot fitted baseline curve
+                baseline_pred_ref_col = f"CH{channel_num}_410_baseline_pred"
+                if baseline_pred_ref_col in data_source.columns:
+                    self.ax.plot(time_data, data_source[baseline_pred_ref_col], 
+                            color=wavelength_colors['410']['main'], alpha=0.5, linewidth=1.0, 
+                            linestyle='--', label=f'CH{channel_num} 410nm Baseline Fit')
+                
+                # Plot baseline corrected data
+                baseline_ref_col = f"CH{channel_num}_410_baseline_corrected"
+                if baseline_ref_col in data_source.columns:
+                    self.ax.plot(time_data, data_source[baseline_ref_col], 
+                            color=wavelength_colors['410']['main'], alpha=0.5, linewidth=1.0, 
+                            linestyle='-', label=f'CH{channel_num} 410nm Baseline Corrected')
+                    all_time_data.extend(time_data)
+                    all_value_data.extend(data_source[baseline_ref_col].values)
+                
             
             title_suffix = f" ({target_signal}nm)" if target_signal else ""
             self.ax.set_title(f"Fiber Photometry Data - Baseline Corrected{title_suffix}", fontsize=14, fontweight='bold')
