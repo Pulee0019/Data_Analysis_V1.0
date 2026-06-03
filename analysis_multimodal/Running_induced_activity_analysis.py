@@ -2489,13 +2489,13 @@ def analyze_row_running_optogenetics_drug(row_name, animals, params,
     if not target_wavelengths:
         target_wavelengths = ['470']
     
-    # Load drug name config
+    # Load drug config
     config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'drug_name_config.json')
     if os.path.exists(config_path):
         with open(config_path, 'r') as f:
-            drug_name_config = json.load(f)
+            drug_config = json.load(f)
     else:
-        drug_name_config = {}
+        drug_config = {}
     
     # Collect all unique drug categories
     all_drug_categories = []
@@ -2528,17 +2528,60 @@ def analyze_row_running_optogenetics_drug(row_name, animals, params,
                 log_message(f"No drug events for {animal_id}", "WARNING")
                 continue
             
-            # Get drug names and times
-            drug_infos = []
+            # Get running end time
+            running_end_time = None
+            ast2_data = animal_data.get('ast2_data_adjusted')
+            if ast2_data and 'data' in ast2_data and 'timestamps' in ast2_data['data']:
+                running_end_time = ast2_data['data']['timestamps'][-1]
+                
+            # Get drug information with timing
+            drug_info = []
             for idx, session_info in enumerate(drug_sessions):
                 session_id = f"{animal_id}_Session{idx+1}"
-                drug_info = drug_name_config.get(session_id, f"Drug{idx+1}")
-                drug_name = drug_info['name']
-                drug_time = session_info['time']
-                drug_infos.append({'name': drug_name, 'time': drug_time, 'idx': idx})
+                
+                # Get config for this session
+                if session_id in drug_config:
+                    config = drug_config[session_id]
+                    if isinstance(config, dict):
+                        drug_name = config.get('name', f"Drug{idx+1}")
+                        onset_time = config.get('onset_time', session_info['time'])
+                        offset_time = config.get('offset_time')
+                    else:
+                        # Old format compatibility
+                        drug_name = config
+                        onset_time = session_info['time']
+                        offset_time = None
+                else:
+                    drug_name = f"Drug{idx+1}"
+                    onset_time = session_info['time']
+                    offset_time = None
+                
+                # Calculate default offset if not specified
+                if offset_time is None:
+                    if idx < len(drug_sessions) - 1:
+                        # Next drug's onset time
+                        next_session_id = f"{animal_id}_Session{idx+2}"
+                        if next_session_id in drug_config and isinstance(drug_config[next_session_id], dict):
+                            offset_time = drug_config[next_session_id].get('onset_time', drug_sessions[idx+1]['time'])
+                        else:
+                            offset_time = drug_sessions[idx+1]['time']
+                    else:
+                        # Use running end time
+                        offset_time = running_end_time if running_end_time else onset_time + 10000
+                
+                drug_info.append({
+                    'name': drug_name,
+                    'onset': onset_time,
+                    'offset': offset_time,
+                    'idx': idx
+                })
             
-            # Sort by time
-            drug_infos.sort(key=lambda x: x['time'])
+            # Sort by onset time
+            drug_info.sort(key=lambda x: x['onset'])
+            
+            log_message(f"Animal {animal_id} drug timing:")
+            for d in drug_info:
+                log_message(f"{d['name']}: onset={d['onset']:.1f}s, offset={d['offset']:.1f}s")
             
             # Get running events
             running_events = get_events_from_bouts(animal_data, params['full_event_type'], duration=True)
@@ -2550,18 +2593,24 @@ def analyze_row_running_optogenetics_drug(row_name, animals, params,
             event_categories = {}
             
             for start, end in running_events:
-                # Determine drug category
-                if start < drug_infos[0]['time']:
+                category = 'baseline'
+                
+                # Check if event is before first drug onset
+                if start < drug_info[0]['onset']:
                     category = 'baseline'
                 else:
-                    # Find which drug period
-                    for i in range(len(drug_infos)):
-                        if start >= drug_infos[i]['time']:
+                    # Find which drug period this event belongs to
+                    # Check from latest to earliest drug
+                    for i in range(len(drug_info)):
+                        # Event must be after onset AND before offset
+                        if drug_info[i]['onset'] <= start < drug_info[i]['offset']:
                             if i == 0:
-                                category = drug_infos[i]['name']
+                                # Within first drug period
+                                category = drug_info[0]['name']
                             else:
-                                previous_drugs = ' + '.join([d['name'] for d in drug_infos[:i]])
-                                category = f"{drug_infos[i]['name']} after {previous_drugs}"
+                                # Within later drug period
+                                previous_drugs = ' + '.join([d['name'] for d in drug_info[:i]])
+                                category = f"{drug_info[i]['name']} after {previous_drugs}"
                             break
                 
                 if category not in event_categories:
@@ -3517,16 +3566,16 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
                 continue
             category_data = data[category]
             if 'with_opto' in category_data and category_data['with_opto']['running']['mean'] is not None:
-                alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
-                log_message(f"Plotting {row_name} - {category} - {cat_idx} with alpha {alpha}")
+                # alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
+                # log_message(f"Plotting {row_name} - {category} - {cat_idx} with alpha {alpha}")
                 ax_running.plot(time_array, category_data['with_opto']['running']['mean'],
                               color=ROW_COLORS[cat_idx % len(ROW_COLORS)],
-                              linewidth=2, linestyle='-', alpha=alpha,
+                              linewidth=2, linestyle='-', alpha=1,
                               label=f'{category} +Opto')
                 ax_running.fill_between(time_array,
                                        category_data['with_opto']['running']['mean'] - category_data['with_opto']['running']['sem'],
                                        category_data['with_opto']['running']['mean'] + category_data['with_opto']['running']['sem'],
-                                       color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=alpha*0.3)
+                                       color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=0.3)
                 if with_run_vmin is None and with_run_vmax is None:
                     with_run_vmin = np.nanmin(category_data['with_opto']['running']['mean'] - category_data['with_opto']['running']['sem'])
                     with_run_vmax = np.nanmax(category_data['with_opto']['running']['mean'] + category_data['with_opto']['running']['sem'])
@@ -3534,16 +3583,16 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
                     with_run_vmin = min(with_run_vmin, np.nanmin(category_data['with_opto']['running']['mean'] - category_data['with_opto']['running']['sem']))
                     with_run_vmax = max(with_run_vmax, np.nanmax(category_data['with_opto']['running']['mean'] + category_data['with_opto']['running']['sem']))
             if 'without_opto' in category_data and category_data['without_opto']['running']['mean'] is not None:
-                alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
-                log_message(f"Plotting {row_name} - {category} - {cat_idx} without opto with alpha {alpha}")
+                # alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
+                # log_message(f"Plotting {row_name} - {category} - {cat_idx} without opto with alpha {alpha}")
                 ax_running.plot(time_array, category_data['without_opto']['running']['mean'],
                               color=ROW_COLORS[cat_idx % len(ROW_COLORS)],
-                              linewidth=2, linestyle='-', alpha=alpha,
+                              linewidth=2, linestyle='-', alpha=0.5,
                               label=f'{category} -Opto')
                 ax_running.fill_between(time_array,
                                        category_data['without_opto']['running']['mean'] - category_data['without_opto']['running']['sem'],
                                        category_data['without_opto']['running']['mean'] + category_data['without_opto']['running']['sem'],
-                                       color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=alpha*0.3)
+                                       color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=0.1)
                 if without_run_vmin is None and without_run_vmax is None:
                     without_run_vmin = np.nanmin(category_data['without_opto']['running']['mean'] - category_data['without_opto']['running']['sem'])
                     without_run_vmax = np.nanmax(category_data['without_opto']['running']['mean'] + category_data['without_opto']['running']['sem'])
@@ -3566,16 +3615,16 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
                 continue
             category_data = data[category]
             if 'with_opto' in category_data and wl in category_data['with_opto']['dff']:
-                alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
-                log_message(f"Plotting {row_name} - {category} - {cat_idx} with alpha {alpha}")
+                # alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
+                # log_message(f"Plotting {row_name} - {category} - {cat_idx} with alpha {alpha}")
                 ax_dff.plot(time_array, category_data['with_opto']['dff'][wl]['mean'],
                           color=ROW_COLORS[cat_idx % len(ROW_COLORS)],
-                          linewidth=2, linestyle='-', alpha=alpha,
+                          linewidth=2, linestyle='-', alpha=1,
                           label=f'{category} +Opto')
                 ax_dff.fill_between(time_array,
                                    category_data['with_opto']['dff'][wl]['mean'] - category_data['with_opto']['dff'][wl]['sem'],
                                    category_data['with_opto']['dff'][wl]['mean'] + category_data['with_opto']['dff'][wl]['sem'],
-                                   color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=alpha*0.3)
+                                   color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=0.3)
                 if with_dff_vmin is None and with_dff_vmax is None:
                     with_dff_vmin = np.nanmin(category_data['with_opto']['dff'][wl]['mean'] - category_data['with_opto']['dff'][wl]['sem'])
                     with_dff_vmax = np.nanmax(category_data['with_opto']['dff'][wl]['mean'] + category_data['with_opto']['dff'][wl]['sem'])
@@ -3583,16 +3632,16 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
                     with_dff_vmin = min(with_dff_vmin, np.nanmin(category_data['with_opto']['dff'][wl]['mean'] - category_data['with_opto']['dff'][wl]['sem']))
                     with_dff_vmax = max(with_dff_vmax, np.nanmax(category_data['with_opto']['dff'][wl]['mean'] + category_data['with_opto']['dff'][wl]['sem']))
             if 'without_opto' in category_data and wl in category_data['without_opto']['dff']:
-                alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
-                log_message(f"Plotting {row_name} - {category} - {cat_idx} without opto with alpha {alpha}")
+                # alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
+                # log_message(f"Plotting {row_name} - {category} - {cat_idx} without opto with alpha {alpha}")
                 ax_dff.plot(time_array, category_data['without_opto']['dff'][wl]['mean'],
                           color=ROW_COLORS[cat_idx % len(ROW_COLORS)],
-                          linewidth=2, linestyle='-', alpha=alpha,
+                          linewidth=2, linestyle='-', alpha=0.5,
                           label=f'{category} -Opto')
                 ax_dff.fill_between(time_array,
                                    category_data['without_opto']['dff'][wl]['mean'] - category_data['without_opto']['dff'][wl]['sem'],
                                    category_data['without_opto']['dff'][wl]['mean'] + category_data['without_opto']['dff'][wl]['sem'],
-                                   color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=alpha*0.3)
+                                   color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=0.1)
                 if without_dff_vmin is None and without_dff_vmax is None:
                     without_dff_vmin = np.nanmin(category_data['without_opto']['dff'][wl]['mean'] - category_data['without_opto']['dff'][wl]['sem'])
                     without_dff_vmax = np.nanmax(category_data['without_opto']['dff'][wl]['mean'] + category_data['without_opto']['dff'][wl]['sem'])
@@ -3615,16 +3664,16 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
                 continue
             category_data = data[category]
             if 'with_opto' in category_data and wl in category_data['with_opto']['zscore']:
-                alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
-                log_message(f"Plotting {row_name} - {category} - {cat_idx} with alpha {alpha}")
+                # alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
+                # log_message(f"Plotting {row_name} - {category} - {cat_idx} with alpha {alpha}")
                 ax_zscore.plot(time_array, category_data['with_opto']['zscore'][wl]['mean'],
                              color=ROW_COLORS[cat_idx % len(ROW_COLORS)],
-                             linewidth=2, linestyle='-', alpha=alpha,
+                             linewidth=2, linestyle='-', alpha=1,
                              label=f'{category} +Opto')
                 ax_zscore.fill_between(time_array,
                                       category_data['with_opto']['zscore'][wl]['mean'] - category_data['with_opto']['zscore'][wl]['sem'],
                                       category_data['with_opto']['zscore'][wl]['mean'] + category_data['with_opto']['zscore'][wl]['sem'],
-                                      color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=alpha*0.3)
+                                      color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=0.3)
                 if with_zs_vmin is None and with_zs_vmax is None:
                     with_zs_vmin = np.nanmin(category_data['with_opto']['zscore'][wl]['mean'] - category_data['with_opto']['zscore'][wl]['sem'])
                     with_zs_vmax = np.nanmax(category_data['with_opto']['zscore'][wl]['mean'] + category_data['with_opto']['zscore'][wl]['sem'])
@@ -3632,16 +3681,16 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
                     with_zs_vmin = min(with_zs_vmin, np.nanmin(category_data['with_opto']['zscore'][wl]['mean'] - category_data['with_opto']['zscore'][wl]['sem']))
                     with_zs_vmax = max(with_zs_vmax, np.nanmax(category_data['with_opto']['zscore'][wl]['mean'] + category_data['with_opto']['zscore'][wl]['sem']))
             if 'without_opto' in category_data and wl in category_data['without_opto']['zscore']:
-                alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
-                log_message(f"Plotting {row_name} - {category} - {cat_idx} without opto with alpha {alpha}")
+                # alpha = 1/len(drug_categories) + (1/len(drug_categories) * cat_idx)
+                # log_message(f"Plotting {row_name} - {category} - {cat_idx} without opto with alpha {alpha}")
                 ax_zscore.plot(time_array, category_data['without_opto']['zscore'][wl]['mean'],
                              color=ROW_COLORS[cat_idx % len(ROW_COLORS)],
-                             linewidth=2, linestyle='-', alpha=alpha,
+                             linewidth=2, linestyle='-', alpha=0.5,
                              label=f'{category} -Opto')
                 ax_zscore.fill_between(time_array,
                                       category_data['without_opto']['zscore'][wl]['mean'] - category_data['without_opto']['zscore'][wl]['sem'],
                                       category_data['without_opto']['zscore'][wl]['mean'] + category_data['without_opto']['zscore'][wl]['sem'],
-                                      color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=alpha*0.3)
+                                      color=ROW_COLORS[cat_idx % len(ROW_COLORS)], alpha=0.1)
                 if without_zs_vmin is None and without_zs_vmax is None:
                     without_zs_vmin = np.nanmin(category_data['without_opto']['zscore'][wl]['mean'] - category_data['without_opto']['zscore'][wl]['sem'])
                     without_zs_vmax = np.nanmax(category_data['without_opto']['zscore'][wl]['mean'] + category_data['without_opto']['zscore'][wl]['sem'])
