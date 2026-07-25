@@ -2,6 +2,7 @@ import os
 import signal
 import pickle
 import tkinter as tk
+from tkinter import ttk
 
 from datetime import datetime
 
@@ -17,6 +18,7 @@ import analysis_multimodal.Bout_analysis as bout_analysis
 import analysis_multimodal.Drug_induced_activity_analysis as drug_induced_analysis
 import analysis_multimodal.Optogenetic_induced_activity_analysis as optogenetic_induced_analysis
 import analysis_multimodal.Multimodal_analysis as multimodal_analysis
+import analysis_multimodal.BSOID_analysis as bsoid_analysis
 
 _deps = {}
 
@@ -36,148 +38,6 @@ def setup_log_display():
     set_log_widget(log_text_widget)
     log_message("The log system has been initialized. All messages will be displayed here.", "INFO")
 
-def select_experiment_mode():
-    """Open dialog to select experiment mode"""
-    global current_experiment_mode
-    
-    mode_window = tk.Toplevel(root)
-    mode_window.title("Select Experiment Mode")
-    mode_window.geometry("400x500")
-    mode_window.transient(root)
-    mode_window.grab_set()
-    
-    # Title
-    title_label = tk.Label(mode_window, text="Experiment Mode Selection", 
-                          font=("Arial", 14, "bold"))
-    title_label.pack(pady=20)
-    
-    # Description
-    desc_label = tk.Label(mode_window, 
-                         text="Select the type of data you want to analyze:",
-                         font=("Arial", 10))
-    desc_label.pack(pady=5)
-    
-    # Mode selection frame
-    mode_frame = tk.Frame(mode_window)
-    mode_frame.pack(pady=20)
-    
-    mode_var = tk.StringVar(value=current_experiment_mode)
-    
-    # Mode 1: AST2
-    mode1_radio = tk.Radiobutton(
-        mode_frame,
-        text="AST2",
-        variable=mode_var,
-        value=EXPERIMENT_MODE_AST2,
-        font=("Arial", 10),
-        justify=tk.LEFT
-    )
-    mode1_radio.pack(anchor="w", pady=5)
-
-    mode1_desc = tk.Label(mode_frame, 
-                         text="  • Running wheel data (AST2)",
-                         font=("Arial", 9), fg="gray", justify=tk.LEFT)
-    mode1_desc.pack(anchor="w", padx=20)
-
-    # Mode 2: Fiber
-    mode2_radio = tk.Radiobutton(
-        mode_frame,
-        text="Fiber",
-        variable=mode_var,
-        value=EXPERIMENT_MODE_FIBER,
-        font=("Arial", 10),
-        justify=tk.LEFT
-    )
-    mode2_radio.pack(anchor="w", pady=5)
-    mode2_desc = tk.Label(mode_frame,
-                         text="  • Fiber photometry data",
-                         font=("Arial", 9), fg="gray", justify=tk.LEFT)
-    mode2_desc.pack(anchor="w", padx=20)
-
-    # Mode 3: Fiber + AST2
-    mode3_radio = tk.Radiobutton(
-        mode_frame,
-        text="Fiber + AST2",
-        variable=mode_var,
-        value=EXPERIMENT_MODE_FIBER_AST2,
-        font=("Arial", 10),
-        justify=tk.LEFT
-    )
-    mode3_radio.pack(anchor="w", pady=5)
-    
-    mode3_desc = tk.Label(mode_frame, 
-                         text="  • Fiber photometry data\n  • Running wheel data (AST2)",
-                         font=("Arial", 9), fg="gray", justify=tk.LEFT)
-    mode3_desc.pack(anchor="w", padx=20)
-    
-    # Mode 4: Fiber + AST2 + DLC
-    mode4_radio = tk.Radiobutton(
-        mode_frame,
-        text="Fiber + AST2 + DLC",
-        variable=mode_var,
-        value=EXPERIMENT_MODE_FIBER_AST2_DLC,
-        font=("Arial", 10),
-        justify=tk.LEFT
-    )
-    mode4_radio.pack(anchor="w", pady=(15, 5))
-    
-    mode4_desc = tk.Label(mode_frame, 
-                         text="  • Fiber photometry data\n  • Running wheel data (AST2)\n  • DeepLabCut behavioral tracking",
-                         font=("Arial", 9), fg="gray", justify=tk.LEFT)
-    mode4_desc.pack(anchor="w", padx=20)
-    
-    def apply_mode():
-        global current_experiment_mode
-        new_mode = mode_var.get()
-        
-        # Check if there's existing data
-        if multi_animal_data:
-            response = tk.messagebox.askyesno(
-                "Confirm Mode Change",
-                "Changing experiment mode will clear all loaded data.\nDo you want to continue?"
-            )
-            if not response:
-                return
-            
-            # Clear existing data
-            clear_all()
-        
-        current_experiment_mode = new_mode
-        visualization_windows.bind_window_dependencies(globals())
-        data_workflows.bind_workflow_dependencies(globals())
-        analysis_workflows.bind_analysis_dependencies(globals())
-        bodypart_controller.bind_bodypart_dependencies(globals())
-        view_controller.bind_view_dependencies(globals())
-        bout_analysis.bind_bout_dependencies(globals())
-        bind_settings_dependencies(globals())
-        drug_induced_analysis.bind_drug_induced_dependencies(globals())
-        optogenetic_induced_analysis.bind_optogenetic_induced_dependencies(globals())
-        multimodal_analysis.bind_multimodal_dependencies(globals())
-        
-        # Update UI based on mode
-        update_ui_for_mode()
-        
-        if new_mode == EXPERIMENT_MODE_AST2:
-            log_message("Experiment mode set to: AST2 only", "INFO")
-        elif new_mode == EXPERIMENT_MODE_FIBER_AST2:
-            log_message("Experiment mode set to: Fiber + AST2", "INFO")
-        elif new_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
-             log_message("Experiment mode set to: Fiber + AST2 + DLC", "INFO")
-        
-        mode_window.destroy()
-    
-    # Button frame
-    button_frame = tk.Frame(mode_window)
-    button_frame.pack(pady=10)
-    
-    tk.Button(button_frame, text="Apply", command=apply_mode,
-             bg="#27ae60", fg="white", font=("Arial", 10, "bold"),
-             padx=20, pady=5).pack(side=tk.LEFT, padx=5)
-    
-    tk.Button(button_frame, text="Cancel", command=mode_window.destroy,
-             bg="#95a5a6", fg="white", font=("Arial", 10, "bold"),
-             padx=20, pady=5).pack(side=tk.LEFT, padx=5)
-
 def update_ui_for_mode():
     """Update UI elements based on current experiment mode"""
     global current_experiment_mode
@@ -194,6 +54,8 @@ def update_ui_for_mode():
         multimodal_menu.entryconfig("Bout Analysis", state="normal")
         bout_menu.entryconfig("Running", state="normal")
         bout_menu.entryconfig("Running + Drug", state="disabled")
+        multimodal_menu.entryconfig("BSOID Analysis", state="disabled")
+        bsoid_menu.entryconfig("BSOID", state="disabled")
     elif current_experiment_mode == EXPERIMENT_MODE_FIBER:
         analysis_menu.entryconfig("Behavior Analysis", state="disabled")
         analysis_menu.entryconfig("Running Data Analysis", state="disabled")
@@ -205,6 +67,8 @@ def update_ui_for_mode():
         multimodal_menu.entryconfig("Bout Analysis", state="disabled")
         bout_menu.entryconfig("Running", state="disabled")
         bout_menu.entryconfig("Running + Drug", state="disabled")
+        multimodal_menu.entryconfig("BSOID Analysis", state="disabled")
+        bsoid_menu.entryconfig("BSOID", state="disabled")
     elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
         analysis_menu.entryconfig("Behavior Analysis", state="disabled")
         analysis_menu.entryconfig("Running Data Analysis", state="normal")
@@ -216,6 +80,8 @@ def update_ui_for_mode():
         multimodal_menu.entryconfig("Bout Analysis", state="normal")
         bout_menu.entryconfig("Running", state="normal")
         bout_menu.entryconfig("Running + Drug", state="normal")
+        multimodal_menu.entryconfig("BSOID Analysis", state="disabled")
+        bsoid_menu.entryconfig("BSOID", state="disabled")
     elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
         analysis_menu.entryconfig("Behavior Analysis", state="disabled")
         analysis_menu.entryconfig("Running Data Analysis", state="normal")
@@ -227,80 +93,21 @@ def update_ui_for_mode():
         multimodal_menu.entryconfig("Bout Analysis", state="normal")
         bout_menu.entryconfig("Running", state="normal")
         bout_menu.entryconfig("Running + Drug", state="normal")
-    
-    # Clear left panel if in Fiber+AST2 mode
-    if current_experiment_mode != EXPERIMENT_MODE_FIBER_AST2_DLC:
-        for widget in left_frame.winfo_children():
-            widget.destroy()
-        
-        info_label = tk.Label(left_frame, 
-                             text="Not Fiber+AST2+DLC Mode\n\nBodypart tracking\nnot available",
-                             bg="#e0e0e0", fg="#666666",
-                             font=("Arial", 10))
-        info_label.pack(pady=50)
-
-def show_event_config_dialog():
-    """Show event configuration dialog"""
-    global event_config
-    
-    dialog = tk.Toplevel(root)
-    dialog.title("Event Configuration")
-    dialog.geometry("400x250")
-    dialog.transient(root)
-    dialog.grab_set()
-    
-    main_frame = tk.Frame(dialog, bg="#f8f8f8", padx=20, pady=20)
-    main_frame.pack(fill=tk.BOTH, expand=True)
-    
-    tk.Label(main_frame, text="Event String Configuration", 
-            font=("Microsoft YaHei", 12, "bold"), bg="#f8f8f8").pack(pady=(0, 20))
-    
-    # Drug event
-    drug_frame = tk.Frame(main_frame, bg="#f8f8f8")
-    drug_frame.pack(fill=tk.X, pady=5)
-    tk.Label(drug_frame, text="Drug Event:", bg="#f8f8f8", 
-            font=("Microsoft YaHei", 10), width=15, anchor='w').pack(side=tk.LEFT)
-    drug_var = tk.StringVar(value=event_config.get('drug_event', 'Event1'))
-    tk.Entry(drug_frame, textvariable=drug_var, 
-            font=("Microsoft YaHei", 10), width=15).pack(side=tk.LEFT, padx=10)
-    
-    # Optogenetic event
-    opto_frame = tk.Frame(main_frame, bg="#f8f8f8")
-    opto_frame.pack(fill=tk.X, pady=5)
-    tk.Label(opto_frame, text="Optogenetic Event:", bg="#f8f8f8", 
-            font=("Microsoft YaHei", 10), width=15, anchor='w').pack(side=tk.LEFT)
-    opto_var = tk.StringVar(value=event_config.get('opto_event', 'Input3'))
-    tk.Entry(opto_frame, textvariable=opto_var, 
-            font=("Microsoft YaHei", 10), width=15).pack(side=tk.LEFT, padx=10)
-    
-    # Running start event
-    running_frame = tk.Frame(main_frame, bg="#f8f8f8")
-    running_frame.pack(fill=tk.X, pady=5)
-    tk.Label(running_frame, text="Running Start:", bg="#f8f8f8", 
-            font=("Microsoft YaHei", 10), width=15, anchor='w').pack(side=tk.LEFT)
-    running_var = tk.StringVar(value=event_config.get('running_start', 'Input2'))
-    tk.Entry(running_frame, textvariable=running_var, 
-            font=("Microsoft YaHei", 10), width=15).pack(side=tk.LEFT, padx=10)
-    
-    def apply_config():
-        event_config['drug_event'] = drug_var.get().strip()
-        event_config['opto_event'] = opto_var.get().strip()
-        event_config['running_start'] = running_var.get().strip()
-        save_event_config()
-        log_message("Event configuration saved", "INFO")
-        dialog.destroy()
-    
-    # Buttons
-    btn_frame = tk.Frame(main_frame, bg="#f8f8f8")
-    btn_frame.pack(pady=(20, 0))
-    
-    tk.Button(btn_frame, text="Apply", command=apply_config,
-             bg="#27ae60", fg="white", font=("Microsoft YaHei", 10, "bold"),
-             relief=tk.FLAT, padx=20, pady=5).pack(side=tk.LEFT, padx=5)
-    
-    tk.Button(btn_frame, text="Cancel", command=dialog.destroy,
-             bg="#95a5a6", fg="white", font=("Microsoft YaHei", 10, "bold"),
-             relief=tk.FLAT, padx=20, pady=5).pack(side=tk.LEFT, padx=5)
+        multimodal_menu.entryconfig("BSOID Analysis", state="disabled")
+        bsoid_menu.entryconfig("BSOID", state="disabled")
+    elif current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID:
+        analysis_menu.entryconfig("Behavior Analysis", state="disabled")
+        analysis_menu.entryconfig("Running Data Analysis", state="disabled")
+        analysis_menu.entryconfig("Fiber Data Preprocessing", state="normal")
+        analysis_menu.entryconfig("Fiber Data Analysis", state="normal")
+        multimodal_menu.entryconfig("Running-Induced Activity Analysis", state="disabled")
+        multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="normal")
+        multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="normal")
+        multimodal_menu.entryconfig("Bout Analysis", state="disabled")
+        bout_menu.entryconfig("Running", state="disabled")
+        bout_menu.entryconfig("Running + Drug", state="disabled")
+        multimodal_menu.entryconfig("BSOID Analysis", state="normal")
+        bsoid_menu.entryconfig("BSOID", state="normal")
 
 def show_opto_power_config_dialog():
     """Show optogenetic power configuration dialog"""

@@ -130,8 +130,28 @@ def baseline_correction(animal_data=None, model_type="Polynomial", baseline_poly
                     
                     signal_data = preprocessed_data[signal_col].values
                     
-                    def exp_model(t, a, b, c):
+                    def single_exponential(t, a, b, c):
+                        """Compute a single exponential function with constant offset.
+                        Parameters:
+                            t: Time vector in seconds.
+                            a: Amplitude of the exponential component.
+                            b: Decay constant.
+                            c: Constant offset.
+                        """
                         return a * np.exp(-b * t) + c
+                    
+                    def double_exponential(t, const, amp_fast, amp_slow, tau_slow, tau_multiplier):
+                        '''Compute a double exponential function with constant offset.
+                        Parameters:
+                        t       : Time vector in seconds.
+                        const   : Amplitude of the constant offset. 
+                        amp_fast: Amplitude of the fast component.  
+                        amp_slow: Amplitude of the slow component.  
+                        tau_slow: Time constant of slow component in seconds.
+                        tau_multiplier: Time constant of fast component relative to slow. 
+                        '''
+                        tau_fast = tau_slow*tau_multiplier
+                        return const+amp_slow*np.exp(-t/tau_slow)+amp_fast*np.exp(-t/tau_fast)
                     
                     events_col = channels.get('events')
                     if events_col and events_col in fiber_data.columns:
@@ -155,15 +175,28 @@ def baseline_correction(animal_data=None, model_type="Polynomial", baseline_poly
                     else:
                         baseline_mask = np.ones_like(time_data, dtype=bool)
                         
-                    if model_type.lower() == "exponential":
+                    if model_type.lower() == "double exponential":
+                        max_sig = np.max(signal_data)
+                        initial_params = [max_sig/2, max_sig/4, max_sig/4, 3600, 0.1]
+                        bounds = ([0, 0, 0, 600, 0], [max_sig, max_sig, max_sig, 3600, 1])
+                        try:
+                            
+                            params, param_cov = curve_fit(double_exponential, time_data[baseline_mask], signal_data[baseline_mask], p0=initial_params, bounds=bounds, maxfev=5000)
+                            baseline_pred = double_exponential(time_data, *params)
+                        except Exception as e:
+                            log_message(f"Exponential fit failed for CH{channel_num}_{wavelength}: {str(e)}, using polynomial", "INFO")
+                            baseline_mask = np.ones_like(time_data, dtype=bool)
+                            params = np.polyfit(time_data[baseline_mask], signal_data[baseline_mask], baseline_poly_order)
+                            baseline_pred = np.polyval(params, time_data)
+                    elif model_type.lower() == "single exponential":
                         p0 = [
                             np.max(signal_data) - np.min(signal_data),
                             0.01,
                             np.min(signal_data)
                         ]
                         try:
-                            params, _ = curve_fit(exp_model, time_data[baseline_mask], signal_data[baseline_mask], p0=p0, maxfev=5000)
-                            baseline_pred = exp_model(time_data, *params)
+                            params, _ = curve_fit(single_exponential, time_data[baseline_mask], signal_data[baseline_mask], p0=p0, maxfev=5000)
+                            baseline_pred = single_exponential(time_data, *params)
                         except Exception as e:
                             log_message(f"Exponential fit failed for CH{channel_num}_{wavelength}: {str(e)}, using polynomial", "INFO")
                             baseline_mask = np.ones_like(time_data, dtype=bool)

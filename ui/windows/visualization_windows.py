@@ -57,8 +57,8 @@ class BodypartVisualizationWindow:
         self.create_window()
         
     def create_window(self):
-        self.window_frame = tk.Frame(self.parent_frame, bg="#f5f5f5", relief=tk.RAISED, bd=1)
-        self.window_frame.place(x=0, y=0, width=self.window_width, height=self.window_height)
+        self.window_frame = tk.Frame(self.parent_frame, bg="#f5f5f5")
+        self.window_frame.pack(fill=tk.BOTH, expand=True)
         
         self.window_frame.bind("<Button-1>", self.start_move)
         self.window_frame.bind("<B1-Motion>", self.do_move)
@@ -826,11 +826,8 @@ class FiberVisualizationWindow:
         self.create_preprocessing_controls()
         
     def create_window(self):
-        self.window_frame = tk.Frame(self.parent_frame, bg="#f5f5f5", relief=tk.RAISED, bd=1)
-        if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
-            self.window_frame.place(x=800, y=0, width=self.window_width, height=self.window_height)
-        else:
-            self.window_frame.place(x=0, y=0, width=self.window_width, height=self.window_height)
+        self.window_frame = tk.Frame(self.parent_frame, bg="#f5f5f5")
+        self.window_frame.pack(fill=tk.BOTH, expand=True)
         
         self.window_frame.bind("<Button-1>", self.start_move)
         self.window_frame.bind("<B1-Motion>", self.do_move)
@@ -840,12 +837,6 @@ class FiberVisualizationWindow:
         title_frame.pack_propagate(False)
         title_frame.bind("<Button-1>", self.start_move)
         title_frame.bind("<B1-Motion>", self.do_move)
-        
-        title_label = tk.Label(title_frame, text="Fiber Photometry Data", bg="#f5f5f5", fg="#666666", 
-                              font=("Microsoft YaHei", 9))
-        title_label.pack(side=tk.LEFT, padx=10, pady=3)
-        title_label.bind("<Button-1>", self.start_move)
-        title_label.bind("<B1-Motion>", self.do_move)
         
         btn_frame = tk.Frame(title_frame, bg="#f5f5f5")
         btn_frame.pack(side=tk.RIGHT, padx=5, pady=2)
@@ -1507,11 +1498,8 @@ class RunningVisualizationWindow:
         self.update_plot()
         
     def create_window(self):
-        self.window_frame = tk.Frame(self.parent_frame, bg="#f5f5f5", relief=tk.RAISED, bd=1)
-        if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
-            self.window_frame.place(x=800, y=470, width=self.window_width, height=self.window_height)
-        else:
-            self.window_frame.place(x=0, y=470, width=self.window_width, height=self.window_height)
+        self.window_frame = tk.Frame(self.parent_frame, bg="#f5f5f5")
+        self.window_frame.pack(fill=tk.BOTH, expand=True)
 
         self.window_frame.bind("<Button-1>", self.start_move)
         self.window_frame.bind("<B1-Motion>", self.do_move)
@@ -1521,12 +1509,6 @@ class RunningVisualizationWindow:
         title_frame.pack_propagate(False)
         title_frame.bind("<Button-1>", self.start_move)
         title_frame.bind("<B1-Motion>", self.do_move)
-        
-        title_label = tk.Label(title_frame, text="Threadmill Data", bg="#f5f5f5", fg="#666666", 
-                              font=("Microsoft YaHei", 9))
-        title_label.pack(side=tk.LEFT, padx=10, pady=3)
-        title_label.bind("<Button-1>", self.start_move)
-        title_label.bind("<B1-Motion>", self.do_move)
         
         btn_frame = tk.Frame(title_frame, bg="#f5f5f5")
         btn_frame.pack(side=tk.RIGHT, padx=5, pady=2)

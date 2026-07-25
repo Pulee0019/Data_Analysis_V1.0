@@ -14,10 +14,11 @@ from analysis_multimodal.Multimodal_analysis import (
     identify_drug_sessions, calculate_optogenetic_pulse_info, get_events_within_optogenetic, 
     create_opto_parameter_string, group_optogenetic_sessions, create_parameter_panel, 
     get_parameters_from_ui, FIBER_COLORS, ROW_COLORS,
-    make_scrollable_window, make_figure, draw_heatmap, embed_figure
+    make_scrollable_window, make_figure, draw_heatmap, embed_figure,
+    show_plot_controller
 )
 
-NUM_COLS = 3     # Running: speed | ΔF/F | Z-score
+NUM_COLS = 3     # Running: speed | Δ(ΔF/F) | Z-score
 
 def show_running_induced_analysis(root, multi_animal_data, analysis_mode="running"):
     """
@@ -625,7 +626,10 @@ def run_running_only_analysis(row_data, params):
         export_results(results, all_statistics, "running_induced", params['full_event_type'])
     
     if results:
-        plot_running_results(results, params)
+        all_figures = []
+        all_figures.extend(plot_running_results(results, params))
+        all_figures.extend(create_individual_row_windows_running(results, params))
+        show_plot_controller(all_figures)
         log_message("Analysis completed successfully")
     else:
         log_message("No valid results", "ERROR")
@@ -650,7 +654,10 @@ def run_running_drug_analysis(row_data, params):
         export_results(results, all_statistics, "running_drug_induced", params['full_event_type'])
     
     if results:
-        plot_running_drug_results(results, params)
+        all_figures = []
+        all_figures.extend(plot_running_drug_results(results, params))
+        all_figures.extend(create_individual_row_windows_running_drug(results, params))
+        show_plot_controller(all_figures)
         log_message("Analysis completed successfully")
     else:
         log_message("No valid results", "ERROR")
@@ -990,6 +997,7 @@ def analyze_row_running_drug(row_name, animals, params):
     for category in list(all_drug_categories):
         if category in category_data:
             result[category] = {
+                'time': time_array,
                 'running': {
                     'episodes': np.array(category_data[category]['running']) if category_data[category]['running'] else np.array([]),
                     'mean': np.nanmean(category_data[category]['running'], axis=0) if category_data[category]['running'] else None,
@@ -1347,16 +1355,16 @@ def plot_running_results(results, params):
     wavelength_label = "+".join(target_wavelengths)
     time_array = list(results.values())[0]["time"]
  
-    win, _, inner = make_scrollable_window(
-        f"Running-Induced Activity - All Rows ({wavelength_label}nm)"
-    )
- 
+    win_title = f"Running-Induced Activity - All Rows ({wavelength_label}nm)"
+    win, _, inner = make_scrollable_window(win_title)
+    collected = []
+
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
         fig = make_figure(NUM_COLS)
         fig.suptitle(f"Wavelength {wl} nm — All Rows",
                      fontsize=12, fontweight="bold")
- 
+
         # Row 1: Traces
         ax_run = fig.add_subplot(2, NUM_COLS, 1)
         for idx, (row_name, data) in enumerate(results.items()):
@@ -1377,7 +1385,7 @@ def plot_running_results(results, params):
         ax_run.set_title("Running Speed - All Rows")
         ax_run.legend(fontsize=7)
         ax_run.grid(False)
- 
+
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
         for idx, (row_name, data) in enumerate(results.items()):
             dc = ROW_COLORS[idx % len(ROW_COLORS)]
@@ -1393,11 +1401,11 @@ def plot_running_results(results, params):
         ax_dff.axvline(x=0, color="#808080", linestyle="--", alpha=0.8)
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel("Time (s)")
-        ax_dff.set_ylabel("ΔF/F")
-        ax_dff.set_title(f"Fiber ΔF/F {wl}nm - All Rows")
+        ax_dff.set_ylabel("Δ(ΔF/F)")
+        ax_dff.set_title(f"Fiber Δ(ΔF/F) {wl}nm - All Rows")
         ax_dff.legend(fontsize=7)
         ax_dff.grid(False)
- 
+
         ax_zs = fig.add_subplot(2, NUM_COLS, 3)
         for idx, (row_name, data) in enumerate(results.items()):
             dc = ROW_COLORS[idx % len(ROW_COLORS)]
@@ -1417,7 +1425,7 @@ def plot_running_results(results, params):
         ax_zs.set_title(f"Fiber Z-score {wl}nm - All Rows")
         ax_zs.legend(fontsize=7)
         ax_zs.grid(False)
- 
+
         # Row 2: Heatmaps
         ax_run_heat = fig.add_subplot(2, NUM_COLS, 4)
         all_run, counts = [], []
@@ -1446,7 +1454,7 @@ def plot_running_results(results, params):
         else:
             ax_run_heat.axis("off")
             ax_run_heat.set_title("Running Speed Heatmap")
- 
+
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         all_dff, counts = [], []
         dff_vmin, dff_vmax = None, None
@@ -1468,13 +1476,13 @@ def plot_running_results(results, params):
                 acc += c
                 boundaries.append(acc)
             draw_heatmap(ax_dff_heat, np.array(all_dff), time_array,
-                          "coolwarm", "ΔF/F",
+                          "coolwarm", "Δ(ΔF/F)",
                           extra_lines=boundaries if boundaries else None, vmin=dff_vmin, vmax=dff_vmax)
-            ax_dff_heat.set_title(f"Fiber ΔF/F Heatmap {wl}nm")
+            ax_dff_heat.set_title(f"Fiber Δ(ΔF/F) Heatmap {wl}nm")
         else:
             ax_dff_heat.axis("off")
-            ax_dff_heat.set_title(f"Fiber ΔF/F Heatmap {wl}nm")
- 
+            ax_dff_heat.set_title(f"Fiber Δ(ΔF/F) Heatmap {wl}nm")
+
         ax_zs_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_zs, counts = [], []
         zs_vmin, zs_vmax = None, None
@@ -1502,17 +1510,19 @@ def plot_running_results(results, params):
         else:
             ax_zs_heat.axis("off")
             ax_zs_heat.set_title(f"Fiber Z-score Heatmap {wl}nm")
- 
+
         fig.tight_layout(rect=[0, 0, 1, 0.96])
-        embed_figure(inner, fig, row_in_frame=wl_idx)
- 
-    create_individual_row_windows_running(results, params)
-    log_message("Running results plotted.")
+        c = embed_figure(inner, fig, row_in_frame=wl_idx)
+        collected.append((fig, c, win_title))
+
+    return collected
 
 def create_individual_row_windows_running(results, params):
     """Create individual windows for each row - running only"""
+    all_figs = []
     for row_name, data in results.items():
-        create_single_row_window_running(row_name, data, params)
+        all_figs.extend(create_single_row_window_running(row_name, data, params))
+    return all_figs
 
 def create_single_row_window_running(row_name, data, params):
     """Create window for a single row — running only."""
@@ -1522,16 +1532,16 @@ def create_single_row_window_running(row_name, data, params):
     target_wavelengths = data.get("target_wavelengths", ["470"])
     time_array = data["time"]
  
-    win, _, inner = make_scrollable_window(
-        f"Running-Induced Activity - {row_name} - {params['full_event_type']}"
-    )
- 
+    win_title = f"Running-Induced Activity - {row_name} - {params['full_event_type']}"
+    win, _, inner = make_scrollable_window(win_title)
+    collected = []
+
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
         fig = make_figure(NUM_COLS)
         fig.suptitle(f"{row_name} — Wavelength {wl} nm",
                      fontsize=12, fontweight="bold")
- 
+
         # Row 1: Traces
         ax_run = fig.add_subplot(2, NUM_COLS, 1)
         if "running" in data and data["running"]["mean"] is not None:
@@ -1551,7 +1561,7 @@ def create_single_row_window_running(row_name, data, params):
             ax_run.grid(False)
         ax_run.set_title(
             f"{row_name} - Running Speed - {params['full_event_type']}")
- 
+
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
         if wl in data["dff"]:
             ax_dff.plot(time_array, data["dff"][wl]["mean"],
@@ -1565,11 +1575,11 @@ def create_single_row_window_running(row_name, data, params):
                            alpha=0.8, label="Event")
             ax_dff.set_xlim(time_array[0], time_array[-1])
             ax_dff.set_xlabel("Time (s)")
-            ax_dff.set_ylabel("ΔF/F")
+            ax_dff.set_ylabel("Δ(ΔF/F)")
             ax_dff.legend()
             ax_dff.grid(False)
-        ax_dff.set_title(f"{row_name} - Fiber ΔF/F {wl}nm")
- 
+        ax_dff.set_title(f"{row_name} - Fiber Δ(ΔF/F) {wl}nm")
+
         ax_zs = fig.add_subplot(2, NUM_COLS, 3)
         if wl in data["zscore"]:
             ax_zs.plot(time_array, data["zscore"][wl]["mean"],
@@ -1587,7 +1597,7 @@ def create_single_row_window_running(row_name, data, params):
             ax_zs.legend()
             ax_zs.grid(False)
         ax_zs.set_title(f"{row_name} - Fiber Z-score {wl}nm")
- 
+
         # Row 2: Heatmaps
         ax_run_heat = fig.add_subplot(2, NUM_COLS, 4)
         if "running" in data and len(data["running"]["episodes"]) > 0:
@@ -1599,18 +1609,18 @@ def create_single_row_window_running(row_name, data, params):
         else:
             ax_run_heat.axis("off")
             ax_run_heat.set_title(f"{row_name} - Running Speed Heatmap")
- 
+
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         if wl in data["dff"]:
             dff_vmin = min(data["dff"][wl]["mean"] - data["dff"][wl]["sem"])
             dff_vmax = max(data["dff"][wl]["mean"] + data["dff"][wl]["sem"])
             draw_heatmap(ax_dff_heat, data["dff"][wl]["episodes"],
-                          time_array, "coolwarm", "ΔF/F", vmin=dff_vmin, vmax=dff_vmax)
-            ax_dff_heat.set_title(f"{row_name} - Fiber ΔF/F Heatmap {wl}nm")
+                          time_array, "coolwarm", "Δ(ΔF/F)", vmin=dff_vmin, vmax=dff_vmax)
+            ax_dff_heat.set_title(f"{row_name} - Fiber Δ(ΔF/F) Heatmap {wl}nm")
         else:
             ax_dff_heat.axis("off")
-            ax_dff_heat.set_title(f"{row_name} - Fiber ΔF/F Heatmap {wl}nm")
- 
+            ax_dff_heat.set_title(f"{row_name} - Fiber Δ(ΔF/F) Heatmap {wl}nm")
+
         ax_zs_heat = fig.add_subplot(2, NUM_COLS, 6)
         if wl in data["zscore"]:
             zs_vmin = min(data["zscore"][wl]["mean"] - data["zscore"][wl]["sem"])
@@ -1621,11 +1631,12 @@ def create_single_row_window_running(row_name, data, params):
         else:
             ax_zs_heat.axis("off")
             ax_zs_heat.set_title(f"{row_name} - Fiber Z-score Heatmap {wl}nm")
- 
+
         fig.tight_layout(rect=[0, 0, 1, 0.96])
-        embed_figure(inner, fig, row_in_frame=wl_idx)
- 
-    log_message(f"Individual row plot created for {row_name}")
+        c = embed_figure(inner, fig, row_in_frame=wl_idx)
+        collected.append((fig, c, win_title))
+
+    return collected
 
 def plot_running_drug_results(results, params):
     """Plot running+drug results with multiple drug categories"""
@@ -1648,15 +1659,15 @@ def plot_running_drug_results(results, params):
                 if category not in all_categories:
                     all_categories.append(category)
  
-    win, _, inner = make_scrollable_window(
-        f"Running+Drug Analysis - {params['full_event_type']}"
-    )
- 
+    win_title = f"Running+Drug Analysis - {params['full_event_type']}"
+    win, _, inner = make_scrollable_window(win_title)
+    collected = []
+
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
         fig = make_figure(NUM_COLS)
         fig.suptitle(f"Wavelength {wl} nm — Running+Drug", fontsize=12, fontweight="bold")
- 
+
         # ── Row 1: Traces ──────────────────────────────────────────────
         ax_running = fig.add_subplot(2, NUM_COLS, 1)
         for idx, (row_name, data) in enumerate(results.items()):
@@ -1683,7 +1694,7 @@ def plot_running_drug_results(results, params):
         ax_running.set_title(f'Running Speed - {params["full_event_type"]}')
         ax_running.legend(fontsize=7, ncol=2)
         ax_running.grid(False)
- 
+
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
         for idx, (row_name, data) in enumerate(results.items()):
             row_color = ROW_COLORS[idx % len(ROW_COLORS)]
@@ -1705,11 +1716,11 @@ def plot_running_drug_results(results, params):
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
-        ax_dff.set_ylabel('ΔF/F')
-        ax_dff.set_title(f'Fiber ΔF/F {wl}nm')
+        ax_dff.set_ylabel('Δ(ΔF/F)')
+        ax_dff.set_title(f'Fiber Δ(ΔF/F) {wl}nm')
         ax_dff.legend(fontsize=7, ncol=2)
         ax_dff.grid(False)
- 
+
         ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
         for idx, (row_name, data) in enumerate(results.items()):
             row_color = ROW_COLORS[idx % len(ROW_COLORS)]
@@ -1735,7 +1746,7 @@ def plot_running_drug_results(results, params):
         ax_zscore.set_title(f'Fiber Z-score {wl}nm')
         ax_zscore.legend(fontsize=7, ncol=2)
         ax_zscore.grid(False)
- 
+
         # ── Row 2: Heatmaps ────────────────────────────────────────────
         ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
         all_running_episodes = []
@@ -1764,7 +1775,7 @@ def plot_running_drug_results(results, params):
         else:
             ax_running_heat.axis('off')
             ax_running_heat.set_title('Running Speed Heatmap')
- 
+
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         all_dff_episodes = []
         category_boundaries = []
@@ -1786,13 +1797,13 @@ def plot_running_drug_results(results, params):
                     category_boundaries.append(len(all_dff_episodes))
         if all_dff_episodes:
             draw_heatmap(ax_dff_heat, np.array(all_dff_episodes), time_array,
-                         'coolwarm', 'ΔF/F', vmin=dff_vmin, vmax=dff_vmax,
+                         'coolwarm', 'Δ(ΔF/F)', vmin=dff_vmin, vmax=dff_vmax,
                          extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
-            ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
+            ax_dff_heat.set_title(f'Fiber Δ(ΔF/F) Heatmap {wl}nm')
         else:
             ax_dff_heat.axis('off')
-            ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
- 
+            ax_dff_heat.set_title(f'Fiber Δ(ΔF/F) Heatmap {wl}nm')
+
         ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_zscore_episodes = []
         category_boundaries = []
@@ -1820,16 +1831,19 @@ def plot_running_drug_results(results, params):
         else:
             ax_zscore_heat.axis('off')
             ax_zscore_heat.set_title(f'Fiber Z-score Heatmap {wl}nm')
- 
+
         fig.tight_layout()
-        embed_figure(inner, fig, row_in_frame=wl_idx)
- 
-    create_individual_row_windows_running_drug(results, params)
+        c = embed_figure(inner, fig, row_in_frame=wl_idx)
+        collected.append((fig, c, win_title))
+
+    return collected
 
 def create_individual_row_windows_running_drug(results, params):
     """Create individual windows for each row - running+drug"""
+    all_figs = []
     for row_name, data in results.items():
-        create_single_row_window_running_drug(row_name, data, params)
+        all_figs.extend(create_single_row_window_running_drug(row_name, data, params))
+    return all_figs
 
 def create_single_row_window_running_drug(row_name, data, params):
     """Create window for a single row - running+drug with multiple categories"""
@@ -1837,16 +1851,16 @@ def create_single_row_window_running_drug(row_name, data, params):
     drug_categories = data.get('drug_categories', [])
     time_array = data['time']
  
-    win, _, inner = make_scrollable_window(
-        f"Running+Drug Analysis - {row_name} - {params['full_event_type']}"
-    )
- 
+    win_title = f"Running+Drug Analysis - {row_name} - {params['full_event_type']}"
+    win, _, inner = make_scrollable_window(win_title)
+    collected = []
+
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
         fig = make_figure(NUM_COLS)
         fig.suptitle(f"{row_name} — Wavelength {wl} nm (Running+Drug)",
                      fontsize=12, fontweight="bold")
- 
+
         # Row 1: Traces
         ax_running = fig.add_subplot(2, NUM_COLS, 1)
         for cat_idx, category in enumerate(drug_categories):
@@ -1872,7 +1886,7 @@ def create_single_row_window_running_drug(row_name, data, params):
         ax_running.set_title(f'{row_name} - Running Speed (Multi-Drug)')
         ax_running.legend(fontsize=8)
         ax_running.grid(False)
- 
+
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
         for cat_idx, category in enumerate(drug_categories):
             if category in data and wl in data[category]['dff']:
@@ -1893,11 +1907,11 @@ def create_single_row_window_running_drug(row_name, data, params):
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
-        ax_dff.set_ylabel('ΔF/F')
-        ax_dff.set_title(f'{row_name} - Fiber ΔF/F {wl}nm (Multi-Drug)')
+        ax_dff.set_ylabel('Δ(ΔF/F)')
+        ax_dff.set_title(f'{row_name} - Fiber Δ(ΔF/F) {wl}nm (Multi-Drug)')
         ax_dff.legend(fontsize=8)
         ax_dff.grid(False)
- 
+
         ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
         for cat_idx, category in enumerate(drug_categories):
             if category in data and wl in data[category]['zscore']:
@@ -1922,7 +1936,7 @@ def create_single_row_window_running_drug(row_name, data, params):
         ax_zscore.set_title(f'{row_name} - Fiber Z-score {wl}nm (Multi-Drug)')
         ax_zscore.legend(fontsize=8)
         ax_zscore.grid(False)
- 
+
         # Row 2: Heatmaps
         ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
         all_running_episodes = []
@@ -1947,7 +1961,7 @@ def create_single_row_window_running_drug(row_name, data, params):
         else:
             ax_running_heat.axis('off')
             ax_running_heat.set_title(f'{row_name} - Running Speed Heatmap (Multi-Drug)')
- 
+
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         all_dff_episodes = []
         category_boundaries = []
@@ -1965,13 +1979,13 @@ def create_single_row_window_running_drug(row_name, data, params):
                     category_boundaries.append(len(all_dff_episodes))
         if all_dff_episodes:
             draw_heatmap(ax_dff_heat, np.array(all_dff_episodes), time_array,
-                         'coolwarm', 'ΔF/F', vmin=dff_vmin, vmax=dff_vmax,
+                         'coolwarm', 'Δ(ΔF/F)', vmin=dff_vmin, vmax=dff_vmax,
                          extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
-            ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm (Multi-Drug)')
+            ax_dff_heat.set_title(f'{row_name} - Fiber Δ(ΔF/F) Heatmap {wl}nm (Multi-Drug)')
         else:
             ax_dff_heat.axis('off')
-            ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm (Multi-Drug)')
- 
+            ax_dff_heat.set_title(f'{row_name} - Fiber Δ(ΔF/F) Heatmap {wl}nm (Multi-Drug)')
+
         ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_zscore_episodes = []
         category_boundaries = []
@@ -1995,11 +2009,12 @@ def create_single_row_window_running_drug(row_name, data, params):
         else:
             ax_zscore_heat.axis('off')
             ax_zscore_heat.set_title(f'{row_name} - Fiber Z-score Heatmap {wl}nm (Multi-Drug)')
- 
+
         fig.tight_layout()
-        embed_figure(inner, fig, row_in_frame=wl_idx)
- 
-    log_message(f"Individual row plot created for {row_name} with {len(drug_categories)} drug categories")
+        c = embed_figure(inner, fig, row_in_frame=wl_idx)
+        collected.append((fig, c, win_title))
+
+    return collected
 
 def plot_running_optogenetics_results(results, params):
     """Plot running+optogenetics results with with/without comparison"""
@@ -2014,16 +2029,16 @@ def plot_running_optogenetics_results(results, params):
     wavelength_label = '+'.join(target_wavelengths)
     time_array = list(results.values())[0]['time']
  
-    win, _, inner = make_scrollable_window(
-        f"Running+Optogenetics Analysis - {params['full_event_type']}"
-    )
- 
+    win_title = f"Running+Optogenetics Analysis - {params['full_event_type']}"
+    win, _, inner = make_scrollable_window(win_title)
+    collected = []
+
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
         fig = make_figure(NUM_COLS)
         fig.suptitle(f"Wavelength {wl} nm — Running+Optogenetics",
                      fontsize=12, fontweight="bold")
- 
+
         # ── Row 1: Traces ──────────────────────────────────────────────
         ax_running = fig.add_subplot(2, NUM_COLS, 1)
         for idx, (row_name, data) in enumerate(results.items()):
@@ -2051,7 +2066,7 @@ def plot_running_optogenetics_results(results, params):
         ax_running.set_title(f'Running Speed - {params["full_event_type"]}')
         ax_running.legend(fontsize=8)
         ax_running.grid(False)
- 
+
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
         for idx, (row_name, data) in enumerate(results.items()):
             row_color = ROW_COLORS[idx % len(ROW_COLORS)]
@@ -2074,11 +2089,11 @@ def plot_running_optogenetics_results(results, params):
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
-        ax_dff.set_ylabel('ΔF/F')
-        ax_dff.set_title(f'Fiber ΔF/F {wl}nm')
+        ax_dff.set_ylabel('Δ(ΔF/F)')
+        ax_dff.set_title(f'Fiber Δ(ΔF/F) {wl}nm')
         ax_dff.legend(fontsize=8)
         ax_dff.grid(False)
- 
+
         ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
         for idx, (row_name, data) in enumerate(results.items()):
             row_color = ROW_COLORS[idx % len(ROW_COLORS)]
@@ -2105,7 +2120,7 @@ def plot_running_optogenetics_results(results, params):
         ax_zscore.set_title(f'Fiber Z-score {wl}nm')
         ax_zscore.legend(fontsize=8)
         ax_zscore.grid(False)
- 
+
         # ── Row 2: Heatmaps ────────────────────────────────────────────
         ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
         all_with_opto = []
@@ -2149,7 +2164,7 @@ def plot_running_optogenetics_results(results, params):
         else:
             ax_running_heat.axis('off')
             ax_running_heat.set_title('Running Speed Heatmap')
- 
+
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         all_with_opto_dff = []
         all_without_opto_dff = []
@@ -2178,21 +2193,21 @@ def plot_running_optogenetics_results(results, params):
             combined_vmin = min(with_opto_dff_vmin, without_opto_dff_vmin) if with_opto_dff_vmin is not None and without_opto_dff_vmin is not None else (with_opto_dff_vmin if with_opto_dff_vmin is not None else without_opto_dff_vmin)
             combined_vmax = max(with_opto_dff_vmax, without_opto_dff_vmax) if with_opto_dff_vmax is not None and without_opto_dff_vmax is not None else (with_opto_dff_vmax if with_opto_dff_vmax is not None else without_opto_dff_vmax)
             draw_heatmap(ax_dff_heat, combined_dff, time_array,
-                         'coolwarm', 'ΔF/F', vmin=combined_vmin, vmax=combined_vmax,
+                         'coolwarm', 'Δ(ΔF/F)', vmin=combined_vmin, vmax=combined_vmax,
                          extra_lines=[n_with] if n_with > 0 and len(combined_dff) > n_with else None)
-            ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
+            ax_dff_heat.set_title(f'Fiber Δ(ΔF/F) Heatmap {wl}nm')
         elif all_with_opto_dff:
             draw_heatmap(ax_dff_heat, np.array(all_with_opto_dff), time_array,
-                         'coolwarm', 'ΔF/F', vmin=with_opto_dff_vmin, vmax=with_opto_dff_vmax)
-            ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
+                         'coolwarm', 'Δ(ΔF/F)', vmin=with_opto_dff_vmin, vmax=with_opto_dff_vmax)
+            ax_dff_heat.set_title(f'Fiber Δ(ΔF/F) Heatmap {wl}nm')
         elif all_without_opto_dff:
             draw_heatmap(ax_dff_heat, np.array(all_without_opto_dff), time_array,
-                         'coolwarm', 'ΔF/F', vmin=without_opto_dff_vmin, vmax=without_opto_dff_vmax)
-            ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
+                         'coolwarm', 'Δ(ΔF/F)', vmin=without_opto_dff_vmin, vmax=without_opto_dff_vmax)
+            ax_dff_heat.set_title(f'Fiber Δ(ΔF/F) Heatmap {wl}nm')
         else:
             ax_dff_heat.axis('off')
-            ax_dff_heat.set_title(f'Fiber ΔF/F Heatmap {wl}nm')
- 
+            ax_dff_heat.set_title(f'Fiber Δ(ΔF/F) Heatmap {wl}nm')
+
         ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_with_opto_zscore = []
         all_without_opto_zscore = []
@@ -2235,32 +2250,35 @@ def plot_running_optogenetics_results(results, params):
         else:
             ax_zscore_heat.axis('off')
             ax_zscore_heat.set_title(f'Fiber Z-score Heatmap {wl}nm')
- 
+
         fig.tight_layout()
-        embed_figure(inner, fig, row_in_frame=wl_idx)
+        c = embed_figure(inner, fig, row_in_frame=wl_idx)
+        collected.append((fig, c, win_title))
         
-    create_individual_row_windows_running_optogenetics(results, params)
+    return collected
 
 def create_individual_row_windows_running_optogenetics(results, params):
     """Create individual windows for each row - running+optogenetics"""
+    all_figs = []
     for row_name, data in results.items():
-        create_single_row_window_running_optogenetics(row_name, data, params)
+        all_figs.extend(create_single_row_window_running_optogenetics(row_name, data, params))
+    return all_figs
 
 def create_single_row_window_running_optogenetics(row_name, data, params):
     """Create window for a single row - running+optogenetics"""
     target_wavelengths = data.get('target_wavelengths', ['470'])
     time_array = data['time']
  
-    win, _, inner = make_scrollable_window(
-        f"Running+Optogenetics Analysis - {row_name} - {params['full_event_type']}"
-    )
- 
+    win_title = f"Running+Optogenetics Analysis - {row_name} - {params['full_event_type']}"
+    win, _, inner = make_scrollable_window(win_title)
+    collected = []
+
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
         fig = make_figure(NUM_COLS)
         fig.suptitle(f"{row_name} — Wavelength {wl} nm (Running+Optogenetics)",
                      fontsize=12, fontweight="bold")
- 
+
         # Row 1: Traces
         ax_running = fig.add_subplot(2, NUM_COLS, 1)
         if data['with_opto']['running']['mean'] is not None:
@@ -2284,7 +2302,7 @@ def create_single_row_window_running_optogenetics(row_name, data, params):
         ax_running.set_title(f'{row_name} - Running Speed')
         ax_running.legend()
         ax_running.grid(False)
- 
+
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
         if wl in data['with_opto']['dff']:
             ax_dff.plot(time_array, data['with_opto']['dff'][wl]['mean'],
@@ -2303,11 +2321,11 @@ def create_single_row_window_running_optogenetics(row_name, data, params):
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
-        ax_dff.set_ylabel('ΔF/F')
-        ax_dff.set_title(f'{row_name} - Fiber ΔF/F {wl}nm')
+        ax_dff.set_ylabel('Δ(ΔF/F)')
+        ax_dff.set_title(f'{row_name} - Fiber Δ(ΔF/F) {wl}nm')
         ax_dff.legend()
         ax_dff.grid(False)
- 
+
         ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
         if wl in data['with_opto']['zscore']:
             ax_zscore.plot(time_array, data['with_opto']['zscore'][wl]['mean'],
@@ -2330,7 +2348,7 @@ def create_single_row_window_running_optogenetics(row_name, data, params):
         ax_zscore.set_title(f'{row_name} - Fiber Z-score {wl}nm')
         ax_zscore.legend()
         ax_zscore.grid(False)
- 
+
         # Row 2: Heatmaps
         ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
         with_run = data['with_opto']['running']['episodes']
@@ -2360,7 +2378,7 @@ def create_single_row_window_running_optogenetics(row_name, data, params):
                                fontsize=12, color='#666666')
             ax_running_heat.set_title(f'{row_name} - Running Speed Heatmap')
             ax_running_heat.axis('off')
- 
+
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         if (wl in data['with_opto']['dff'] and wl in data['without_opto']['dff'] and
                 len(data['with_opto']['dff'][wl]['episodes']) > 0 and
@@ -2375,24 +2393,24 @@ def create_single_row_window_running_optogenetics(row_name, data, params):
             combined_vmax = max(with_opto_dff_vmax, without_opto_dff_vmax) if with_opto_dff_vmax is not None and without_opto_dff_vmax is not None else (with_opto_dff_vmax if with_opto_dff_vmax is not None else without_opto_dff_vmax)
             n_with = len(data['with_opto']['dff'][wl]['episodes'])
             draw_heatmap(ax_dff_heat, combined, time_array,
-                         'coolwarm', 'ΔF/F', vmin=combined_vmin, vmax=combined_vmax,
+                         'coolwarm', 'Δ(ΔF/F)', vmin=combined_vmin, vmax=combined_vmax,
                          extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
-            ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm')
+            ax_dff_heat.set_title(f'{row_name} - Fiber Δ(ΔF/F) Heatmap {wl}nm')
         elif wl in data['with_opto']['dff'] and len(data['with_opto']['dff'][wl]['episodes']) > 0:
             draw_heatmap(ax_dff_heat, data['with_opto']['dff'][wl]['episodes'],
-                         time_array, 'coolwarm', 'ΔF/F', vmin=combined_vmin, vmax=combined_vmax)
-            ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm')
+                         time_array, 'coolwarm', 'Δ(ΔF/F)', vmin=combined_vmin, vmax=combined_vmax)
+            ax_dff_heat.set_title(f'{row_name} - Fiber Δ(ΔF/F) Heatmap {wl}nm')
         elif wl in data['without_opto']['dff'] and len(data['without_opto']['dff'][wl]['episodes']) > 0:
             draw_heatmap(ax_dff_heat, data['without_opto']['dff'][wl]['episodes'],
-                         time_array, 'coolwarm', 'ΔF/F', vmin=combined_vmin, vmax=combined_vmax)
-            ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm')
+                         time_array, 'coolwarm', 'Δ(ΔF/F)', vmin=combined_vmin, vmax=combined_vmax)
+            ax_dff_heat.set_title(f'{row_name} - Fiber Δ(ΔF/F) Heatmap {wl}nm')
         else:
             ax_dff_heat.text(0.5, 0.5, f'No dFF data for {wl}nm',
                            ha='center', va='center', transform=ax_dff_heat.transAxes,
                            fontsize=12, color='#666666')
-            ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm')
+            ax_dff_heat.set_title(f'{row_name} - Fiber Δ(ΔF/F) Heatmap {wl}nm')
             ax_dff_heat.axis('off')
- 
+
         ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         if (wl in data['with_opto']['zscore'] and wl in data['without_opto']['zscore'] and
                 len(data['with_opto']['zscore'][wl]['episodes']) > 0 and
@@ -2424,11 +2442,12 @@ def create_single_row_window_running_optogenetics(row_name, data, params):
                               fontsize=12, color='#666666')
             ax_zscore_heat.set_title(f'{row_name} - Fiber Z-score Heatmap {wl}nm')
             ax_zscore_heat.axis('off')
- 
+
         fig.tight_layout()
-        embed_figure(inner, fig, row_in_frame=wl_idx)
- 
-    log_message(f"Individual row plot created for {row_name} (with/without optogenetics)")
+        c = embed_figure(inner, fig, row_in_frame=wl_idx)
+        collected.append((fig, c, win_title))
+
+    return collected
 
 def run_running_optogenetics_analysis(row_data, params, all_optogenetic_events, 
                                      power_values, all_drug_events, analysis_mode):
@@ -2463,10 +2482,14 @@ def run_running_optogenetics_analysis(row_data, params, all_optogenetic_events,
         export_results(results, all_statistics, export_type, params['full_event_type'])
     
     if results:
+        all_figures = []
         if analysis_mode == "running+optogenetics+drug":
-            plot_running_optogenetics_drug_results(results, params)
+            all_figures.extend(plot_running_optogenetics_drug_results(results, params))
+            all_figures.extend(create_individual_row_windows_running_optogenetics_drug_multi(results, params))
         else:
-            plot_running_optogenetics_results(results, params)
+            all_figures.extend(plot_running_optogenetics_results(results, params))
+            all_figures.extend(create_individual_row_windows_running_optogenetics(results, params))
+        show_plot_controller(all_figures)
         log_message("Analysis completed successfully")
     else:
         log_message("No valid results", "ERROR")
@@ -2867,6 +2890,7 @@ def collect_statistics_with_condition(row_name, animal_id, event_type, result,
 
 def plot_running_optogenetics_drug_results(results, params):
     """Plot running+optogenetics+drug results with multiple drug categories"""
+    all_figures = []
     
     # Get all drug categories
     all_categories = set()
@@ -2878,29 +2902,34 @@ def plot_running_optogenetics_drug_results(results, params):
     # Create comparison windows for each meaningful comparison
     # 1. Within each category: with vs without opto
     for category in all_categories:
-        plot_comparison_window_multi_drug(
-            results, params,
-            category, 'with_opto', 'without_opto',
-            f'{category}: With vs Without Optogenetics',
-            'With Opto', 'Without Opto'
+        all_figures.extend(
+            plot_comparison_window_multi_drug(
+                results, params,
+                category, 'with_opto', 'without_opto',
+                f'{category}: With vs Without Optogenetics',
+                'With Opto', 'Without Opto'
+            )
         )
     
     # 2. With opto across categories
-    plot_comparison_window_multi_drug_categories(
-        results, params, 'with_opto',
-        all_categories,
-        'With Optogenetics: Across Drug Categories'
+    all_figures.extend(
+        plot_comparison_window_multi_drug_categories(
+            results, params, 'with_opto',
+            all_categories,
+            'With Optogenetics: Across Drug Categories'
+        )
     )
     
     # 3. Without opto across categories
-    plot_comparison_window_multi_drug_categories(
-        results, params, 'without_opto',
-        all_categories,
-        'Without Optogenetics: Across Drug Categories'
+    all_figures.extend(
+        plot_comparison_window_multi_drug_categories(
+            results, params, 'without_opto',
+            all_categories,
+            'Without Optogenetics: Across Drug Categories'
+        )
     )
     
-    # Create individual row windows
-    create_individual_row_windows_running_optogenetics_drug_multi(results, params)
+    return all_figures
 
 def plot_comparison_window_multi_drug(results, params, category, condition1_key, condition2_key,
                                       window_title, label1, label2):
@@ -2914,13 +2943,15 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
  
     time_array = list(results.values())[0]['time']
  
-    win, _, inner = make_scrollable_window(f"{window_title} - All Rows")
- 
+    win_title = f"{window_title} - All Rows"
+    win, _, inner = make_scrollable_window(win_title)
+    collected = []
+
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
         fig = make_figure(NUM_COLS)
         fig.suptitle(f"Wavelength {wl} nm — {window_title}", fontsize=11, fontweight="bold")
- 
+
         # Row 1: Traces
         run_vmin, run_vmax = None, None
         ax_running = fig.add_subplot(2, NUM_COLS, 1)
@@ -3003,8 +3034,8 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
-        ax_dff.set_ylabel('ΔF/F')
-        ax_dff.set_title(f'{category} - Fiber ΔF/F {wl}nm Comparison')
+        ax_dff.set_ylabel('Δ(ΔF/F)')
+        ax_dff.set_title(f'{category} - Fiber Δ(ΔF/F) {wl}nm Comparison')
         ax_dff.legend(fontsize=8, ncol=2)
         ax_dff.grid(False)
 
@@ -3050,7 +3081,7 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
         ax_zscore.set_title(f'{category} - Fiber Z-score {wl}nm Comparison')
         ax_zscore.legend(fontsize=8, ncol=2)
         ax_zscore.grid(False)
- 
+
         # Row 2: Heatmaps
         ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
         all_cond1 = []
@@ -3076,7 +3107,7 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
                                ha='center', va='center', fontsize=12, color='gray')
             ax_running_heat.set_title(f'{category} - Running Speed Heatmap')
             ax_running_heat.axis('off')
- 
+
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         all_cond1_dff = []
         all_cond2_dff = []
@@ -3093,15 +3124,15 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
             if combined_dff is not None:
                 n_cond1 = len(all_cond1_dff)
                 draw_heatmap(ax_dff_heat, combined_dff, time_array,
-                             'coolwarm', 'ΔF/F', vmin=dff_vmin, vmax=dff_vmax,
+                             'coolwarm', 'Δ(ΔF/F)', vmin=dff_vmin, vmax=dff_vmax,
                              extra_lines=[n_cond1] if n_cond1 > 0 and len(combined_dff) > n_cond1 else None)
-                ax_dff_heat.set_title(f'{category} - Fiber ΔF/F Heatmap {wl}nm')
+                ax_dff_heat.set_title(f'{category} - Fiber Δ(ΔF/F) Heatmap {wl}nm')
         else:
             ax_dff_heat.text(0.5, 0.5, 'No data available',
                            ha='center', va='center', fontsize=12, color='gray')
-            ax_dff_heat.set_title(f'{category} - Fiber ΔF/F Heatmap {wl}nm')
+            ax_dff_heat.set_title(f'{category} - Fiber Δ(ΔF/F) Heatmap {wl}nm')
             ax_dff_heat.axis('off')
- 
+
         ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_cond1_zscore = []
         all_cond2_zscore = []
@@ -3126,11 +3157,12 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
                               ha='center', va='center', fontsize=12, color='gray')
             ax_zscore_heat.set_title(f'{category} - Fiber Z-score Heatmap {wl}nm')
             ax_zscore_heat.axis('off')
- 
+
         fig.tight_layout()
-        embed_figure(inner, fig, row_in_frame=wl_idx)
- 
-    log_message(f"Comparison window created: {window_title}")
+        c = embed_figure(inner, fig, row_in_frame=wl_idx)
+        collected.append((fig, c, win_title))
+
+    return collected
 
 def plot_comparison_window_multi_drug_categories(results, params, condition_key,
                                                   categories, window_title):
@@ -3144,13 +3176,15 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
  
     time_array = list(results.values())[0]['time']
  
-    win, _, inner = make_scrollable_window(f"{window_title} - All Rows")
- 
+    win_title = f"{window_title} - All Rows"
+    win, _, inner = make_scrollable_window(win_title)
+    collected = []
+
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
         fig = make_figure(NUM_COLS)
         fig.suptitle(f"Wavelength {wl} nm — {window_title}", fontsize=11, fontweight="bold")
- 
+
         # Row 1: Traces
         run_vmin, run_vmax = None, None
         ax_running = fig.add_subplot(2, NUM_COLS, 1)
@@ -3182,7 +3216,7 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
         ax_running.set_title(f'{window_title} - Running Speed')
         ax_running.legend(fontsize=7, ncol=2)
         ax_running.grid(False)
- 
+
         dff_vmin, dff_vmax = None, None
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
         for idx, (row_name, data) in enumerate(results.items()):
@@ -3209,11 +3243,11 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
-        ax_dff.set_ylabel('ΔF/F')
-        ax_dff.set_title(f'{window_title} - Fiber ΔF/F {wl}nm')
+        ax_dff.set_ylabel('Δ(ΔF/F)')
+        ax_dff.set_title(f'{window_title} - Fiber Δ(ΔF/F) {wl}nm')
         ax_dff.legend(fontsize=7, ncol=2)
         ax_dff.grid(False)
- 
+
         
         zs_vmin, zs_vmax = None, None
         ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
@@ -3245,7 +3279,7 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
         ax_zscore.set_title(f'{window_title} - Fiber Z-score {wl}nm')
         ax_zscore.legend(fontsize=7, ncol=2)
         ax_zscore.grid(False)
- 
+
         # Row 2: Heatmaps
         ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
         all_episodes = []
@@ -3272,7 +3306,7 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
                                ha='center', va='center', fontsize=12, color='gray')
             ax_running_heat.set_title(f'{window_title} - Running Speed Heatmap')
             ax_running_heat.axis('off')
- 
+
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         all_episodes = []
         category_boundaries = []
@@ -3290,15 +3324,15 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
                     category_boundaries.append(len(all_episodes))
         if all_episodes:
             draw_heatmap(ax_dff_heat, np.array(all_episodes), time_array,
-                         'coolwarm', 'ΔF/F', vmin=dff_vmin, vmax=dff_vmax,
+                         'coolwarm', 'Δ(ΔF/F)', vmin=dff_vmin, vmax=dff_vmax,
                          extra_lines=category_boundaries[:-1] if len(category_boundaries) > 1 else None)
-            ax_dff_heat.set_title(f'{window_title} - Fiber ΔF/F Heatmap {wl}nm')
+            ax_dff_heat.set_title(f'{window_title} - Fiber Δ(ΔF/F) Heatmap {wl}nm')
         else:
             ax_dff_heat.text(0.5, 0.5, 'No data available',
                            ha='center', va='center', fontsize=12, color='gray')
-            ax_dff_heat.set_title(f'{window_title} - Fiber ΔF/F Heatmap {wl}nm')
+            ax_dff_heat.set_title(f'{window_title} - Fiber Δ(ΔF/F) Heatmap {wl}nm')
             ax_dff_heat.axis('off')
- 
+
         ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_episodes = []
         category_boundaries = []
@@ -3324,14 +3358,16 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
                               ha='center', va='center', fontsize=12, color='gray')
             ax_zscore_heat.set_title(f'{window_title} - Fiber Z-score Heatmap {wl}nm')
             ax_zscore_heat.axis('off')
- 
+
         fig.tight_layout()
-        embed_figure(inner, fig, row_in_frame=wl_idx)
- 
-    log_message(f"Multi-drug categories window created: {window_title}")
+        c = embed_figure(inner, fig, row_in_frame=wl_idx)
+        collected.append((fig, c, win_title))
+
+    return collected
 
 def create_individual_row_windows_running_optogenetics_drug_multi(results, params):
     """Create individual windows for each row - running+optogenetics+drug with multiple drugs"""
+    all_figs = []
     for row_name, data in results.items():
         # Get all drug categories
         drug_categories = data.get('drug_categories', [])
@@ -3339,16 +3375,21 @@ def create_individual_row_windows_running_optogenetics_drug_multi(results, param
         # Create multiple comparison windows for this row
         # 1. For each category: with vs without opto
         for category in drug_categories:
-            create_single_row_category_window(
-                row_name, data, params, category,
-                f'Running+Optogenetics+Drug - {row_name} - {category}: With vs Without Opto'
+            all_figs.extend(
+                create_single_row_category_window(
+                    row_name, data, params, category,
+                    f'Running+Optogenetics+Drug - {row_name} - {category}: With vs Without Opto'
+                )
             )
         
         # 2. Overall comparison across categories
-        create_single_row_all_categories_window(
-            row_name, data, params,
-            f'Running+Optogenetics+Drug - {row_name} - All Categories'
+        all_figs.extend(
+            create_single_row_all_categories_window(
+                row_name, data, params,
+                f'Running+Optogenetics+Drug - {row_name} - All Categories'
+            )
         )
+    return all_figs
 
 def create_single_row_category_window(row_name, data, params, category, window_title):
     """Create window for one drug category showing with/without opto comparison"""
@@ -3359,13 +3400,15 @@ def create_single_row_category_window(row_name, data, params, category, window_t
     time_array = data['time']
     category_data = data[category]
  
-    win, _, inner = make_scrollable_window(window_title)
- 
+    win_title = window_title
+    win, _, inner = make_scrollable_window(win_title)
+    collected = []
+
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
         fig = make_figure(NUM_COLS)
         fig.suptitle(f"Wavelength {wl} nm — {window_title}", fontsize=11, fontweight="bold")
- 
+
         # Row 1: Traces
         with_run_vmin, with_run_vmax = None, None
         without_run_vmin, without_run_vmax = None, None
@@ -3403,7 +3446,7 @@ def create_single_row_category_window(row_name, data, params, category, window_t
         ax_running.set_title(f'{category} - Running Speed')
         ax_running.legend()
         ax_running.grid(False)
- 
+
         with_dff_vmin, with_dff_vmax = None, None
         without_dff_vmin, without_dff_vmax = None, None
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
@@ -3436,11 +3479,11 @@ def create_single_row_category_window(row_name, data, params, category, window_t
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
-        ax_dff.set_ylabel('ΔF/F')
-        ax_dff.set_title(f'{category} - Fiber ΔF/F {wl}nm')
+        ax_dff.set_ylabel('Δ(ΔF/F)')
+        ax_dff.set_title(f'{category} - Fiber Δ(ΔF/F) {wl}nm')
         ax_dff.legend()
         ax_dff.grid(False)
- 
+
         with_zs_vmin, with_zs_vmax = None, None
         without_zs_vmin, without_zs_vmax = None, None
         ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
@@ -3477,7 +3520,7 @@ def create_single_row_category_window(row_name, data, params, category, window_t
         ax_zscore.set_title(f'{category} - Fiber Z-score {wl}nm')
         ax_zscore.legend()
         ax_zscore.grid(False)
- 
+
         # Row 2: Heatmaps
         ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
         with_episodes = []
@@ -3498,7 +3541,7 @@ def create_single_row_category_window(row_name, data, params, category, window_t
                          extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
             ax_running_heat.set_title(f'{category} - Running Speed Heatmap')
             ax_running_heat.legend(loc='upper right', fontsize=8)
- 
+
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         with_dff = []
         without_dff = []
@@ -3514,11 +3557,11 @@ def create_single_row_category_window(row_name, data, params, category, window_t
             combined_dff_vmax = max(with_dff_vmax if with_dff_vmax is not None else -np.inf,
                                    without_dff_vmax if without_dff_vmax is not None else -np.inf)
             draw_heatmap(ax_dff_heat, combined, time_array,
-                         'coolwarm', 'ΔF/F', vmin=combined_dff_vmin, vmax=combined_dff_vmax,
+                         'coolwarm', 'Δ(ΔF/F)', vmin=combined_dff_vmin, vmax=combined_dff_vmax,
                          extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
-            ax_dff_heat.set_title(f'{category} - Fiber ΔF/F Heatmap {wl}nm')
+            ax_dff_heat.set_title(f'{category} - Fiber Δ(ΔF/F) Heatmap {wl}nm')
             ax_dff_heat.legend(loc='upper right', fontsize=8)
- 
+
         ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         with_zscore = []
         without_zscore = []
@@ -3538,11 +3581,12 @@ def create_single_row_category_window(row_name, data, params, category, window_t
                          extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
             ax_zscore_heat.set_title(f'{category} - Fiber Z-score Heatmap {wl}nm')
             ax_zscore_heat.legend(loc='upper right', fontsize=8)
- 
+
         fig.tight_layout()
-        embed_figure(inner, fig, row_in_frame=wl_idx)
- 
-    log_message(f"Category window created: {window_title}")
+        c = embed_figure(inner, fig, row_in_frame=wl_idx)
+        collected.append((fig, c, win_title))
+
+    return collected
 
 def create_single_row_all_categories_window(row_name, data, params, window_title):
     """Create window showing all categories with opto condition comparison"""
@@ -3550,13 +3594,15 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
     drug_categories = data.get('drug_categories', [])
     time_array = data['time']
  
-    win, _, inner = make_scrollable_window(window_title)
- 
+    win_title = window_title
+    win, _, inner = make_scrollable_window(win_title)
+    collected = []
+
     for wl_idx, wl in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
         fig = make_figure(NUM_COLS)
         fig.suptitle(f"Wavelength {wl} nm — {window_title}", fontsize=11, fontweight="bold")
- 
+
         # Row 1: Traces
         with_run_vmin, with_run_vmax = None, None
         without_run_vmin, without_run_vmax = None, None
@@ -3606,7 +3652,7 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
         ax_running.set_title(f'{row_name} - Running Speed (All Categories)')
         ax_running.legend(fontsize=7, ncol=2)
         ax_running.grid(False)
- 
+
         with_dff_vmin, with_dff_vmax = None, None
         without_dff_vmin, without_dff_vmax = None, None
         ax_dff = fig.add_subplot(2, NUM_COLS, 2)
@@ -3651,11 +3697,11 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
         ax_dff.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel('Time (s)')
-        ax_dff.set_ylabel('ΔF/F')
-        ax_dff.set_title(f'{row_name} - Fiber ΔF/F {wl}nm (All Categories)')
+        ax_dff.set_ylabel('Δ(ΔF/F)')
+        ax_dff.set_title(f'{row_name} - Fiber Δ(ΔF/F) {wl}nm (All Categories)')
         ax_dff.legend(fontsize=6, ncol=2)
         ax_dff.grid(False)
- 
+
         with_zs_vmin, with_zs_vmax = None, None
         without_zs_vmin, without_zs_vmax = None, None
         ax_zscore = fig.add_subplot(2, NUM_COLS, 3)
@@ -3704,7 +3750,7 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
         ax_zscore.set_title(f'{row_name} - Fiber Z-score {wl}nm (All Categories)')
         ax_zscore.legend(fontsize=6, ncol=2)
         ax_zscore.grid(False)
- 
+
         # Row 2: Heatmaps
         ax_running_heat = fig.add_subplot(2, NUM_COLS, 4)
         all_running_episodes = []
@@ -3759,7 +3805,7 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
                                fontsize=12, color='#666666')
             ax_running_heat.set_title(f'{row_name} - Running Speed Heatmap (All Categories)')
             ax_running_heat.axis('off')
- 
+
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, 5)
         all_dff_episodes = []
         category_boundaries_dff = []
@@ -3783,7 +3829,7 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
             combined_dff_vmax = max(with_dff_vmax if with_dff_vmax is not None else -np.inf,
                                    without_dff_vmax if without_dff_vmax is not None else -np.inf)
             draw_heatmap(ax_dff_heat, np.array(all_dff_episodes), time_array,
-                         'coolwarm', 'ΔF/F', extra_lines=extra, vmin=combined_dff_vmin, vmax=combined_dff_vmax)
+                         'coolwarm', 'Δ(ΔF/F)', extra_lines=extra, vmin=combined_dff_vmin, vmax=combined_dff_vmax)
             y_positions = []
             current_y = 0
             for i, category in enumerate(drug_categories):
@@ -3802,14 +3848,14 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
                 y_pos, y_labels = zip(*y_positions)
                 ax_dff_heat.set_yticks(y_pos)
                 ax_dff_heat.set_yticklabels(y_labels, fontsize=7)
-            ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm (All Categories)')
+            ax_dff_heat.set_title(f'{row_name} - Fiber Δ(ΔF/F) Heatmap {wl}nm (All Categories)')
         else:
             ax_dff_heat.text(0.5, 0.5, f'No dFF data for {wl}nm',
                            ha='center', va='center', transform=ax_dff_heat.transAxes,
                            fontsize=12, color='#666666')
-            ax_dff_heat.set_title(f'{row_name} - Fiber ΔF/F Heatmap {wl}nm (All Categories)')
+            ax_dff_heat.set_title(f'{row_name} - Fiber Δ(ΔF/F) Heatmap {wl}nm (All Categories)')
             ax_dff_heat.axis('off')
- 
+
         ax_zscore_heat = fig.add_subplot(2, NUM_COLS, 6)
         all_zscore_episodes = []
         category_boundaries_zscore = []
@@ -3859,8 +3905,9 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
                               fontsize=12, color='#666666')
             ax_zscore_heat.set_title(f'{row_name} - Fiber Z-score Heatmap {wl}nm (All Categories)')
             ax_zscore_heat.axis('off')
- 
+
         fig.tight_layout()
-        embed_figure(inner, fig, row_in_frame=wl_idx)
- 
-    log_message(f"All categories window created: {window_title}")
+        c = embed_figure(inner, fig, row_in_frame=wl_idx)
+        collected.append((fig, c, win_title))
+
+    return collected

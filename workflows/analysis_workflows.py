@@ -146,7 +146,7 @@ def fiber_preprocessing():
     ttk.Checkbutton(baseline_corr_frame, text="Apply Baseline Correction", variable=apply_baseline,
                     command=lambda: baseline_frame_changed()).grid(row=0, column=0, sticky="w")
     ttk.Label(baseline_corr_frame, text="Baseline Model:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
-    model_options = ["Polynomial", "Exponential"]
+    model_options = ["Polynomial", "Single Exponential", "Double Exponential"]
     model_menu = ttk.OptionMenu(baseline_corr_frame, baseline_model, "Polynomial", *model_options, command=lambda _: baseline_frame_changed())
     model_menu.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
     

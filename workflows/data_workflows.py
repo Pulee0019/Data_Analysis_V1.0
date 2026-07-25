@@ -8,12 +8,13 @@ from tkinter import filedialog, ttk
 import numpy as np
 
 from infrastructure.logger import log_message
-from core.io import h_AST2_raw2Speed, h_AST2_readData, load_fiber_data, load_fiber_events, read_dlc_file
+from core.io import h_AST2_raw2Speed, h_AST2_readData, load_fiber_data, load_fiber_events, read_dlc_file, load_bsoid_data
 
 EXPERIMENT_MODE_AST2 = "ast2"
 EXPERIMENT_MODE_FIBER = "fiber"
 EXPERIMENT_MODE_FIBER_AST2 = "fiber+ast2"
 EXPERIMENT_MODE_FIBER_AST2_DLC = "fiber+ast2+dlc"
+EXPERIMENT_MODE_FIBER_BSOID = "fiber+bsoid"
 
 _deps = {}
 
@@ -54,7 +55,8 @@ def import_multi_animals():
                     'dlc': ['*dlc*.csv'],
                     'fiber': ['fluorescence.csv'],
                     'fiber_events': ['Events.csv'],
-                    'ast2': ['*.ast2']
+                    'ast2': ['*.ast2'],
+                    'bsoid': ['*bout_lengths*.csv']
                 }
 
                 # Determine required files based on mode
@@ -66,16 +68,20 @@ def import_multi_animals():
                     required_files = ['fiber', 'fiber_events', 'ast2']
                 elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
                     required_files = ['dlc', 'fiber', 'fiber_events', 'ast2']
+                elif current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID:
+                    required_files = ['fiber', 'fiber_events', 'bsoid']
 
                 for file_type, file_patterns in patterns.items():
-                    # Skip DLC search if not needed
-                    if file_type == 'dlc' and current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
+                    if file_type in ['fiber', 'fiber_events'] and current_experiment_mode == EXPERIMENT_MODE_AST2:
                         continue
                     
-                    if file_type in ['fiber', 'fiber_events', 'dlc'] and current_experiment_mode == EXPERIMENT_MODE_AST2:
+                    if file_type == 'ast2' and (current_experiment_mode == EXPERIMENT_MODE_FIBER or current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID):
                         continue
                     
-                    if file_type in ['ast2', 'dlc'] and current_experiment_mode == EXPERIMENT_MODE_FIBER:
+                    if file_type == 'oft' and current_experiment_mode != EXPERIMENT_MODE_FIBER_BSOID:
+                        continue
+                    
+                    if file_type == 'dlc' and current_experiment_mode != EXPERIMENT_MODE_FIBER_AST2_DLC:
                         continue
                     
                     found_file = None
@@ -118,7 +124,7 @@ def import_multi_animals():
 
                 # Process AST2 file
                 ast2_data = None
-                if current_experiment_mode == EXPERIMENT_MODE_AST2 and 'ast2' in files_found:
+                if current_experiment_mode not in [EXPERIMENT_MODE_FIBER, EXPERIMENT_MODE_FIBER_BSOID] and 'ast2' in files_found:
                     try:
                         header, raw_data = h_AST2_readData(files_found['ast2'])
                         if running_channel < len(raw_data):
@@ -130,9 +136,17 @@ def import_multi_animals():
                         else:
                             log_message(f"Running channel {running_channel} out of range for {base_animal_id}", "WARNING")
                     except Exception as e:
-                        log_message(f"Failed to load AST2 for {base_animal_id}: {str(e)}", "ERROR")
+                        log_message(f"Failed to load AST2 for {base_animal_id}: {str(e)}", "ERROR")\
+                            
+                # Process BSOID file
+                bsoid_data = None
+                if current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID and 'bsoid' in files_found:
+                    try:
+                        bsoid_data = load_bsoid_data(files_found['bsoid'])
+                    except Exception as e:
+                        log_message(f"Failed to load BSOID data for {base_animal_id}: {str(e)}", "ERROR")
 
-                if fiber_result:
+                if fiber_result is not None:
                     # Create separate animal_data for each channel
                     for channel_num in available_channels:
                         animal_single_channel_id = f"{base_animal_id}-Ch{channel_num}"
@@ -161,19 +175,23 @@ def import_multi_animals():
                         }
 
                         # Add DLC data (same for all channels of this animal)
-                        if dlc_data:
+                        if dlc_data is not None:
                             animal_data['dlc_data'] = dlc_data
 
                         # Add AST2 data (same for all channels of this animal)
-                        if ast2_data:
+                        if ast2_data is not None:
                             animal_data['ast2_data'] = ast2_data
                             
+                        # Add BSOID data (same for all channels of this animal)
+                        if bsoid_data is not None:
+                            animal_data['bsoid_data'] = bsoid_data
+
                         multi_animal_data.append(animal_data)
                         selected_files.append(animal_data)
 
                 else:
                     # If no fiber data, just create one entry with running channel-specific data
-                    if ast2_data:
+                    if ast2_data is not None:
                         for channel_num in range(len(ast2_data['header']['activeChIDs'])):
                             animal_single_channel_id = f"{base_animal_id}-Ch{channel_num}"
                             
@@ -206,8 +224,12 @@ def import_multi_animals():
                 mode_name = "Fiber"
             elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
                 mode_name = "Fiber+AST2"
-            else:
+            elif current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID:
+                mode_name = "Fiber+BSOID"
+            elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
                 mode_name = "Fiber+AST2+DLC"
+            else:
+                mode_name = "Unknown"
                 
             log_message(f"Found {added_count} new channel entries in {mode_name} mode", "INFO")
             show_channel_selection_dialog()
@@ -237,11 +259,13 @@ def import_single_animal():
         ear_tag = path_parts[-1]
         base_animal_id = f"{num_name}-{ear_tag}"
 
+        files_found = {}
         patterns = {
             'dlc': ['*dlc*.csv'],
             'fiber': ['fluorescence.csv'],
             'fiber_events': ['Events.csv'],
-            'ast2': ['*.ast2']
+            'ast2': ['*.ast2'],
+            'bsoid': ['*bout_lengths*.csv']
         }
 
         # Determine required files based on mode
@@ -253,17 +277,20 @@ def import_single_animal():
             required_files = ['fiber', 'fiber_events', 'ast2']
         elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
             required_files = ['dlc', 'fiber', 'fiber_events', 'ast2']
+        elif current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID:
+            required_files = ['fiber', 'fiber_events', 'bsoid']
 
-        files_found = {}
         for file_type, file_patterns in patterns.items():
-            # Skip DLC search if not needed
-            if file_type == 'dlc' and current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
+            if file_type in ['fiber', 'fiber_events'] and current_experiment_mode == EXPERIMENT_MODE_AST2:
                 continue
             
-            if file_type in ['fiber', 'fiber_events', 'dlc'] and current_experiment_mode == EXPERIMENT_MODE_AST2:
+            if file_type == 'ast2' and (current_experiment_mode == EXPERIMENT_MODE_FIBER or current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID):
                 continue
             
-            if file_type in ['ast2', 'dlc'] and current_experiment_mode == EXPERIMENT_MODE_FIBER:
+            if file_type == 'oft' and current_experiment_mode != EXPERIMENT_MODE_FIBER_BSOID:
+                continue
+            
+            if file_type == 'dlc' and current_experiment_mode != EXPERIMENT_MODE_FIBER_AST2_DLC:
                 continue
             
             found_file = None
@@ -308,7 +335,7 @@ def import_single_animal():
 
         # Process AST2 file
         ast2_data = None
-        if current_experiment_mode == EXPERIMENT_MODE_AST2 and 'ast2' in files_found:
+        if current_experiment_mode not in [EXPERIMENT_MODE_FIBER, EXPERIMENT_MODE_FIBER_BSOID] and 'ast2' in files_found:
             try:
                 header, raw_data = h_AST2_readData(files_found['ast2'])
                 if running_channel < len(raw_data):
@@ -328,7 +355,15 @@ def import_single_animal():
             except Exception as e:
                 log_message(f"Failed to load AST2 for {base_animal_id}: {str(e)}", "ERROR")
 
-        if fiber_result:
+        # Process BSOID file
+        bsoid_data = None
+        if current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID and 'bsoid' in files_found:
+            try:
+                bsoid_data = load_bsoid_data(files_found['bsoid'])
+            except Exception as e:
+                log_message(f"Failed to load BSOID data for {base_animal_id}: {str(e)}", "ERROR")
+             
+        if fiber_result is not None:
             # Create separate animal_data for each channel
             for channel_num in available_channels:
                 animal_single_channel_id = f"{base_animal_id}-Ch{channel_num}"
@@ -357,19 +392,25 @@ def import_single_animal():
                 }
 
                 # Add DLC data (same for all channels of this animal)
-                if dlc_data:
+                if dlc_data is not None:
+                    log_message(f"Adding DLC data for {animal_single_channel_id}")
                     animal_data['dlc_data'] = dlc_data
 
                 # Add AST2 data (same for all channels of this animal)
-                if ast2_data:
+                if ast2_data is not None:
+                    log_message(f"Adding AST2 data for {animal_single_channel_id}")
                     animal_data['ast2_data'] = ast2_data
+                
+                if bsoid_data is not None:
+                    log_message(f"Adding BSOID data for {animal_single_channel_id}")
+                    animal_data['bsoid_data'] = bsoid_data
                     
                 multi_animal_data.append(animal_data)
                 selected_files.append(animal_data)
                     
         else:
             # If no fiber data, just create one entry with running channel-specific data
-            if ast2_data:
+            if ast2_data is not None:
                 for channel_num in range(len(ast2_data['header']['activeChIDs'])):
                     animal_single_channel_id = f"{base_animal_id}-Ch{channel_num}"
                     
@@ -401,8 +442,12 @@ def import_single_animal():
                 mode_name = "Fiber"
             elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
                 mode_name = "Fiber+AST2"
+            elif current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID:
+                mode_name = "Fiber+BSOID"
             elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
                 mode_name = "Fiber+AST2+DLC"
+            else:
+                mode_name = "Unknown"
             log_message(f"Added {base_animal_id} with {added_count} channels ({mode_name} mode)", "INFO")
         else:
             if fiber_result:
@@ -479,7 +524,7 @@ def show_channel_selection_dialog():
         # Animal-Channel ID label
         ttk.Label(row_frame, text=animal_single_channel_id, width=35).grid(row=0, column=1, padx=2)
         
-        if current_experiment_mode != EXPERIMENT_MODE_FIBER:
+        if current_experiment_mode != EXPERIMENT_MODE_FIBER and current_experiment_mode != EXPERIMENT_MODE_FIBER_BSOID:
             # Running channel selection
             available_channels = []
             if 'ast2_data' in animal_data and animal_data['ast2_data']:
@@ -628,13 +673,21 @@ def finalize_channel_selection(dialog):
         # Align data
         if 'fiber_data' in animal_data and animal_data['fiber_data'] is not None:
             if 'ast2_data' in animal_data and animal_data['ast2_data'] is not None:
-                alignment_success = align_data(animal_data)
+                alignment_success = align_running_fiber(animal_data)
                 if not alignment_success:
                     log_message(f"Failed to align data for {animal_single_channel_id}", "WARNING")
                     if 'fiber_data' in animal_data:
                         animal_data['fiber_data_trimmed'] = animal_data['fiber_data']
+            
+            elif 'bsoid_data' in animal_data and animal_data['bsoid_data'] is not None:
+                alignment_success = align_bsoid_fiber(animal_data)
+                if not alignment_success:
+                    log_message(f"Failed to align BSOID data for {animal_single_channel_id}", "WARNING")
+                    if 'fiber_data' in animal_data:
+                        animal_data['fiber_data_trimmed'] = animal_data['fiber_data']
+                        
             else:
-                log_message(f"No AST2 data to align for {animal_single_channel_id}, skipping alignment", "INFO")
+                log_message(f"No AST2 data / BSOID data to align for {animal_single_channel_id}, skipping alignment", "INFO")
                 if 'fiber_data' in animal_data:
                     fiber_data = animal_data.get('fiber_data')
                     channels = animal_data.get('channels', {})
@@ -702,7 +755,7 @@ def finalize_channel_selection(dialog):
                 fiber_plot_window.set_plot_type("raw")
                 fiber_plot_window.update_plot()
 
-def align_data(animal_data=None):
+def align_running_fiber(animal_data=None):
     """Modified align_data to support different experiment modes"""
     global current_experiment_mode
     
@@ -722,7 +775,7 @@ def align_data(animal_data=None):
             active_channels = globals().get('active_channels', [])
             experiment_mode = current_experiment_mode
             dlc_data = globals().get('dlc_data') if experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC else None
-        
+
         log_message(f"Alignment debug - Experiment mode: {experiment_mode}")
         log_message(f"Alignment debug - Fiber data: {fiber_data is not None}")
         log_message(f"Alignment debug - Channels: {channels}")
@@ -989,5 +1042,155 @@ def align_data(animal_data=None):
         
     except Exception as e:
         log_message(f"Failed to align data: {str(e)}", "ERROR")
+        log_message(f"Traceback: {traceback.format_exc()}", "ERROR")
+        return False
+
+def align_bsoid_fiber(animal_data=None):
+    """Align BSOID data to fiber data using fiber events: running start (Input2) as reference point"""
+    global current_experiment_mode
+    
+    try:
+        # Determine which data to use
+        if animal_data:
+            fiber_data = animal_data.get('fiber_data')
+            bsoid_data = animal_data.get('bsoid_data')
+            channels = animal_data.get('channels', {})
+            active_channels = animal_data.get('active_channels', [])
+            experiment_mode = animal_data.get('experiment_mode', current_experiment_mode)
+        else:
+            fiber_data = globals().get('fiber_data')
+            bsoid_data = globals().get('bsoid_data')
+            channels = globals().get('channels', {})
+            active_channels = globals().get('active_channels', [])
+            experiment_mode = current_experiment_mode
+
+        log_message(f"Alignment debug - Experiment mode: {experiment_mode}")
+        log_message(f"Alignment debug - Fiber data: {fiber_data is not None}")
+        log_message(f"Alignment debug - Channels: {channels}")
+        log_message(f"Alignment debug - Active channels: {active_channels}")
+        log_message(f"Alignment debug - BSOID data: {bsoid_data is not None}")
+
+        # Check if we have the necessary data
+        if fiber_data is None:
+            log_message("Fiber data is None, cannot align", "ERROR")
+            return False
+            
+        if not active_channels:
+            log_message("No active channels selected, cannot align", "ERROR")
+            return False
+            
+        if bsoid_data is None:
+            log_message("No BSOID data available, cannot align", "ERROR")
+            return False
+
+        # Get events column from fiber data
+        events_col = channels.get('events')
+        if events_col is None or events_col not in fiber_data.columns:
+            log_message("Events column not found in fiber data", "ERROR")
+            return False
+        
+        time_col = channels['time']
+        
+        opto_event_name = event_config.get('opto_event', 'Input3')
+        running_start_name = event_config.get('running_start', 'Input2')
+        drug_event_names = event_config.get('drug_event', 'Event1')
+        # Support multiple drug events separated by comma
+        if isinstance(drug_event_names, str):
+            drug_event_names = [name.strip() for name in drug_event_names.split(',')]
+        elif not isinstance(drug_event_names, list):
+            drug_event_names = [str(drug_event_names)]
+
+        global input3_events, drug_events
+
+        input3_events = fiber_data[fiber_data[events_col].str.startswith(opto_event_name, na=False)]
+        if len(input3_events) < 1:
+            multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="disabled")
+            log_message("Could not find Input3 events for optogenetic analysis", "INFO")
+            running_induced_menu.entryconfig("Running + Optogenetics", state="disabled")
+            setting_menu.entryconfig("Optogenetic Configuration", state="disabled")
+        else:
+            multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="normal")
+            running_induced_menu.entryconfig("Running + Optogenetics", state="normal")
+            setting_menu.entryconfig("Optogenetic Configuration", state="normal")
+        
+        drug_events = fiber_data[fiber_data[events_col].str.contains('|'.join(drug_event_names), na=False)]
+        if len(drug_events) < 1:
+            multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="disabled")
+            running_induced_menu.entryconfig("Running + Drug", state="disabled")
+            setting_menu.entryconfig("Drug Configuration", state="disabled")
+            log_message("Could not find Event2 events for drug analysis", "INFO")
+        else:
+            multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="normal")
+            running_induced_menu.entryconfig("Running + Drug", state="normal")
+            setting_menu.entryconfig("Drug Configuration", state="normal")
+
+        if len(input3_events) < 1 or len(drug_events) < 1:
+            optogenetics_induced_menu.entryconfig("Optogenetics + Drug", state="disabled")
+            running_induced_menu.entryconfig("Running + Optogenetics + Drug", state="disabled")
+        elif len(input3_events) >= 1 and len(drug_events) >= 1:
+            optogenetics_induced_menu.entryconfig("Optogenetics + Drug", state="normal")
+            running_induced_menu.entryconfig("Running + Optogenetics + Drug", state="normal") 
+
+        if animal_data is not None:
+            animal_data['input3_events'] = input3_events
+            animal_data['drug_events'] = drug_events
+            
+        # Find Input2 events (video markers) - video start time and video end time
+        input2_events = fiber_data[fiber_data[events_col].str.startswith(running_start_name, na=False)]
+        if len(input2_events) < 1:
+            log_message("Could not find Input2 events for running start", "ERROR")
+            return False
+        video_start_time = input2_events[time_col].iloc[0]
+        video_end_time = input2_events[time_col].iloc[-2]
+        
+        # Get fiber start time (first timestamp in fiber data)
+        fiber_start_time = fiber_data[time_col].iloc[0]
+        
+        log_message(f"Video start time: {video_start_time:.2f}s")
+        log_message(f"Video end time: {video_end_time:.2f}s")
+        log_message(f"Fiber start time: {fiber_start_time:.2f}s")
+        
+        # Adjust fiber data relative to video start time
+        fiber_data_adjusted = fiber_data.copy()
+        fiber_data_adjusted[time_col] = fiber_data_adjusted[time_col] - video_start_time
+        # Trim fiber data to video duration
+        fiber_data_trimmed = fiber_data_adjusted[
+            (fiber_data_adjusted[time_col] >= 0) & 
+            (fiber_data_adjusted[time_col] <= (video_end_time - video_start_time))].copy()
+        
+        if bsoid_data is not None:
+            total_frames = bsoid_data.iloc[-1, 2] + bsoid_data.iloc[-1, 3]  # Total frames = last bout start + last bout duration
+            video_duration = video_end_time - video_start_time
+            bsoid_fps = total_frames / video_duration if video_duration > 0 else 30
+        
+        if animal_data is not None:
+            animal_data.update({
+                'fiber_data_adjusted': fiber_data_adjusted,
+                'fiber_data_trimmed': fiber_data_trimmed,
+                'bsoid_fps': bsoid_fps if bsoid_data is not None else None,
+                'video_start_time': video_start_time,
+                'video_end_time': video_end_time
+            })
+        else:
+            globals()['fiber_data_adjusted'] = fiber_data_adjusted
+            globals()['fiber_data_trimmed'] = fiber_data_trimmed
+            globals()['bsoid_fps'] = bsoid_fps if bsoid_data is not None else None
+            globals()['video_start_time'] = video_start_time
+            globals()['video_end_time'] = video_end_time
+            
+        # Display alignment information
+        info_message = f"Data aligned successfully (BSOID data to fiber data)!\n"
+        info_message += f"Experiment Mode: {experiment_mode}\n"
+        info_message += f"Video start time: {video_start_time:.2f}s\n"
+        info_message += f"Video end time: {video_end_time:.2f}s\n"
+        info_message += f"Fiber start time: {fiber_start_time:.2f}s\n"
+        info_message += f"BSOID FPS: {bsoid_fps:.2f} frames/s" if bsoid_data is not None else "BSOID FPS: N/A"
+        
+        log_message(info_message, "INFO")
+        log_message("Data aligned successfully using fiber data as reference for BSOID alignment")
+        return True
+    
+    except Exception as e:
+        log_message(f"Failed to align BSOID data: {str(e)}", "ERROR")
         log_message(f"Traceback: {traceback.format_exc()}", "ERROR")
         return False

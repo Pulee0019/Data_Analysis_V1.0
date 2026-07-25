@@ -13,7 +13,7 @@ def bind_bodypart_dependencies(deps):
     _deps.update(deps)
     globals().update(deps)
 
-def create_visualization_window():
+def create_visualization_window(parent=None):
     """Create the bodyparts location visualization window"""
     global visualization_window, parsed_data, central_label
     
@@ -25,18 +25,19 @@ def create_visualization_window():
     if visualization_window:
         visualization_window.close_window()
     
-    # Hide the default label in the central display area
-    if 'central_label' in globals():
+    # Use notebook tab if available
+    if parent is None:
         try:
-            # Check if central_label still exists
-            if hasattr(central_label, 'winfo_exists') and central_label.winfo_exists():
-                central_label.pack_forget()
-        except tk.TclError:
-            # If central_label has been destroyed, create a new one
-            central_label = tk.Label(central_display_frame, text="Central Display Area\nThe bodyparts location visualization window will be displayed after loading the CSV file", bg="#f8f8f8", fg="#666666")
+            from ui.view_controller import _notebook, _add_tab
+            if _notebook is not None and _notebook.winfo_exists():
+                parent = _add_tab(_notebook, "Bodyparts")
+            else:
+                parent = central_display_frame
+        except Exception:
+            parent = central_display_frame
     
     # Create a new visualization window
-    visualization_window = BodypartVisualizationWindow(central_display_frame, parsed_data)
+    visualization_window = BodypartVisualizationWindow(parent, parsed_data)
 
 def create_trajectory_pointcloud():
     """Create the trajectory point cloud visualization window"""
@@ -336,149 +337,127 @@ def get_time_label():
     time_unit = time_unit_var.get() if time_unit_var else "seconds"
     return f"Time({time_unit})"
 
+_bodypart_dialog = None
+
 def create_bodypart_buttons(bodyparts):
-    """Create bodypart toggle buttons"""
-    # Clear existing buttons
-    for widget in left_frame.winfo_children():
-        widget.destroy()
-    
+    """Open a dialog for bodypart/keypoint selection (Req 2: dialog, not in left_frame)"""
+    global _bodypart_dialog, add_skeleton_button, confirm_skeleton_button
+    global fps_var, time_unit_var, fps_conversion_var
+    global bodypart_buttons, selected_bodyparts
+
     bodypart_buttons.clear()
     selected_bodyparts.clear()
-    
+
+    # Close existing dialog if open
+    if _bodypart_dialog is not None:
+        try:
+            _bodypart_dialog.destroy()
+        except tk.TclError:
+            pass
+        _bodypart_dialog = None
+
+    _bodypart_dialog = tk.Toplevel(root)
+    _bodypart_dialog.title("Bodypart / Keypoint Selection")
+    _bodypart_dialog.geometry("340x620")
+    _bodypart_dialog.transient(root)
+    _bodypart_dialog.grab_set()
+
+    container = tk.Frame(_bodypart_dialog, bg="#e0e0e0", padx=12, pady=12)
+    container.pack(fill=tk.BOTH, expand=True)
+
     # Define color configuration (consistent with visualization window)
-    colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', 
+    colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
              '#1abc9c', '#e67e22', '#34495e', '#f1c40f', '#95a5a6']
-    
-    # Add title
-    title_label = tk.Label(left_frame, text="🎯 Bodyparts:", font=("Microsoft YaHei", 12, "bold"), 
-                          bg="#e0e0e0", fg="#2c3e50")
-    title_label.pack(pady=(10, 5))
-    
-    # Create toggle button for each bodypart
+
+    # Bodypart title
+    tk.Label(container, text="Bodyparts:", font=("Microsoft YaHei", 12, "bold"),
+             bg="#e0e0e0", fg="#2c3e50").pack(pady=(0, 8))
+
+    # Scrollable area for bodypart buttons
+    canvas = tk.Canvas(container, bg="#e0e0e0", highlightthickness=0, height=200)
+    scrollbar = tk.Scrollbar(container, orient="vertical", command=canvas.yview)
+    bp_frame = tk.Frame(canvas, bg="#e0e0e0")
+    bp_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+    canvas.create_window((0, 0), window=bp_frame, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
+    canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
     for i, bodypart in enumerate(bodyparts):
         color = colors[i % len(colors)]
-        button_text = f"{i+1}. {bodypart}"  # Add numbering
         button = tk.Button(
-            left_frame,
-            text=button_text,
-            width=15,
-            relief=tk.RAISED,
-            bg=color,
-            fg="white",
+            bp_frame,
+            text=f"{i+1}. {bodypart}",
+            width=18, relief=tk.RAISED, bg=color, fg="white",
             font=("Microsoft YaHei", 9, "bold"),
-            activebackground=color,
-            activeforeground="white",
-            cursor="hand2",
+            activebackground=color, activeforeground="white", cursor="hand2",
             command=lambda bp=bodypart: toggle_bodypart(bp, bodypart_buttons[bp])
         )
-        button.pack(pady=3, padx=8, fill=tk.X)
+        button.pack(pady=2, fill=tk.X)
         bodypart_buttons[bodypart] = button
-    
-    # Add separator
-    separator = tk.Frame(left_frame, height=2, bg="#bdc3c7")
-    separator.pack(fill=tk.X, padx=10, pady=10)
-    
-    # Add skeleton function title
-    skeleton_title = tk.Label(left_frame, text="🦴 Skeleton Building:", font=("Microsoft YaHei", 12, "bold"), 
-                             bg="#e0e0e0", fg="#2c3e50")
-    skeleton_title.pack(pady=(5, 5))
-    
-    # Add skeleton buttons
-    add_skeleton_btn = tk.Button(
-        left_frame,
-        text="Add Skeleton",
-        width=15,
-        relief=tk.RAISED,
-        bg="#3498db",
-        fg="white",
+
+    # Separator
+    tk.Frame(container, height=2, bg="#bdc3c7").pack(fill=tk.X, pady=10)
+
+    # Skeleton building section
+    tk.Label(container, text="Skeleton Building:", font=("Microsoft YaHei", 12, "bold"),
+             bg="#e0e0e0", fg="#2c3e50").pack(pady=(0, 5))
+
+    add_skeleton_btn = tk.Button(container, text="Add Skeleton", width=18,
+        relief=tk.RAISED, bg="#3498db", fg="white",
         font=("Microsoft YaHei", 9, "bold"),
-        activebackground="#2980b9",
-        activeforeground="white",
-        cursor="hand2",
-        command=start_skeleton_building
-    )
-    add_skeleton_btn.pack(pady=3, padx=8, fill=tk.X)
-    
-    confirm_skeleton_btn = tk.Button(
-        left_frame,
-        text="Confirm",
-        width=15,
-        relief=tk.RAISED,
-        bg="#27ae60",
-        fg="white",
+        activebackground="#2980b9", activeforeground="white", cursor="hand2",
+        command=start_skeleton_building)
+    add_skeleton_btn.pack(pady=2)
+
+    confirm_skeleton_btn = tk.Button(container, text="Confirm", width=18,
+        relief=tk.RAISED, bg="#27ae60", fg="white",
         font=("Microsoft YaHei", 9, "bold"),
-        activebackground="#229954",
-        activeforeground="white",
-        cursor="hand2",
-        command=confirm_skeleton,
-        state=tk.DISABLED
-    )
-    confirm_skeleton_btn.pack(pady=3, padx=8, fill=tk.X)
-    
-    # Store buttons as global variables for later access
-    global add_skeleton_button, confirm_skeleton_button
+        activebackground="#229954", activeforeground="white", cursor="hand2",
+        command=confirm_skeleton, state=tk.DISABLED)
+    confirm_skeleton_btn.pack(pady=2)
+
     add_skeleton_button = add_skeleton_btn
     confirm_skeleton_button = confirm_skeleton_btn
-    
-    # Add separator
-    separator2 = tk.Frame(left_frame, height=2, bg="#bdc3c7")
-    separator2.pack(fill=tk.X, padx=10, pady=10)
-    
-    # Add FPS conversion function title
-    fps_title = tk.Label(left_frame, text="⏱️ FPS Conversion:", font=("Microsoft YaHei", 12, "bold"), 
-                        bg="#e0e0e0", fg="#2c3e50")
-    fps_title.pack(pady=(5, 5))
-    
-    # FPS setting frame
-    fps_frame = tk.Frame(left_frame, bg="#e0e0e0")
-    fps_frame.pack(pady=3, padx=8, fill=tk.X)
-    
-    fps_label = tk.Label(fps_frame, text="FPS:", font=("Microsoft YaHei", 9), 
-                        bg="#e0e0e0", fg="#2c3e50")
-    fps_label.pack(side=tk.LEFT)
-    
-    global fps_var
+
+    # Separator
+    tk.Frame(container, height=2, bg="#bdc3c7").pack(fill=tk.X, pady=10)
+
+    # FPS conversion section
+    tk.Label(container, text="FPS Conversion:", font=("Microsoft YaHei", 12, "bold"),
+             bg="#e0e0e0", fg="#2c3e50").pack(pady=(0, 5))
+
+    fps_frame = tk.Frame(container, bg="#e0e0e0")
+    fps_frame.pack(fill=tk.X, pady=2)
+    tk.Label(fps_frame, text="FPS:", font=("Microsoft YaHei", 9),
+             bg="#e0e0e0", fg="#2c3e50").pack(side=tk.LEFT)
     fps_var = tk.StringVar(value="30")
-    fps_entry = tk.Entry(fps_frame, textvariable=fps_var, width=8, 
-                        font=("Microsoft YaHei", 9))
-    fps_entry.pack(side=tk.RIGHT)
-    
-    time_unit_frame = tk.Frame(left_frame, bg="#e0e0e0")
-    time_unit_frame.pack(pady=3, padx=8, fill=tk.X)
-    
-    time_unit_label = tk.Label(time_unit_frame, text="Time Unit:", font=("Microsoft YaHei", 9), 
-                              bg="#e0e0e0", fg="#2c3e50")
-    time_unit_label.pack(side=tk.LEFT)
-    
-    global time_unit_var
+    tk.Entry(fps_frame, textvariable=fps_var, width=8, font=("Microsoft YaHei", 9)).pack(side=tk.RIGHT)
+
+    tu_frame = tk.Frame(container, bg="#e0e0e0")
+    tu_frame.pack(fill=tk.X, pady=2)
+    tk.Label(tu_frame, text="Time Unit:", font=("Microsoft YaHei", 9),
+             bg="#e0e0e0", fg="#2c3e50").pack(side=tk.LEFT)
     time_unit_var = tk.StringVar(value="seconds")
-    time_unit_combo = ttk.Combobox(time_unit_frame, textvariable=time_unit_var, 
-                                  values=["seconds", "minutes"], width=6, state="readonly")
-    time_unit_combo.pack(side=tk.RIGHT)
-    
-    # Enable FPS conversion checkbox
-    global fps_conversion_var
+    ttk.Combobox(tu_frame, textvariable=time_unit_var,
+                 values=["seconds", "minutes"], width=6, state="readonly").pack(side=tk.RIGHT)
+
     fps_conversion_var = tk.BooleanVar()
-    fps_checkbox = tk.Checkbutton(left_frame, text="Enable FPS Conversion", 
-                                 variable=fps_conversion_var,
-                                 font=("Microsoft YaHei", 9),
-                                 bg="#e0e0e0", fg="#2c3e50",
-                                 activebackground="#e0e0e0",
-                                 command=apply_fps_conversion)
-    fps_checkbox.pack(pady=3, padx=8)
-    
-    # Apply button
-    apply_fps_btn = tk.Button(
-        left_frame,
-        text="Apply Settings",
-        width=15,
-        relief=tk.RAISED,
-        bg="#e67e22",
-        fg="white",
+    tk.Checkbutton(container, text="Enable FPS Conversion",
+                   variable=fps_conversion_var,
+                   font=("Microsoft YaHei", 9),
+                   bg="#e0e0e0", fg="#2c3e50",
+                   activebackground="#e0e0e0",
+                   command=apply_fps_conversion).pack(pady=2)
+
+    tk.Button(container, text="Apply Settings", width=18,
+        relief=tk.RAISED, bg="#e67e22", fg="white",
         font=("Microsoft YaHei", 9, "bold"),
-        activebackground="#d35400",
-        activeforeground="white",
-        cursor="hand2",
-        command=apply_fps_conversion
-    )
-    apply_fps_btn.pack(pady=3, padx=8, fill=tk.X)
+        activebackground="#d35400", activeforeground="white", cursor="hand2",
+        command=apply_fps_conversion).pack(pady=4)
+
+    # Close button
+    tk.Button(container, text="Close", width=18,
+        relief=tk.RAISED, bg="#95a5a6", fg="white",
+        font=("Microsoft YaHei", 9, "bold"), cursor="hand2",
+        command=lambda: _bodypart_dialog.destroy()).pack(pady=(8, 0))

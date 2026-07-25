@@ -356,3 +356,15 @@ def load_fiber_events(file_path):
     except Exception as e:
         log_message(f"Failed to load fiber events data: {str(e)}", "ERROR")
         return None
+
+def load_bsoid_data(file_path):
+    """Load BSOID data from CSV file"""
+    path = file_path
+    try:
+        bsoid_data = pd.read_csv(path, delimiter=',', low_memory=False)
+        log_message("BSOID data loaded", "INFO")
+
+        return bsoid_data
+    except Exception as e:
+        log_message(f"Failed to load BSOID data: {str(e)}", "ERROR")
+        return None

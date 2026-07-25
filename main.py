@@ -2,6 +2,7 @@ import platform
 import sys
 
 import tkinter as tk
+from tkinter import ttk
 
 try:
     import workflows
@@ -12,6 +13,7 @@ try:
     from analysis_multimodal.Optogenetic_induced_activity_analysis import show_optogenetic_induced_analysis
     from analysis_multimodal.Running_induced_activity_analysis import show_running_induced_analysis
     from analysis_multimodal.Bout_analysis import show_bout_analysis
+    from analysis_multimodal.BSOID_analysis import show_bsoid_analysis
     from core.analysis_results import AnalysisResultsManager
     from core.config_store import (
         channel_memory,
@@ -29,10 +31,8 @@ try:
         save_path_setting,
         export_animal_data,
         on_closing,
-        select_experiment_mode,
         setup_log_display,
         show_drug_name_config_dialog,
-        show_event_config_dialog,
         show_opto_power_config_dialog,
         update_ui_for_mode,
     )
@@ -55,6 +55,7 @@ try:
     import analysis_multimodal.Bout_analysis as bout_analysis
     import analysis_multimodal.Drug_induced_activity_analysis as drug_induced_analysis
     import analysis_multimodal.Optogenetic_induced_activity_analysis as optogenetic_induced_analysis
+    import analysis_multimodal.BSOID_analysis as bsoid_analysis
 
 except ModuleNotFoundError as exc:
     missing_name = exc.name or str(exc)
@@ -76,6 +77,7 @@ def bootstrap_globals(root):
         "EXPERIMENT_MODE_FIBER": "fiber",
         "EXPERIMENT_MODE_FIBER_AST2": "fiber+ast2",
         "EXPERIMENT_MODE_FIBER_AST2_DLC": "fiber+ast2+dlc",
+        "EXPERIMENT_MODE_FIBER_BSOID": "fiber+bsoid",
         "current_experiment_mode": "fiber+ast2",
         'method_var': tk.StringVar(),
         'only_running_var': tk.IntVar(value=0),
@@ -142,45 +144,38 @@ def build_layout(root, state):
     main_container = tk.Frame(root)
     main_container.pack(fill=tk.BOTH, expand=True)
 
-    left_frame = tk.Frame(main_container, width=200, bg="#e0e0e0")
-    left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(5, 0), pady=5)
-    left_frame.pack_propagate(False)
+    # Horizontal PanedWindow: left panel | middle area
+    h_paned = ttk.PanedWindow(main_container, orient=tk.HORIZONTAL)
+    h_paned.pack(fill=tk.BOTH, expand=True, padx=(6, 5), pady=5)
 
-    middle_frame = tk.Frame(main_container)
-    middle_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(5, 0), pady=5)
+    # --- Left control panel ---
+    left_frame = tk.Frame(h_paned, width=260, bg="#e8e8e8")
+    h_paned.add(left_frame, weight=0)
 
-    central_display_frame = tk.Frame(middle_frame, bg="#f8f8f8", relief=tk.SUNKEN, bd=1)
-    central_display_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
+    # Vertical PanedWindow inside middle: central area | bottom log
+    v_paned = ttk.PanedWindow(h_paned, orient=tk.VERTICAL)
+    h_paned.add(v_paned, weight=1)
 
-    bottom_display_frame = tk.Frame(middle_frame, bg="#f0f0f0", relief=tk.SUNKEN, bd=1, height=170)
-    bottom_display_frame.pack(fill=tk.X, pady=(0, 0))
-    bottom_display_frame.pack_propagate(False)
+    central_display_frame = tk.Frame(v_paned, bg="#f8f8f8", relief=tk.SUNKEN, bd=1)
+    v_paned.add(central_display_frame, weight=1)
 
-    right_frame = tk.Frame(main_container, width=200, bg="#e8e8e8")
-    right_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=(5, 5), pady=5)
-    right_frame.pack_propagate(False)
+    bottom_display_frame = tk.Frame(v_paned, bg="#f0f0f0", relief=tk.SUNKEN, bd=1, height=170)
+    v_paned.add(bottom_display_frame, weight=0)
 
-    left_label = tk.Label(left_frame, text="Left Button Area", bg="#f8f8f8", fg="#666666")
-    left_label.pack(pady=20)
     central_label = tk.Label(central_display_frame, text="Central Display Area", bg="#f8f8f8", fg="#666666")
     central_label.pack(pady=20)
     bottom_label = tk.Label(bottom_display_frame, text="Bottom Log Area", bg="#f0f0f0", fg="#666666")
     bottom_label.pack(pady=10)
-    right_label = tk.Label(right_frame, text="Right List Area", bg="#e8e8e8", fg="#666666")
-    right_label.pack(pady=20)
 
     state.update(
         {
             "main_container": main_container,
             "left_frame": left_frame,
-            "middle_frame": middle_frame,
+            "middle_frame": v_paned,
             "central_display_frame": central_display_frame,
             "bottom_display_frame": bottom_display_frame,
-            "right_frame": right_frame,
-            "left_label": left_label,
             "central_label": central_label,
             "bottom_label": bottom_label,
-            "right_label": right_label,
         }
     )
 
@@ -196,6 +191,7 @@ def bind_modules(state):
     bout_analysis.bind_bout_dependencies(state)
     drug_induced_analysis.bind_drug_induced_dependencies(state)
     optogenetic_induced_analysis.bind_optogenetic_induced_dependencies(state)
+    bsoid_analysis.bind_bsoid_dependencies(state)
 
 
 def build_menu(root, state):
@@ -291,12 +287,20 @@ def build_menu(root, state):
         label="Running + Drug",
         command=lambda: show_bout_analysis(root, state["multi_animal_data"], "running+drug"),
     )
+    
+    bsoid_menu = tk.Menu(multimodal_menu, tearoff=0)
+    multimodal_menu.add_cascade(label="BSOID Analysis", menu=bsoid_menu)
+    bsoid_menu.add_command(
+        label="BSOID",
+        command=lambda: show_bsoid_analysis(root, state["multi_animal_data"], "bsoid"),
+    )
+
+    menubar.add_command(label="Figure Controller",
+                        command=multimodal_analysis.open_figure_controller)
 
     setting_menu = tk.Menu(menubar, tearoff=0)
     menubar.add_cascade(label="Settings", menu=setting_menu)
     setting_menu.add_command(label="Default Path", command=save_path_setting)
-    setting_menu.add_command(label="Experiment Type", command=select_experiment_mode)
-    setting_menu.add_command(label="Event Configuration", command=show_event_config_dialog)
     setting_menu.add_command(label="Drug Configuration", command=show_drug_name_config_dialog, state="disabled")
     setting_menu.add_command(label="Optogenetic Configuration", command=show_opto_power_config_dialog, state="disabled")
 
@@ -312,6 +316,7 @@ def build_menu(root, state):
             "running_induced_menu": running_induced_menu,
             "optogenetics_induced_menu": optogenetics_induced_menu,
             "bout_menu": bout_menu,
+            "bsoid_menu": bsoid_menu,
         }
     )
 
@@ -334,7 +339,101 @@ def bootstrap():
     bind_modules(state)
     root.protocol("WM_DELETE_WINDOW", on_closing)
     update_ui_for_mode()
-    create_animal_list()
+    from core.config_store import event_config, save_event_config
+    from ui.view_controller import clear_all
+
+    _FONT = ("Microsoft YaHei", 9)
+    _BG = "#e8e8e8"
+
+    # Title label (LEFT)
+    title_label = tk.Label(state["left_frame"], text="Control Panel", bg=_BG, font=("Microsoft YaHei", 10, "bold"))
+    title_label.pack(anchor=tk.W, padx=6, pady=(6, 2))
+    # -- Step1: Exp Mode row --
+    # Model selection row
+    mode_label = tk.Label(state["left_frame"], text="Mode Selection", bg=_BG, font=_FONT)
+    mode_label.pack(anchor=tk.W, padx=6, pady=(6, 1))
+    mode_row = tk.Frame(state["left_frame"], bg=_BG)
+    mode_row.pack(fill=tk.X, padx=6, pady=(6, 2))
+    tk.Label(mode_row, text="Exp Mode", bg=_BG, font=_FONT).pack(side=tk.LEFT)
+    mode_combo = ttk.Combobox(mode_row,
+        values=[state["EXPERIMENT_MODE_FIBER_AST2"], state["EXPERIMENT_MODE_FIBER_AST2_DLC"],
+                state["EXPERIMENT_MODE_AST2"], state["EXPERIMENT_MODE_FIBER"],
+                state["EXPERIMENT_MODE_FIBER_BSOID"]],
+        state="readonly", font=_FONT, width=12)
+    mode_combo.set(state["current_experiment_mode"])
+    mode_combo.pack(side=tk.RIGHT, padx=(6, 0))
+    
+    def on_mode_change(event):
+        new_mode = mode_combo.get()
+        if state["multi_animal_data"]:
+            from tkinter import messagebox
+            if not messagebox.askyesno("Confirm", "Changing mode clears loaded data. Continue?"):
+                mode_combo.set(state["current_experiment_mode"])
+                return
+            clear_all()
+        state["current_experiment_mode"] = new_mode
+        bind_modules(state)
+        from ui.settings_dialogs import update_ui_for_mode
+        update_ui_for_mode()
+        from infrastructure.logger import log_message
+        log_message(f"Experiment mode set to: {new_mode}", "INFO")
+    mode_combo.bind("<<ComboboxSelected>>", on_mode_change)
+
+    # -- Step2: Events row --
+    tk.Label(state["left_frame"], text="Events Config", bg=_BG, font=_FONT).pack(anchor=tk.W, padx=6, pady=(6, 1))
+
+    _ev_entries = {}
+
+    def _rebuild_event_rows():
+        for w in ev_container.winfo_children():
+            w.destroy()
+        _ev_entries.clear()
+        events = event_config
+        if not events:
+            events = {'drug_event': 'Event1', 'opto_event': 'Input3', 'running_start': 'Input2'}
+        for lbl, value in events.items():
+            row = tk.Frame(ev_container, bg=_BG)
+            row.pack(fill=tk.X, pady=1)
+            tk.Label(row, text=lbl, bg=_BG, fg="#333", font=_FONT, anchor=tk.W).pack(side=tk.LEFT)
+            
+            # All entry have same length in right side
+            ve = tk.Entry(row, font=_FONT, width=15)
+            ve.insert(0, value)
+            ve.pack(side=tk.RIGHT, padx=(6, 0)) 
+            ve.bind("<FocusOut>", lambda *a, e=ve: _sync_events())
+            _ev_entries[lbl] = ve
+
+    ev_container = tk.Frame(state["left_frame"], bg=_BG)
+    ev_container.pack(fill=tk.X, padx=6)
+    _rebuild_event_rows()
+
+    def _sync_events():
+        drug_vals = []
+        opto_val = None
+        run_val = None
+        for name, ve in _ev_entries.items():
+            val = ve.get().strip()
+            if "drug" in name.lower():
+                drug_vals.append(val)
+            elif "opto" in name.lower():
+                opto_val = val
+            elif "running" in name.lower():
+                run_val = val
+                
+        event_config['drug_event'] = ', '.join(drug_vals) or 'Event1'
+        event_config['opto_event'] = opto_val or 'Input3'
+        event_config['running_start'] = run_val or 'Input2'
+        save_event_config()
+
+    # -- Step3: Animal info preview (bottom) --
+    state['animal_preview_frame'] = tk.Frame(state["left_frame"], bg=_BG)
+    state['animal_preview_frame'].pack(side=tk.BOTTOM, fill=tk.X, pady=4)
+
+    # -- Step4: Animal list (fills remaining) --
+    state['animal_list_frame'] = tk.Frame(state["left_frame"], bg=_BG)
+    state['animal_list_frame'].pack(fill=tk.BOTH, expand=True, padx=6, pady=(4, 6))
+    create_animal_list(parent=state['animal_list_frame'])
+
     setup_log_display()
     return root
 

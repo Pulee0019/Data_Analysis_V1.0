@@ -14,7 +14,8 @@ from analysis_multimodal.Multimodal_analysis import (
     identify_drug_sessions, group_optogenetic_sessions, create_control_panel,
     create_parameter_panel, get_parameters_from_ui, calculate_running_episodes,
     create_table_window, initialize_table, FIBER_COLORS, ROW_COLORS,
-    make_scrollable_window, make_figure, draw_heatmap, embed_figure
+    make_scrollable_window, make_figure, draw_heatmap, embed_figure,
+    show_plot_controller
 )
 from workflows.data_workflows import EXPERIMENT_MODE_FIBER
 
@@ -554,8 +555,10 @@ def run_optogenetic_induced_analysis(row_data, params, analysis_mode="optogeneti
         export_results(results, all_statistics, f"optogenetic_induced_{analysis_mode}")
     
     if results:
-        plot_optogenetic_results(results, params, analysis_mode)
-        create_individual_param_windows(results, params, analysis_mode)
+        all_figures = []
+        all_figures.extend(plot_optogenetic_results(results, params, analysis_mode))
+        all_figures.extend(create_individual_param_windows(results, params, analysis_mode))
+        show_plot_controller(all_figures)
         log_message("Analysis completed successfully")
     else:
         log_message("No valid results", "ERROR")
@@ -630,7 +633,8 @@ def calculate_optogenetic_episodes(stim_starts, fiber_timestamps, dff_data,
                         if len(episode_times) > 1:
                             # Store dFF data
                             interp_dff = np.interp(time_array, episode_times, episode_data)
-                            dff_episodes[wavelength].append(interp_dff)
+                            ddff = interp_dff - mean_dff
+                            dff_episodes[wavelength].append(ddff)
                             
                             # Calculate z-score
                             zscore_episode = (episode_data - mean_dff) / std_dff
@@ -918,10 +922,12 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
     wavelength_label = "+".join(target_wavelengths)
     title_suffix = " + Drug" if analysis_mode == "optogenetics+drug" else ""
 
-    win, _, inner = make_scrollable_window(
+    win_title = (
         f"Optogenetic-Induced Activity{title_suffix} "
         f"- All Parameters ({wavelength_label}nm)"
     )
+    win, _, inner = make_scrollable_window(win_title)
+    collected = []
 
     for wl_idx, wavelength in enumerate(target_wavelengths):
         fig = make_figure(NUM_COLS)
@@ -1033,8 +1039,8 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
         ax_dff.axvline(x=0, color="#808080", linestyle="--", alpha=0.8, label="Opto Stim")
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel("Time (s)")
-        ax_dff.set_ylabel("ΔF/F")
-        ax_dff.set_title(f"Fiber ΔF/F {wavelength}nm - All Parameters")
+        ax_dff.set_ylabel("Δ(ΔF/F)")
+        ax_dff.set_title(f"Fiber Δ(ΔF/F) {wavelength}nm - All Parameters")
         ax_dff.legend(fontsize=6, ncol=2)
         ax_dff.grid(False)
 
@@ -1134,14 +1140,14 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                     all_dff.extend(ep)
         if all_dff:
             draw_heatmap(ax_dff_heat, np.array(all_dff),
-                         time_array, "coolwarm", "ΔF/F", vmin=dff_vmin, vmax=dff_vmax)
-            ax_dff_heat.set_title(f"Fiber ΔF/F Heatmap {wavelength}nm")
+                         time_array, "coolwarm", "Δ(ΔF/F)", vmin=dff_vmin, vmax=dff_vmax)
+            ax_dff_heat.set_title(f"Fiber Δ(ΔF/F) Heatmap {wavelength}nm")
         else:
             ax_dff_heat.text(0.5, 0.5, f"No dFF data for {wavelength}nm",
                              ha="center", va="center",
                              transform=ax_dff_heat.transAxes,
                              fontsize=12, color="#666666")
-            ax_dff_heat.set_title(f"Fiber ΔF/F Heatmap {wavelength}nm")
+            ax_dff_heat.set_title(f"Fiber Δ(ΔF/F) Heatmap {wavelength}nm")
             ax_dff_heat.axis("off")
 
         ax_zs_heat = fig.add_subplot(2, NUM_COLS, column_idx[5])
@@ -1171,12 +1177,14 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
             ax_zs_heat.axis("off")
 
         fig.tight_layout(rect=[0, 0, 1, 0.96])
-        embed_figure(inner, fig, row_in_frame=wl_idx)
+        c = embed_figure(inner, fig, row_in_frame=wl_idx)
+        collected.append((fig, c, win_title))
 
     log_message(
         f"Optogenetic results plotted for {len(results)} parameters "
         f"({analysis_mode} mode)"
     )
+    return collected
 
 def create_single_param_window(param_name, param_data, params,
                                analysis_mode="optogenetics"):
@@ -1201,11 +1209,13 @@ def create_single_param_window(param_name, param_data, params,
  
     wavelength_label = "+".join(target_wavelengths)
     title_suffix = " + Drug" if analysis_mode == "optogenetics+drug" else ""
- 
-    win, _, inner = make_scrollable_window(
+
+    win_title = (
         f"Optogenetic-Induced Activity{title_suffix} "
         f"- {param_name} ({wavelength_label}nm)"
     )
+    win, _, inner = make_scrollable_window(win_title)
+    collected = []
  
     for wl_idx, wavelength in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
@@ -1300,7 +1310,7 @@ def create_single_param_window(param_name, param_data, params,
             ax_dff.axvline(x=0, color="#808080", linestyle="--",
                            alpha=0.8, label="Opto Stim")
             ax_dff.set_title(
-                f"{param_name} - Fiber ΔF/F {wavelength}nm (Multi-Drug)")
+                f"{param_name} - Fiber Δ(ΔF/F) {wavelength}nm (Multi-Drug)")
             ax_dff.legend(fontsize=8)
         else:
             data = param_data.get("optogenetics", {})
@@ -1324,7 +1334,7 @@ def create_single_param_window(param_name, param_data, params,
                             transform=ax_dff.transAxes,
                             fontsize=12, color="#666666")
                 ax_dff.axis("off")
-            ax_dff.set_title(f"{param_name} - Fiber ΔF/F {wavelength}nm")
+            ax_dff.set_title(f"{param_name} - Fiber Δ(ΔF/F) {wavelength}nm")
         
         if dff_vmin is None and dff_vmax is None:
             dff_vmin = min(mean-sem)
@@ -1335,7 +1345,7 @@ def create_single_param_window(param_name, param_data, params,
             
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel("Time (s)")
-        ax_dff.set_ylabel("ΔF/F")
+        ax_dff.set_ylabel("Δ(ΔF/F)")
         ax_dff.grid(False)
 
         zs_vmin, zs_vmax = None, None
@@ -1439,17 +1449,17 @@ def create_single_param_window(param_name, param_data, params,
             boundaries = []
         if all_dff:
             draw_heatmap(ax_dff_heat, np.array(all_dff), time_array,
-                          "coolwarm", "ΔF/F", vmin=dff_vmin, vmax=dff_vmax,
+                          "coolwarm", "Δ(ΔF/F)", vmin=dff_vmin, vmax=dff_vmax,
                           extra_lines=boundaries[:-1] if boundaries else None)
             ax_dff_heat.set_title(
-                f"{param_name} - Fiber ΔF/F Heatmap {wavelength}nm")
+                f"{param_name} - Fiber Δ(ΔF/F) Heatmap {wavelength}nm")
         else:
             ax_dff_heat.text(0.5, 0.5, f"No dFF data for {wavelength}nm",
                              ha="center", va="center",
                              transform=ax_dff_heat.transAxes,
                              fontsize=12, color="#666666")
             ax_dff_heat.set_title(
-                f"{param_name} - Fiber ΔF/F Heatmap {wavelength}nm")
+                f"{param_name} - Fiber Δ(ΔF/F) Heatmap {wavelength}nm")
             ax_dff_heat.axis("off")
 
         ax_zs_heat = fig.add_subplot(2, NUM_COLS, column_idx[5])
@@ -1480,14 +1490,18 @@ def create_single_param_window(param_name, param_data, params,
             ax_zs_heat.axis("off")
  
         fig.tight_layout(rect=[0, 0, 1, 0.96])
-        embed_figure(inner, fig, row_in_frame=wl_idx)
- 
+        c = embed_figure(inner, fig, row_in_frame=wl_idx)
+        collected.append((fig, c, win_title))
+
     log_message(
         f"Individual parameter plot created for {param_name} "
         f"with {len(target_wavelengths)} wavelength(s) ({analysis_mode} mode)"
     )
- 
+    return collected
+
 def create_individual_param_windows(results, params, analysis_mode="optogenetics"):
     """Create individual windows for each parameter"""
+    all_figs = []
     for param_name, param_data in results.items():
-        create_single_param_window(param_name, param_data, params, analysis_mode)
+        all_figs.extend(create_single_param_window(param_name, param_data, params, analysis_mode))
+    return all_figs

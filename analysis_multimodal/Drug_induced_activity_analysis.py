@@ -13,7 +13,8 @@ from analysis_multimodal.Multimodal_analysis import (
     export_results, identify_drug_sessions, calculate_running_episodes,
     create_control_panel, create_table_window, initialize_table, create_parameter_panel,
     get_parameters_from_ui, FIBER_COLORS, ROW_COLORS,
-    make_scrollable_window, make_figure, draw_heatmap, embed_figure
+    make_scrollable_window, make_figure, draw_heatmap, embed_figure,
+    show_plot_controller
 )
 from workflows.data_workflows import EXPERIMENT_MODE_FIBER
 
@@ -391,8 +392,10 @@ def run_drug_induced_analysis(row_data, params):
         export_results(results, all_statistics, "drug_induced")
     
     if results:
-        plot_drug_induced_results(results, params)
-        create_individual_row_windows(results, params)
+        all_figures = []
+        all_figures.extend(plot_drug_induced_results(results, params))
+        all_figures.extend(create_individual_row_windows(results, params))
+        show_plot_controller(all_figures)
         log_message("Analysis completed successfully")
     else:
         log_message("No valid results", "ERROR")
@@ -714,9 +717,9 @@ def plot_drug_induced_results(results, params):
     wavelength_label = "+".join(target_wavelengths)
     time_array = list(results.values())[0]["time"]
 
-    win, _, inner = make_scrollable_window(
-        f"Drug-Induced Activity - All Rows ({wavelength_label}nm)"
-    )
+    win_title = f"Drug-Induced Activity - All Rows ({wavelength_label}nm)"
+    win, _, inner = make_scrollable_window(win_title)
+    collected = []
 
     for wl_idx, wavelength in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
@@ -783,8 +786,8 @@ def plot_drug_induced_results(results, params):
                        alpha=0.8, label="Drug")
         ax_dff.set_xlim(time_array[0], time_array[-1])
         ax_dff.set_xlabel("Time (s)")
-        ax_dff.set_ylabel("ΔF/F")
-        ax_dff.set_title(f"Fiber ΔF/F {wavelength}nm - All Rows")
+        ax_dff.set_ylabel("Δ(ΔF/F)")
+        ax_dff.set_title(f"Fiber Δ(ΔF/F) {wavelength}nm - All Rows")
         ax_dff.legend(fontsize=7)
         ax_dff.grid(False)
 
@@ -859,15 +862,15 @@ def plot_drug_induced_results(results, params):
                 acc += c
                 boundaries.append(acc)
             draw_heatmap(ax_dff_heat, np.array(all_dff), time_array,
-                         "coolwarm", "ΔF/F", vmin=dff_vmin, vmax=dff_vmax,
+                         "coolwarm", "Δ(ΔF/F)", vmin=dff_vmin, vmax=dff_vmax,
                          extra_lines=boundaries if boundaries else None)
-            ax_dff_heat.set_title(f"Fiber ΔF/F Heatmap {wavelength}nm")
+            ax_dff_heat.set_title(f"Fiber Δ(ΔF/F) Heatmap {wavelength}nm")
         else:
             ax_dff_heat.text(0.5, 0.5, f"No dFF data for {wavelength}nm",
                              ha="center", va="center",
                              transform=ax_dff_heat.transAxes,
                              fontsize=12, color="#666666")
-            ax_dff_heat.set_title(f"Fiber ΔF/F Heatmap {wavelength}nm")
+            ax_dff_heat.set_title(f"Fiber Δ(ΔF/F) Heatmap {wavelength}nm")
             ax_dff_heat.axis("off")
 
         ax_zs_heat = fig.add_subplot(2, NUM_COLS, column_idx[5])
@@ -896,9 +899,11 @@ def plot_drug_induced_results(results, params):
             ax_zs_heat.axis("off")
 
         fig.tight_layout(rect=[0, 0, 1, 0.96])
-        embed_figure(inner, fig, row_in_frame=wl_idx)
+        c = embed_figure(inner, fig, row_in_frame=wl_idx)
+        collected.append((fig, c, win_title))
 
     log_message(f"Drug-induced results plotted for {len(results)} rows")
+    return collected
 
 def create_single_row_window(row_name, data, params):
     """Create window for a single row with running and fiber plots."""
@@ -906,9 +911,9 @@ def create_single_row_window(row_name, data, params):
     wavelength_label = "+".join(target_wavelengths)
     time_array = data["time"]
 
-    win, _, inner = make_scrollable_window(
-        f"Drug-Induced Activity - {row_name} ({wavelength_label}nm)"
-    )
+    win_title = f"Drug-Induced Activity - {row_name} ({wavelength_label}nm)"
+    win, _, inner = make_scrollable_window(win_title)
+    collected = []
 
     for wl_idx, wavelength in enumerate(target_wavelengths):
         color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
@@ -974,7 +979,7 @@ def create_single_row_window(row_name, data, params):
                            alpha=0.8, label="Drug")
             ax_dff.set_xlim(time_array[0], time_array[-1])
             ax_dff.set_xlabel("Time (s)")
-            ax_dff.set_ylabel("ΔF/F")
+            ax_dff.set_ylabel("Δ(ΔF/F)")
             ax_dff.legend()
             ax_dff.grid(False)
         else:
@@ -983,7 +988,7 @@ def create_single_row_window(row_name, data, params):
                         transform=ax_dff.transAxes,
                         fontsize=12, color="#666666")
             ax_dff.axis("off")
-        ax_dff.set_title(f"{row_name} - Fiber ΔF/F {wavelength}nm")
+        ax_dff.set_title(f"{row_name} - Fiber Δ(ΔF/F) {wavelength}nm")
 
         
         zs_vmin, zs_vmax = None, None
@@ -1038,16 +1043,16 @@ def create_single_row_window(row_name, data, params):
         episodes = data["dff"].get(wavelength, [])
         if len(episodes) > 0:
             draw_heatmap(ax_dff_heat, np.array(episodes),
-                          time_array, "coolwarm", "ΔF/F", vmin=dff_vmin, vmax=dff_vmax)
+                          time_array, "coolwarm", "Δ(ΔF/F)", vmin=dff_vmin, vmax=dff_vmax)
             ax_dff_heat.set_title(
-                f"{row_name} - Fiber ΔF/F Heatmap {wavelength}nm")
+                f"{row_name} - Fiber Δ(ΔF/F) Heatmap {wavelength}nm")
         else:
             ax_dff_heat.text(0.5, 0.5, f"No dFF data for {wavelength}nm",
                              ha="center", va="center",
                              transform=ax_dff_heat.transAxes,
                              fontsize=12, color="#666666")
             ax_dff_heat.set_title(
-                f"{row_name} - Fiber ΔF/F Heatmap {wavelength}nm")
+                f"{row_name} - Fiber Δ(ΔF/F) Heatmap {wavelength}nm")
             ax_dff_heat.axis("off")
 
         ax_zs_heat = fig.add_subplot(2, NUM_COLS, column_idx[5])
@@ -1067,14 +1072,18 @@ def create_single_row_window(row_name, data, params):
             ax_zs_heat.axis("off")
  
         fig.tight_layout(rect=[0, 0, 1, 0.96])
-        embed_figure(inner, fig, row_in_frame=wl_idx)
- 
+        c = embed_figure(inner, fig, row_in_frame=wl_idx)
+        collected.append((fig, c, win_title))
+
     log_message(
         f"Individual row plot created for {row_name} "
         f"with {len(target_wavelengths)} wavelength(s)"
     )
- 
+    return collected
+
 def create_individual_row_windows(results, params):
     """Create individual windows for each row"""
+    all_figs = []
     for row_name, data in results.items():
-        create_single_row_window(row_name, data, params)
+        all_figs.extend(create_single_row_window(row_name, data, params))
+    return all_figs

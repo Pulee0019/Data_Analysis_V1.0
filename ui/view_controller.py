@@ -13,64 +13,103 @@ def bind_view_dependencies(deps):
     _deps.update(deps)
     globals().update(deps)
 
-def main_visualization(animal_data=None):
-    """Modified to handle different experiment modes"""
-    global parsed_data, visualization_window, fiber_plot_window, running_plot_window
-    global current_experiment_mode
-    
+_notebook = None
+
+def _ensure_notebook():
+    """Create or return the Notebook in central_display_frame (Req 4)"""
+    global _notebook
+    if _notebook is not None:
+        try:
+            _notebook.winfo_exists()
+            return _notebook
+        except tk.TclError:
+            _notebook = None
     for widget in central_display_frame.winfo_children():
         widget.destroy()
+    _notebook = ttk.Notebook(central_display_frame)
+    _notebook.pack(fill=tk.BOTH, expand=True)
+    return _notebook
+
+def _add_tab(notebook, title):
+    """Add a tab to the notebook and return its content frame"""
+    for child in notebook.winfo_children():
+        if isinstance(child, ttk.Frame):
+            try:
+                tab_text = notebook.tab(child, "text")
+            except tk.TclError:
+                continue
+            if tab_text == title:
+                notebook.select(child)
+                for w in child.winfo_children():
+                    w.destroy()
+                return child
+    frame = ttk.Frame(notebook)
+    notebook.add(frame, text=title)
+    notebook.select(frame)
+    return frame
+
+def main_visualization(animal_data=None):
+    """Modified to handle different experiment modes with Notebook tabs (Req 4)"""
+    global parsed_data, visualization_window, fiber_plot_window, running_plot_window
+    global current_experiment_mode, _current_bodyparts, _notebook
+    
+    nb = _ensure_notebook()
+    
+    def _vis(parent, mode, adata):
+        global visualization_window, fiber_plot_window, running_plot_window
+        if mode in (EXPERIMENT_MODE_FIBER_AST2_DLC, EXPERIMENT_MODE_FIBER_AST2):
+            fb = _add_tab(nb, "Fiber Data")
+            rb = _add_tab(nb, "Running Data")
+            fiber_plot_window = FiberVisualizationWindow(fb, adata, 
+                target_signal_var.get() if 'target_signal_var' in globals() else "470",
+                globals().get('input3_events'), globals().get('drug_events'))
+            running_plot_window = RunningVisualizationWindow(rb, adata)
+        if mode == EXPERIMENT_MODE_FIBER_AST2_DLC and parsed_data:
+            bp = _add_tab(nb, "Bodyparts")
+            visualization_window = BodypartVisualizationWindow(bp, parsed_data)
+        if mode == EXPERIMENT_MODE_AST2:
+            rb = _add_tab(nb, "Running Data")
+            running_plot_window = RunningVisualizationWindow(rb, adata)
+        if mode in (EXPERIMENT_MODE_FIBER, EXPERIMENT_MODE_FIBER_BSOID):
+            fb = _add_tab(nb, "Fiber Data")
+            fiber_plot_window = FiberVisualizationWindow(fb, adata,
+                target_signal_var.get() if 'target_signal_var' in globals() else "470",
+                globals().get('input3_events'), globals().get('drug_events'))
     
     if animal_data is None:
-        # Using global data
         if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
             if not hasattr(globals(), 'parsed_data') or not parsed_data:
                 log_message("No DLC data available for visualization", "WARNING")
                 return
-            
-            create_bodypart_buttons(list(parsed_data.keys()))
-            create_visualization_window()
-            create_fiber_visualization()
-            create_running_visualization()
-        
-        if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
-            create_fiber_visualization()
-            create_running_visualization()
-        
-        if current_experiment_mode == EXPERIMENT_MODE_AST2:
-            create_running_visualization()
-
+            _current_bodyparts = list(parsed_data.keys())
+            _vis(nb, current_experiment_mode, None)
+        else:
+            _vis(nb, current_experiment_mode, None)
     else:
-        # Using animal_data
         animal_mode = animal_data.get('experiment_mode', EXPERIMENT_MODE_FIBER_AST2_DLC)
-        
         if animal_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
             if 'dlc_data' not in animal_data or not animal_data['dlc_data']:
                 log_message("No DLC data available for visualization", "WARNING")
             else:
                 parsed_data = animal_data['dlc_data']
-                create_bodypart_buttons(list(parsed_data.keys()))
-                create_visualization_window()
-                create_fiber_visualization(animal_data)
-                create_running_visualization(animal_data)
-        elif animal_mode == EXPERIMENT_MODE_FIBER_AST2:
-            # Fiber+AST2 mode: show info message
-            info_label = tk.Label(central_display_frame, 
-                                 text="Fiber + AST2 Mode\n\nBodypart visualization not available\nSee fiber and running plots on the right",
-                                 bg="#f8f8f8", fg="#666666",
-                                 font=("Arial", 12))
-            info_label.pack(pady=100)
-            create_fiber_visualization(animal_data)
-            create_running_visualization(animal_data)
-        elif animal_mode == EXPERIMENT_MODE_AST2:
-            info_label = tk.Label(central_display_frame, 
-                                 text="Fiber + AST2 Mode\n\nBodypart visualization not available\nSee fiber and running plots on the right",
-                                 bg="#f8f8f8", fg="#666666",
-                                 font=("Arial", 12))
-            info_label.pack(pady=100)
-            create_running_visualization(animal_data)
+                _current_bodyparts = list(parsed_data.keys())
+        _vis(nb, animal_mode, animal_data)
 
-def create_fiber_visualization(animal_data=None):
+def _get_fiber_tab():
+    """Get or create the Fiber Data tab frame"""
+    nb = globals().get('_notebook')
+    if nb and nb.winfo_exists():
+        return _add_tab(nb, "Fiber Data")
+    return central_display_frame
+
+def _get_running_tab():
+    """Get or create the Running Data tab frame"""
+    nb = globals().get('_notebook')
+    if nb and nb.winfo_exists():
+        return _add_tab(nb, "Running Data")
+    return central_display_frame
+
+def create_fiber_visualization(animal_data=None, parent=None):
     global fiber_plot_window, input3_events, drug_events
     if animal_data:
         input3_events = animal_data.get('input3_events')
@@ -82,16 +121,13 @@ def create_fiber_visualization(animal_data=None):
     if fiber_plot_window:
         fiber_plot_window.close_window()
     
+    parent = parent or _get_fiber_tab()
     target_signal = target_signal_var.get() if 'target_signal_var' in globals() else "470"
     
     if animal_data:
         if 'preprocessed_data' in animal_data:
             fiber_plot_window = FiberVisualizationWindow(
-                central_display_frame,
-                animal_data,
-                target_signal,
-                input3_events,
-                drug_events,
+                parent, animal_data, target_signal, input3_events, drug_events,
             )
         else:
             if 'fiber_data_trimmed' not in animal_data or animal_data['fiber_data_trimmed'] is None:
@@ -111,22 +147,19 @@ def create_fiber_visualization(animal_data=None):
                 return
                 
             fiber_plot_window = FiberVisualizationWindow(
-                central_display_frame,
-                animal_data,
-                target_signal,
-                input3_events,
-                drug_events,
+                parent, animal_data, target_signal, input3_events, drug_events,
             )
 
     _deps['fiber_plot_window'] = fiber_plot_window
 
-def create_running_visualization(animal_data=None):
+def create_running_visualization(animal_data=None, parent=None):
     global running_plot_window
     
     if running_plot_window:
         running_plot_window.close_window()
     
-    running_plot_window = RunningVisualizationWindow(central_display_frame, animal_data)
+    parent = parent or _get_running_tab()
+    running_plot_window = RunningVisualizationWindow(parent, animal_data)
     _deps['running_plot_window'] = running_plot_window
 
 def display_analysis_results(analysis_type, animal_data):
@@ -170,11 +203,13 @@ def display_fiber_results_for_animal(animal_data, plot_type="raw"):
         else:
             fiber_plot_window.set_plot_type("raw")
 
-def create_animal_list():
-    for widget in right_frame.winfo_children():
+def create_animal_list(parent=None):
+    if parent is None:
+        parent = right_frame if 'right_frame' in globals() and right_frame is not None else left_frame
+    for widget in parent.winfo_children():
         widget.destroy()
 
-    multi_animal_frame = ttk.LabelFrame(right_frame, text="Multi Animal Analysis")
+    multi_animal_frame = ttk.LabelFrame(parent, text="Animal List")
     multi_animal_frame.pack(fill=tk.X, padx=5, pady=5)
     
     list_frame = ttk.Frame(multi_animal_frame)
@@ -191,7 +226,7 @@ def create_animal_list():
                               selectmode=tk.SINGLE,
                               xscrollcommand=xscroll.set,
                               yscrollcommand=yscroll.set,
-                              height=5)
+                              height=30)
     file_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
     xscroll.config(command=file_listbox.xview)
@@ -203,24 +238,17 @@ def create_animal_list():
     file_listbox.bind('<<ListboxSelect>>', on_animal_select)
 
     btn_frame = ttk.Frame(multi_animal_frame)
-    btn_frame.pack(fill="both", padx=5, pady=5)
+    btn_frame.pack(fill="x", padx=5, pady=5)
 
     style = ttk.Style()
     style.configure("Accent.TButton", 
-                    font=("Microsoft YaHei", 10),
-                    padding=(10, 5))
+                    font=("Microsoft YaHei", 9),
+                    padding=(5, 2))
 
-    clear_selected_btn = ttk.Button(btn_frame, 
-                                text="Clear Selected", 
-                                command=clear_selected,
-                                style="Accent.TButton")
-    clear_selected_btn.pack(fill="x", padx=2, pady=(2, 1))
-
-    clear_all_btn = ttk.Button(btn_frame, 
-                            text="Clear All", 
-                            command=clear_all,
-                            style="Accent.TButton")
-    clear_all_btn.pack(fill="x", padx=2, pady=(1, 2))
+    ttk.Button(btn_frame, text="Clear Selected", command=clear_selected,
+               style="Accent.TButton").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
+    ttk.Button(btn_frame, text="Clear All", command=clear_all,
+               style="Accent.TButton").pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=1)
 
 def update_file_listbox():
     """Update the file listbox to show animal_single_channel_id"""

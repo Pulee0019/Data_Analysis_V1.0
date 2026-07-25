@@ -86,6 +86,49 @@ def get_events_from_bouts(animal_data, event_type, duration=False):
     
     return events
 
+def get_events_from_bsoid(animal_data, event_type):
+    """Extract events from BSOID data based on event type"""
+    events = []
+    
+    bsoid_data = animal_data.get('bsoid_data')
+    if bsoid_data is None:
+        return events
+    
+    # Parse event type to get bout type and event kind
+    if event_type.endswith('_onsets'):
+        bsoid_state = event_type.replace('_onsets', '')
+        event_kind = 'onset'
+    elif event_type.endswith('_offsets'):
+        bsoid_state = event_type.replace('_offsets', '')
+        event_kind = 'offset'
+    else:
+        bsoid_state = event_type
+        event_kind = 'duration'
+    
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'cluster mapping.json')
+    with open(config_path, 'r', encoding='utf-8') as f:
+        cluster_mapping = json.load(f)
+        
+    for bout_type, bout_type_name in cluster_mapping.items():
+        if bout_type_name == bsoid_state:
+            state_num = int(bout_type)
+            break
+    
+    target_state = bsoid_data[bsoid_data['B-SOiD labels'] == state_num]
+    
+    for bout in target_state.itertuples(index=False):
+        start_time = bout[2] / animal_data['bsoid_fps']
+        duration = bout[3] / animal_data['bsoid_fps']
+        
+        if event_kind == 'onset':
+            events.append(start_time)
+        elif event_kind == 'offset':
+            events.append(start_time + duration)
+        elif event_kind == 'duration':
+            events.append((start_time, start_time + duration))
+    
+    return events
+
 def identify_optogenetic_events(fiber_events):
     """
     Identify optogenetic events from fiber data
@@ -446,7 +489,8 @@ def calculate_running_episodes(events, running_timestamps, running_speed,
                             if len(episode_times) > 1:
                                 # Store dFF data
                                 interp_dff = np.interp(time_array, episode_times, episode_data)
-                                dff_episodes[wavelength].append(interp_dff)
+                                ddff = interp_dff - mean_dff  # Store dFF with custom baseline
+                                dff_episodes[wavelength].append(ddff)
                                 
                                 # Calculate z-score using custom baseline
                                 zscore_episode = (episode_data - mean_dff) / std_dff
@@ -989,5 +1033,35 @@ def draw_heatmap(ax, episodes_array, time_array, cmap, label,
     plt.colorbar(im, ax=ax, label=label, orientation="horizontal")
     return im
  
+# Global figure registry for the Figure Controller menu button
+_figure_registry = []
+
+def register_figures(figure_pairs):
+    """Register figure pairs in the global registry for later access via menu."""
+    _figure_registry.extend(figure_pairs)
+
+def open_figure_controller():
+    """Open PlotParameterController with all registered figures (menu button)."""
+    if not _figure_registry:
+        log_message("No figures available. Run an analysis first.", "WARNING")
+        return
+    from ui.plot_parameter_controller import PlotParameterController
+    PlotParameterController(list(_figure_registry))
+
+
 def make_figure(NUM_COLS):
     return Figure(figsize=(NUM_COLS * SUBPLOT_H, SUBPLOT_H * 2), dpi=FIG_DPI)
+
+
+def show_plot_controller(figure_pairs):
+    """Launch the PlotParameterController with collected figure pairs.
+    
+    Parameters
+    ----------
+    figure_pairs : list of (Figure, FigureCanvasTkAgg, window_title)
+    """
+    if not figure_pairs:
+        return
+    register_figures(figure_pairs)
+    from ui.plot_parameter_controller import PlotParameterController
+    PlotParameterController(figure_pairs)
