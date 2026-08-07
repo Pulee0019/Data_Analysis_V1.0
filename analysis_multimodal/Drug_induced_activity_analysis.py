@@ -8,7 +8,9 @@ import numpy as np
 import pandas as pd
 import tkinter as tk
 
+from itertools import chain
 from infrastructure.logger import log_message
+from workflows.data_workflows import EXPERIMENT_MODE_FIBER
 from analysis_multimodal.Multimodal_analysis import (
     export_results, identify_drug_sessions, calculate_running_episodes,
     create_control_panel, create_table_window, initialize_table, create_parameter_panel,
@@ -16,7 +18,7 @@ from analysis_multimodal.Multimodal_analysis import (
     make_scrollable_window, make_figure, draw_heatmap, embed_figure,
     show_plot_controller
 )
-from workflows.data_workflows import EXPERIMENT_MODE_FIBER
+
 
 NUM_COLS = 3      # Drug: Running | dFF | Z-score
 
@@ -44,8 +46,8 @@ def show_drug_induced_analysis(root, multi_animal_data):
     main_window = tk.Toplevel(root)
     main_window.title("Drug-Induced Activity Analysis")
     main_window.geometry("900x700")
-    main_window.transient(root)
-    main_window.grab_set()
+    # main_window.transient(root)
+    # main_window.grab_set()
     
     # Main container
     container = tk.Frame(main_window, bg="#f8f8f8")
@@ -672,9 +674,9 @@ def analyze_row_drug_induced(row_name, animals, params):
 
             for wl in target_wavelengths:
                 if wl in result['dff']:
-                    combined_dff[wl].extend(result['dff'][wl])
+                    combined_dff[wl].append(result['dff'][wl])
                 if wl in result['zscore']:
-                    combined_zscore[wl].extend(result['zscore'][wl])
+                    combined_zscore[wl].append(result['zscore'][wl])
             
             # Collect statistics
             if params['export_stats']:
@@ -765,7 +767,7 @@ def plot_drug_induced_results(results, params):
         ax_dff = fig.add_subplot(2, NUM_COLS, column_idx[1])
         for idx, (row_name, data) in enumerate(results.items()):
             row_color = ROW_COLORS[idx % len(ROW_COLORS)]
-            episodes = data["dff"].get(wavelength, [])
+            episodes = list(chain.from_iterable(list(data["dff"].get(wavelength, []))))
             if len(episodes) > 0:
                 arr = np.array(episodes)
                 if arr.ndim == 1:
@@ -795,7 +797,7 @@ def plot_drug_induced_results(results, params):
         ax_zs = fig.add_subplot(2, NUM_COLS, column_idx[2])
         for idx, (row_name, data) in enumerate(results.items()):
             row_color = ROW_COLORS[idx % len(ROW_COLORS)]
-            episodes = data["zscore"].get(wavelength, [])
+            episodes = list(chain.from_iterable(list(data["zscore"].get(wavelength, []))))
             if len(episodes) > 0:
                 arr = np.array(episodes)
                 if arr.ndim == 1:
@@ -851,7 +853,7 @@ def plot_drug_induced_results(results, params):
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, column_idx[4])
         all_dff, counts = [], []
         for data in results.values():
-            ep = data["dff"].get(wavelength, [])
+            ep = list(chain.from_iterable(list(data["dff"].get(wavelength, []))))
             if len(ep) > 0:
                 all_dff.extend(ep)
                 counts.append(len(ep))
@@ -876,7 +878,7 @@ def plot_drug_induced_results(results, params):
         ax_zs_heat = fig.add_subplot(2, NUM_COLS, column_idx[5])
         all_zs, counts = [], []
         for data in results.values():
-            ep = data["zscore"].get(wavelength, [])
+            ep = list(chain.from_iterable(list(data["zscore"].get(wavelength, []))))
             if len(ep) > 0:
                 all_zs.extend(ep)
                 counts.append(len(ep))
@@ -959,7 +961,7 @@ def create_single_row_window(row_name, data, params):
 
         dff_vmin, dff_vmax = None, None
         ax_dff = fig.add_subplot(2, NUM_COLS, column_idx[1])
-        episodes = data["dff"].get(wavelength, [])
+        episodes = list(chain.from_iterable(list(data["dff"].get(wavelength, []))))
         if len(episodes) > 0:
             arr = np.array(episodes)
             if arr.ndim == 1:
@@ -993,7 +995,7 @@ def create_single_row_window(row_name, data, params):
         
         zs_vmin, zs_vmax = None, None
         ax_zs = fig.add_subplot(2, NUM_COLS, column_idx[2])
-        episodes = data["zscore"].get(wavelength, [])
+        episodes = list(chain.from_iterable(list(data["zscore"].get(wavelength, []))))
         if len(episodes) > 0:
             arr = np.array(episodes)
             if arr.ndim == 1:
@@ -1040,7 +1042,7 @@ def create_single_row_window(row_name, data, params):
                 ax_run_heat.axis("off")
 
         ax_dff_heat = fig.add_subplot(2, NUM_COLS, column_idx[4])
-        episodes = data["dff"].get(wavelength, [])
+        episodes = list(chain.from_iterable(list(data["dff"].get(wavelength, []))))
         if len(episodes) > 0:
             draw_heatmap(ax_dff_heat, np.array(episodes),
                           time_array, "coolwarm", "Δ(ΔF/F)", vmin=dff_vmin, vmax=dff_vmax)
@@ -1056,7 +1058,7 @@ def create_single_row_window(row_name, data, params):
             ax_dff_heat.axis("off")
 
         ax_zs_heat = fig.add_subplot(2, NUM_COLS, column_idx[5])
-        episodes = data["zscore"].get(wavelength, [])
+        episodes = list(chain.from_iterable(list(data["zscore"].get(wavelength, []))))
         if len(episodes) > 0:
             draw_heatmap(ax_zs_heat, np.array(episodes),
                           time_array, "coolwarm", "Z-score", vmin=zs_vmin, vmax=zs_vmax)

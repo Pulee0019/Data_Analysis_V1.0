@@ -1,187 +1,16 @@
 import tkinter as tk
+import ui.view_controller as view_controller
+
 from tkinter import ttk
-
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
-
 from infrastructure.logger import log_message
 
 _deps = {}
+_bodypart_dialog = None
 
 def bind_bodypart_dependencies(deps):
     _deps.clear()
     _deps.update(deps)
     globals().update(deps)
-
-def create_visualization_window(parent=None):
-    """Create the bodyparts location visualization window"""
-    global visualization_window, parsed_data, central_label
-    
-    if 'parsed_data' not in globals() or not parsed_data:
-        log_message("Please load the behavior data file first", "WARNING")
-        return
-    
-    # If the window already exists, close it first
-    if visualization_window:
-        visualization_window.close_window()
-    
-    # Use notebook tab if available
-    if parent is None:
-        try:
-            from ui.view_controller import _notebook, _add_tab
-            if _notebook is not None and _notebook.winfo_exists():
-                parent = _add_tab(_notebook, "Bodyparts")
-            else:
-                parent = central_display_frame
-        except Exception:
-            parent = central_display_frame
-    
-    # Create a new visualization window
-    visualization_window = BodypartVisualizationWindow(parent, parsed_data)
-
-def create_trajectory_pointcloud():
-    """Create the trajectory point cloud visualization window"""
-    global parsed_data, selected_bodyparts, central_label, show_data_points_var
-    
-    if 'parsed_data' not in globals() or not parsed_data:
-        log_message("Please load the behavior data file first", "WARNING")
-        return
-    
-    if not selected_bodyparts:
-        log_message("Please select the bodyparts to display the trajectory first", "WARNING")
-        return
-    
-    # Hide the default label in the central display area
-    if 'central_label' in globals():
-        central_label.pack_forget()
-    
-    # Clear the central display area
-    for widget in central_display_frame.winfo_children():
-        widget.destroy()
-    
-    # Create a matplotlib figure
-    fig = Figure(figsize=(10, 8), dpi=100)
-    ax = fig.add_subplot(111)
-    
-    # Set figure properties
-    ax.set_title("🌟 Trajectory Point Cloud Visualization", fontsize=16, fontweight='bold', color='#2c3e50', pad=20)
-    ax.set_xlabel("X Coordinate", fontsize=12, fontweight='bold', color='#2c3e50')
-    ax.set_ylabel("Y Coordinate", fontsize=12, fontweight='bold', color='#2c3e50')
-    ax.grid(True, alpha=0.3, linestyle='--', color='#bdc3c7')
-    ax.set_facecolor('#ffffff')
-    
-    # Use the same color configuration as the buttons
-    colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', 
-             '#1abc9c', '#e67e22', '#34495e', '#f1c40f', '#95a5a6']
-    
-    # Get the list of all bodyparts (in the same order as when the buttons were created)
-    all_bodyparts = list(parsed_data.keys())
-    
-    # Plot the trajectory point cloud for the selected bodyparts
-    for bodypart in selected_bodyparts:
-        if bodypart in parsed_data:
-            data = parsed_data[bodypart]
-            x_data = data['x']
-            y_data = data['y']
-            
-            # Downsample by a factor of 2
-            step = 2
-            x_sampled = x_data[::step]
-            y_sampled = y_data[::step]
-            
-            # Get the corresponding color based on the bodypart's index in the original list (consistent with button colors)
-            bodypart_index = all_bodyparts.index(bodypart)
-            color = colors[bodypart_index % len(colors)]
-            
-            # Plot the trajectory lines
-            ax.plot(x_sampled, y_sampled, color='lightgray', linewidth=0.5, alpha=0.3)
-
-            # Plot the point cloud based on the checkbox state
-            if show_data_points_var and show_data_points_var.get():
-                # Plot the point cloud with 70% opacity
-                ax.scatter(x_sampled, y_sampled, s=10, alpha=0.7, 
-                          color=color, edgecolors='white', linewidth=0.5, 
-                          label=f'{bodypart} ({len(x_sampled)} points)')
-            else:
-                # Only show the trajectory line, not the points, but still need to add a legend entry
-                ax.plot([], [], color=color, linewidth=2, label=f'{bodypart} trajectory')
-    
-    # Set axis limits
-    if selected_bodyparts:
-        all_x = []
-        all_y = []
-        for bodypart in selected_bodyparts:
-            if bodypart in parsed_data:
-                all_x.extend(parsed_data[bodypart]['x'])
-                all_y.extend(parsed_data[bodypart]['y'])
-        
-        if all_x and all_y:
-            margin_x = (max(all_x) - min(all_x)) * 0.1
-            margin_y = (max(all_y) - min(all_y)) * 0.1
-            ax.set_xlim(min(all_x) - margin_x, max(all_x) + margin_x)
-            ax.set_ylim(min(all_y) - margin_y, max(all_y) + margin_y)
-    
-    # Add legend
-    ax.legend(loc='upper right', framealpha=0.9, fontsize=10)
-    
-    # Set axis style
-    ax.tick_params(colors='#2c3e50', labelsize=10)
-    for spine in ax.spines.values():
-        spine.set_color('#bdc3c7')
-        spine.set_linewidth(1)
-    
-    # Create canvas and add to central display area
-    canvas = FigureCanvasTkAgg(fig, central_display_frame)
-    canvas.draw()
-    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-    
-    # Create control panel
-    control_frame = tk.Frame(central_display_frame, bg='#f8f8f8', height=50)
-    control_frame.pack(fill=tk.X, side=tk.BOTTOM)
-    control_frame.pack_propagate(False)
-    
-    # Add close button
-    close_btn = tk.Button(control_frame, text="❌ Close Point Cloud", 
-                         command=lambda: close_pointcloud_window(),
-                         bg='#e74c3c', fg='white', font=('Arial', 10, 'bold'),
-                         relief=tk.FLAT, padx=15, pady=5)
-    close_btn.pack(side=tk.RIGHT, padx=10, pady=10)
-
-    # Add show/hide data points checkbox
-    if show_data_points_var is None:
-        show_data_points_var = tk.BooleanVar(value=True)
-
-    show_points_check = tk.Checkbutton(control_frame, text="Show Data Points", 
-                                       variable=show_data_points_var, 
-                                       command=create_trajectory_pointcloud,
-                                       bg='#f8f8f8', font=('Arial', 10))
-    show_points_check.pack(side=tk.RIGHT, padx=10)
-    
-    # Add information label
-    info_label = tk.Label(control_frame, 
-                         text=f"Displaying trajectory point cloud for {len(selected_bodyparts)} bodyparts",
-                         bg='#f8f8f8', fg='#2c3e50', font=('Arial', 10))
-    info_label.pack(side=tk.LEFT, padx=10, pady=10)
-    
-    log_message(f"Trajectory point cloud display completed - {len(selected_bodyparts)} bodyparts displayed")
-
-def close_pointcloud_window():
-    """Close the trajectory point cloud window and restore the visualization window"""
-    global visualization_window, parsed_data
-    
-    # Clear the central display area
-    for widget in central_display_frame.winfo_children():
-        widget.destroy()
-    
-    # If data is available, restore the visualization window
-    if 'parsed_data' in globals() and parsed_data:
-        visualization_window = BodypartVisualizationWindow(central_display_frame, parsed_data)
-        log_message("Bodyparts location visualization restored")
-    else:
-        # If no data, show the default label
-        central_label = tk.Label(central_display_frame, text="Central Display Area\nThe bodyparts location visualization window will be displayed after loading the CSV file", bg="#f8f8f8", fg="#666666")
-        central_label.pack(pady=20)
-        log_message("Trajectory point cloud closed")
 
 def toggle_bodypart(bodypart_name, button):
     """Toggle the state of the bodypart button"""
@@ -239,7 +68,7 @@ def start_skeleton_building():
     # Clear current selections
     selected_bodyparts.clear()
     
-    log_message("Skeleton building mode: Click bodyparts to create connections\n")
+    log_message("Skeleton building mode: Click bodyparts to create connections")
     log_message("Skeleton building mode started")
 
 def confirm_skeleton():
@@ -275,8 +104,8 @@ def confirm_skeleton():
         button.config(bg=color, relief=tk.RAISED)
     
     # Update visualization window to display skeleton
-    if visualization_window:
-        visualization_window.update_plot_optimized()
+    if hasattr(view_controller, 'visualization_window') and view_controller.visualization_window:
+        view_controller.visualization_window.update_plot_optimized()
 
     log_message(f"Skeleton connections: {skeleton_connections}")
     log_message(f"Skeleton building completed!\n{len(new_connections)} connections added")
@@ -337,10 +166,8 @@ def get_time_label():
     time_unit = time_unit_var.get() if time_unit_var else "seconds"
     return f"Time({time_unit})"
 
-_bodypart_dialog = None
-
 def create_bodypart_buttons(bodyparts):
-    """Open a dialog for bodypart/keypoint selection (Req 2: dialog, not in left_frame)"""
+    """Open a dialog for bodypart/keypoint selection"""
     global _bodypart_dialog, add_skeleton_button, confirm_skeleton_button
     global fps_var, time_unit_var, fps_conversion_var
     global bodypart_buttons, selected_bodyparts
@@ -358,9 +185,9 @@ def create_bodypart_buttons(bodyparts):
 
     _bodypart_dialog = tk.Toplevel(root)
     _bodypart_dialog.title("Bodypart / Keypoint Selection")
-    _bodypart_dialog.geometry("340x620")
-    _bodypart_dialog.transient(root)
-    _bodypart_dialog.grab_set()
+    _bodypart_dialog.geometry("200x700")
+    # _bodypart_dialog.transient(root)
+    # _bodypart_dialog.grab_set()
 
     container = tk.Frame(_bodypart_dialog, bg="#e0e0e0", padx=12, pady=12)
     container.pack(fill=tk.BOTH, expand=True)
@@ -374,14 +201,22 @@ def create_bodypart_buttons(bodyparts):
              bg="#e0e0e0", fg="#2c3e50").pack(pady=(0, 8))
 
     # Scrollable area for bodypart buttons
-    canvas = tk.Canvas(container, bg="#e0e0e0", highlightthickness=0, height=200)
-    scrollbar = tk.Scrollbar(container, orient="vertical", command=canvas.yview)
+    scroll_frame = tk.Frame(container, bg="#e0e0e0")
+    scroll_frame.pack(fill=tk.BOTH, expand=True)
+
+    canvas = tk.Canvas(scroll_frame, bg="#e0e0e0", highlightthickness=0)
+    scrollbar = tk.Scrollbar(scroll_frame, orient="vertical", command=canvas.yview)
     bp_frame = tk.Frame(canvas, bg="#e0e0e0")
-    bp_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-    canvas.create_window((0, 0), window=bp_frame, anchor="nw")
+
     canvas.configure(yscrollcommand=scrollbar.set)
-    canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    canvas.create_window((0, 0), window=bp_frame, anchor="nw")
+
+    def on_frame_configure(event):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+    bp_frame.bind("<Configure>", on_frame_configure)
 
     for i, bodypart in enumerate(bodyparts):
         color = colors[i % len(colors)]

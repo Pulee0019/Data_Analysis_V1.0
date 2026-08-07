@@ -1,22 +1,24 @@
-import threading
 import time
+import threading
+import numpy as np
+import pandas as pd
 import tkinter as tk
+import matplotlib.pyplot as plt
+
 from tkinter import filedialog, ttk
+from matplotlib.figure import Figure
+from infrastructure.logger import log_message
+from ui.bodypart_controller import create_bodypart_buttons
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+
+from analysis_multimodal.Multimodal_analysis import identify_drug_sessions, identify_optogenetic_events
 
 try:
     import cv2
     CV2_AVAILABLE = True
 except ImportError:
     CV2_AVAILABLE = False
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-from matplotlib.figure import Figure
-
-from infrastructure.logger import log_message
-from analysis_multimodal.Multimodal_analysis import identify_drug_sessions, identify_optogenetic_events
-
+    
 EXPERIMENT_MODE_FIBER_AST2_DLC = "fiber+ast2+dlc"
 
 _deps = {}
@@ -68,12 +70,6 @@ class BodypartVisualizationWindow:
         title_frame.pack_propagate(False)
         title_frame.bind("<Button-1>", self.start_move)
         title_frame.bind("<B1-Motion>", self.do_move)
-        
-        title_label = tk.Label(title_frame, text="Bodyparts Position Visualization", bg="#f5f5f5", fg="#666666", 
-                              font=("Microsoft YaHei", 10, "bold"))
-        title_label.pack(side=tk.LEFT, padx=10, pady=3)
-        title_label.bind("<Button-1>", self.start_move)
-        title_label.bind("<B1-Motion>", self.do_move)
         
         # Window control buttons
         btn_frame = tk.Frame(title_frame, bg="#f5f5f5")
@@ -150,6 +146,11 @@ class BodypartVisualizationWindow:
         # Play control buttons - modern button style
         btn_frame = tk.Frame(control_row_frame, bg="#ecf0f1")
         btn_frame.pack(side=tk.LEFT, padx=(10, 20))
+        
+        create_bp_ctr_btn = tk.Button(btn_frame, text="🧩 Bodypart Control", command=lambda: create_bodypart_buttons(list(self.data.keys())),
+                                     bg="#8e44ad", fg="white", font=("Microsoft YaHei", 10, "bold"),
+                                     relief=tk.FLAT, padx=15, pady=5, cursor="hand2", width=14)
+        create_bp_ctr_btn.pack(side=tk.LEFT, padx=3)
         
         self.play_btn = tk.Button(btn_frame, text="▶ Play", command=self.toggle_play,
                                  bg="#27ae60", fg="white", font=("Microsoft YaHei", 10, "bold"),
@@ -492,7 +493,7 @@ class BodypartVisualizationWindow:
         self.ax.set_ylabel("Y Coordinate", fontsize=11, fontweight='bold', color='#2c3e50')
         
         # Set grid and background
-        self.ax.grid(True, alpha=0.3, linestyle='--', color='#bdc3c7')
+        self.ax.grid(False)
         self.ax.set_facecolor('#ffffff')
         
         # Set axis range and save original limits
@@ -1338,11 +1339,11 @@ class FiberVisualizationWindow:
             self._plot_running_analysis_markers()
 
         # Plot optogenetic stimulation markers if available
-        if self.input3_events is not None:
+        if len(self.input3_events) >= 1:
             self._plot_optogenetic_markers()
 
         # Plot drug administration markers if available
-        if self.drug_events is not None:
+        if len(self.drug_events) >= 1:
             self._plot_drug_markers()
 
         self.ax.set_xlabel("Time (s)", fontsize=12)

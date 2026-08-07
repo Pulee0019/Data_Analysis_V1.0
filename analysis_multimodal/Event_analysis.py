@@ -1,11 +1,11 @@
 """
-BSOID Analysis with table configuration: use the classified bouts from the BSOID analysis and create a table with selection of BSOID bout types and assignments of animal IDs.
+Event Analysis with table configuration: use different type of event read from events and create a table with selection of event types and assignments of animal IDs.
 """
 import os
 import json
 import numpy as np
-import pandas as pd
 import tkinter as tk
+import matplotlib.pyplot as plt
 
 from itertools import chain
 from infrastructure.logger import log_message
@@ -13,7 +13,7 @@ from analysis_multimodal.Multimodal_analysis import (
     create_parameter_panel, get_parameters_from_ui, create_control_panel, 
     create_table_window, initialize_table, FIBER_COLORS, ROW_COLORS,
     make_scrollable_window, make_figure, draw_heatmap, embed_figure,
-    export_results, get_events_from_bsoid, calculate_event_traces,
+    export_results, get_events_from_event, calculate_event_traces,
     show_plot_controller, get_target_fps
 )
 
@@ -21,43 +21,42 @@ NUM_COLS = 2     # Δ(ΔF/F) | Z-score
 
 _deps = {}
 
-def bind_bsoid_dependencies(deps):
+def bind_event_dependencies(deps):
     _deps.clear()
     _deps.update(deps)
     globals().update(deps)
     
-def show_bsoid_analysis(root, multi_animal_data, analysis_mode="bsoid"):
-    """
-    Show BSOID analysis configuration window
-    analysis_mode: "bsoid"
+def show_event_analysis(root, multi_animal_data, analysis_mode="event"):
+    """Show event analysis configuration window
+    analysis mode: "event"
     """
     if not multi_animal_data:
         log_message("No animal data available", "ERROR")
         return
     
-    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'cluster mapping.json')
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'event mapping.json')
     with open(config_path, 'r', encoding='utf-8') as f:
-        cluster_mapping = json.load(f)
+        event_mapping = json.load(f)
         
-    available_bsoid_bout_types = []
+    available_events_types = []
     for animal_data in multi_animal_data:
-        if "bsoid_data" in animal_data:
-            bsoid_data = animal_data["bsoid_data"]
-            if bsoid_data is not None:
-                for bout_type in bsoid_data['B-SOiD labels'].unique():
-                    bout_type_name = cluster_mapping.get(str(bout_type), f"Unknown {bout_type}")
-                    if bout_type_name not in available_bsoid_bout_types:
-                        available_bsoid_bout_types.append(bout_type_name)
+        animal_id = animal_data['animal_id']
+        if  'events' in animal_data and not animal_data['events'].empty:
+            types = animal_data['events']['Event Type'].unique()
+            for t in types:
+                for key, value in event_mapping.items():
+                    if t in value and key not in available_events_types:
+                        available_events_types.append(key)
     
-    log_message(f"Available BSOID bout types: {available_bsoid_bout_types}")
+    log_message(f"Available event types: {available_events_types}")
                         
-    if not available_bsoid_bout_types:
-        log_message("No BSOID data available for any animal", "ERROR")
+    if not available_events_types:
+        log_message("No event data available for any animal", "ERROR")
         return
     
     # Create main window with parameter panel and table
     main_window = tk.Toplevel(root)
-    main_window.title("BSOID Analysis")
+    main_window.title("Event Analysis")
     main_window.geometry("900x700")
     # main_window.transient(root)
     # main_window.grab_set()
@@ -69,13 +68,13 @@ def show_bsoid_analysis(root, multi_animal_data, analysis_mode="bsoid"):
     # Left panel: Parameters
     param_config = {
         'show_plot_window': True,
-        'plot_start': "-5",
-        'plot_end': "15",
+        'plot_start': "-10",
+        'plot_end': "20",
         'show_baseline_window': True,
-        'baseline_start': "-5",
+        'baseline_start': "-10",
         'baseline_end': "0",
-        'show_bout_type': True,
-        'bout_types': available_bsoid_bout_types,
+        'show_events_type': True,
+        'events_types': available_events_types,
         'show_event_type': True
     }
     param_frame = create_parameter_panel(container, param_config)
@@ -92,14 +91,14 @@ def show_bsoid_analysis(root, multi_animal_data, analysis_mode="bsoid"):
     table_manager = TableManager(root, table_frame, btn_frame, multi_animal_data, analysis_mode)
     
     def run_analysis():
-        params = get_parameters_from_ui(param_frame, require_plot_window=True, require_baseline_window=True, require_bout_type=True, require_event_type=True)
+        params = get_parameters_from_ui(param_frame, require_plot_window=True, require_baseline_window=True, require_events_type=True, require_event_type=True)
         if params:
-            params['full_event_type'] = f"{params['bout_type'].replace('_bouts', '')}_{params['event_type']}s"
+            params['full_event_type'] = f"{params['events_type']}_{params['event_type']}s"
             table_manager.run_analysis(params)
     
     tk.Button(btn_frame, text="Run Analysis", command=run_analysis,
-             bg="#ffffff", fg="#000000", font=("Microsoft YaHei", 9, "bold"),
-             relief=tk.FLAT, padx=10, pady=5).pack(side=tk.LEFT, padx=5)
+                bg="#ffffff", fg="#000000", font=("Microsoft YaHei", 9, "bold"),
+                relief=tk.FLAT, padx=10, pady=5).pack(side=tk.LEFT, padx=5)
     
 class TableManager:
     """Manage table for multi-animal configuration"""
@@ -314,18 +313,18 @@ class TableManager:
             log_message("No valid data in table", "WARNING")
             return
         
-        run_bsoid_analysis(row_data, params, target_fps)
+        run_event_analysis(row_data, params, target_fps)
         
-def run_bsoid_analysis(row_data, params, target_fps):
-    """Run BSOID analysis for each row group"""
-    log_message(f"Running BSOID analysis for {len(row_data)} groups")
+def run_event_analysis(row_data, params, target_fps):
+    """Run Event analysis for each row group"""
+    log_message(f"Running Event analysis for {len(row_data)} groups")
     
     results = {}
     all_statistics = []
     
     for row_name, animals in row_data.items():
-        log_message(f"Analyzing group '{row_name}' with {len(animals)} animals")
-        row_result, row_stats = analyze_row_bsoid(row_name, animals, params, target_fps)
+        log_message(f"Analyzing group '{row_name}' with {len(animals)} channels / animals")
+        row_result, row_stats = analyze_row_event(row_name, animals, params, target_fps)
         
         if row_result:
             results[row_name] = row_result
@@ -333,20 +332,31 @@ def run_bsoid_analysis(row_data, params, target_fps):
             all_statistics.extend(row_stats)
             
     if params['export_stats'] and all_statistics:
-        export_results(results, all_statistics, "bsoid_analysis")
+        export_results(results, all_statistics, "event_analysis")
     
     if results:
         all_figures = []
-        all_figures.extend(plot_bsoid_results(results, params))
         all_figures.extend(create_individual_row_windows(results, params))
         show_plot_controller(all_figures)
         log_message("Analysis completed successfully")
     else:
         log_message("No valid results", "ERROR")
         
-def analyze_row_bsoid(row_name, animals, params, target_fps):
-    """Analyze BSOID data for a single row group"""
-    time_array = np.linspace(-params['plot_pre'], params['plot_post'], 
+def analyze_row_event(row_name, animals, params, target_fps):
+    """Analyze a single row of animals for event analysis"""
+    duration = None
+    if params['full_event_type'].endswith('_durations'):
+        durations = []
+        for animal_data in animals:
+            events = get_events_from_event(animal_data, params['full_event_type'])
+            for event in events:
+                durations.append(event[1] - event[0])
+        duration = round(np.max(durations))
+        log_message(f"Max duration for {row_name}: {duration} seconds")
+        time_array = np.linspace(-params['plot_pre'], duration + params['plot_post'], 
+                                int((params['plot_pre'] + duration + params['plot_post']) * target_fps))
+    else:
+        time_array = np.linspace(-params['plot_pre'], params['plot_post'], 
                             int((params['plot_pre'] + params['plot_post']) * target_fps))
     
     # Collect wavelengths
@@ -370,22 +380,18 @@ def analyze_row_bsoid(row_name, animals, params, target_fps):
     for animal_data in animals:
         try:
             animal_id = animal_data.get('animal_single_channel_id', 'Unknown')
-            events = get_events_from_bsoid(animal_data, params['full_event_type'])
-            
+            events = get_events_from_event(animal_data, params['full_event_type'])
             preprocessed_data = animal_data.get('preprocessed_data')
             if preprocessed_data is None or preprocessed_data.empty:
                 continue
-                
             channels = animal_data.get('channels', {})
             time_col = channels['time']
             fiber_timestamps = preprocessed_data[time_col].values
             
             dff_data = animal_data.get('dff_data', {})
             active_channels = animal_data.get('active_channels', [])
-            
             result = calculate_event_traces(time_array, events, fiber_timestamps, dff_data, active_channels, target_wavelengths,
                                             params['plot_pre'], params['plot_post'], params['baseline_start'], params['baseline_end'], target_fps)
-            
             for wl in target_wavelengths:
                 if wl in result['dff']:
                     all_dff_episodes[wl].append(result['dff'][wl])
@@ -411,25 +417,30 @@ def analyze_row_bsoid(row_name, animals, params, target_fps):
         'target_wavelengths': target_wavelengths
     }
     
+    if duration:
+        result['duration'] = duration
+    
     for wl in target_wavelengths:
         if all_dff_episodes[wl]:
             episodes_array = np.array(all_dff_episodes[wl])
+            converted_episodes = np.array(list(chain.from_iterable(all_dff_episodes[wl])))
             result['dff'][wl] = {
                 'episodes': episodes_array,
-                'mean': np.nanmean(episodes_array, axis=0),
-                'sem': np.nanstd(episodes_array, axis=0) / np.sqrt(len(all_dff_episodes[wl]))
+                'mean': np.nanmean(converted_episodes, axis=0),
+                'sem': np.nanstd(converted_episodes, axis=0) / np.sqrt(len(converted_episodes))
             }
         
         if all_zscore_episodes[wl]:
             episodes_array = np.array(all_zscore_episodes[wl])
+            converted_episodes = np.array(list(chain.from_iterable(all_zscore_episodes[wl])))
             result['zscore'][wl] = {
                 'episodes': episodes_array,
-                'mean': np.nanmean(episodes_array, axis=0),
-                'sem': np.nanstd(episodes_array, axis=0) / np.sqrt(len(all_zscore_episodes[wl]))
+                'mean': np.nanmean(converted_episodes, axis=0),
+                'sem': np.nanstd(converted_episodes, axis=0) / np.sqrt(len(converted_episodes))
             }
     
     return result, statistics_rows if params['export_stats'] else None
-            
+
 def collect_statistics(row_name, animal_id, event_type, result, time_array, params, target_wavelengths, active_channels):
     """Collect statistics for export"""
     rows = []
@@ -496,138 +507,13 @@ def collect_statistics(row_name, animal_id, event_type, result, time_array, para
                     })
     
     return rows
-    
-def plot_bsoid_results(results, params):
-    """Plot BSOID results for all groups"""
-    target_wavelengths = []
-    for data in results.values():
-        if "target_wavelengths" in data:
-            target_wavelengths = data["target_wavelengths"]
-            break
-    if not target_wavelengths:
-        target_wavelengths = ["470"]
- 
-    wavelength_label = "+".join(target_wavelengths)
-    time_array = list(results.values())[0]["time"]
- 
-    win_title = f"BSOID Analysis - All Rows ({wavelength_label}nm)"
-    win, _, inner = make_scrollable_window(win_title)
-    collected = []
-
-    for wl_idx, wl in enumerate(target_wavelengths):
-        color = FIBER_COLORS[wl_idx % len(FIBER_COLORS)]
-        fig = make_figure(NUM_COLS)
-        fig.suptitle(f"Wavelength {wl} nm — All Rows",
-                     fontsize=12, fontweight="bold")
-        
-        ax_dff = fig.add_subplot(2, NUM_COLS, 1)
-        for idx, (row_name, data) in enumerate(results.items()):
-            dc = ROW_COLORS[idx % len(ROW_COLORS)]
-            if wl in data["dff"]:
-                t = data["time"]
-                ax_dff.plot(t, data["dff"][wl]["mean"],
-                            color=dc, linewidth=2, label=row_name)
-                ax_dff.fill_between(
-                    t,
-                    data["dff"][wl]["mean"] - data["dff"][wl]["sem"],
-                    data["dff"][wl]["mean"] + data["dff"][wl]["sem"],
-                    color=dc, alpha=0.3)
-        ax_dff.axvline(x=0, color="#808080", linestyle="--", alpha=0.8)
-        ax_dff.set_xlim(time_array[0], time_array[-1])
-        ax_dff.set_xlabel("Time (s)")
-        ax_dff.set_ylabel("Δ(ΔF/F)")
-        ax_dff.set_title(f"Fiber Δ(ΔF/F) {wl}nm - All Rows")
-        ax_dff.legend(fontsize=7)
-        ax_dff.grid(False)
- 
-        ax_zs = fig.add_subplot(2, NUM_COLS, 2)
-        for idx, (row_name, data) in enumerate(results.items()):
-            dc = ROW_COLORS[idx % len(ROW_COLORS)]
-            if wl in data["zscore"]:
-                t = data["time"]
-                ax_zs.plot(t, data["zscore"][wl]["mean"],
-                           color=dc, linewidth=2, label=row_name)
-                ax_zs.fill_between(
-                    t,
-                    data["zscore"][wl]["mean"] - data["zscore"][wl]["sem"],
-                    data["zscore"][wl]["mean"] + data["zscore"][wl]["sem"],
-                    color=dc, alpha=0.3)
-        ax_zs.axvline(x=0, color="#808080", linestyle="--", alpha=0.8)
-        ax_zs.set_xlim(time_array[0], time_array[-1])
-        ax_zs.set_xlabel("Time (s)")
-        ax_zs.set_ylabel("Z-score")
-        ax_zs.set_title(f"Fiber Z-score {wl}nm - All Rows")
-        ax_zs.legend(fontsize=7)
-        ax_zs.grid(False)
-        
-        ax_dff_heat = fig.add_subplot(2, NUM_COLS, 3)
-        all_dff, counts = [], []
-        dff_vmin, dff_vmax = None, None
-        for data in results.values():
-            if wl in data["dff"]:
-                ep = list(chain.from_iterable(list(data["dff"][wl]["episodes"])))
-                all_dff.extend(ep)
-                counts.append(len(ep))
-                if dff_vmin is None and dff_vmax is None:
-                    dff_vmin = min(data["dff"][wl]["mean"] - data["dff"][wl]["sem"])
-                    dff_vmax = max(data["dff"][wl]["mean"] + data["dff"][wl]["sem"])
-                else:
-                    dff_vmin = min(dff_vmin, min(data["dff"][wl]["mean"] - data["dff"][wl]["sem"]))
-                    dff_vmax = max(dff_vmax, max(data["dff"][wl]["mean"] + data["dff"][wl]["sem"]))
-        if all_dff:
-            boundaries = []
-            acc = 0
-            for c in counts[:-1]:
-                acc += c
-                boundaries.append(acc)
-            draw_heatmap(ax_dff_heat, np.array(all_dff), time_array,
-                          "coolwarm", "Δ(ΔF/F)",
-                          extra_lines=boundaries if boundaries else None, vmin=dff_vmin, vmax=dff_vmax)
-            ax_dff_heat.set_title(f"Fiber Δ(ΔF/F) Heatmap {wl}nm")
-        else:
-            ax_dff_heat.axis("off")
-            ax_dff_heat.set_title(f"Fiber Δ(ΔF/F) Heatmap {wl}nm")
- 
-        ax_zs_heat = fig.add_subplot(2, NUM_COLS, 4)
-        all_zs, counts = [], []
-        zs_vmin, zs_vmax = None, None
-        for data in results.values():
-            if wl in data["zscore"]:
-                ep = data["zscore"][wl]["episodes"]
-                all_zs.extend(ep)
-                counts.append(len(ep))
-                if zs_vmin is None and zs_vmax is None:
-                    zs_vmin = min(data["zscore"][wl]["mean"] - data["zscore"][wl]["sem"])
-                    zs_vmax = max(data["zscore"][wl]["mean"] + data["zscore"][wl]["sem"])
-                else:
-                    zs_vmin = min(zs_vmin, min(data["zscore"][wl]["mean"] - data["zscore"][wl]["sem"]))
-                    zs_vmax = max(zs_vmax, max(data["zscore"][wl]["mean"] + data["zscore"][wl]["sem"]))
-        if all_zs:
-            boundaries = []
-            acc = 0
-            for c in counts[:-1]:
-                acc += c
-                boundaries.append(acc)
-            draw_heatmap(ax_zs_heat, np.array(all_zs), time_array,
-                          "coolwarm", "Z-score",
-                          extra_lines=boundaries if boundaries else None, vmin=zs_vmin, vmax=zs_vmax)
-            ax_zs_heat.set_title(f"Fiber Z-score Heatmap {wl}nm")
-        else:
-            ax_zs_heat.axis("off")
-            ax_zs_heat.set_title(f"Fiber Z-score Heatmap {wl}nm")
- 
-        fig.tight_layout(rect=[0, 0, 1, 0.96])
-        c = embed_figure(inner, fig, row_in_frame=wl_idx)
-        collected.append((fig, c, win_title))
-
-    log_message("BSOID analysis results plotted.")
-    return collected
 
 def create_individual_row_windows(results, params):
     """Create individual windows for each row group"""
     all_figs = []
     for row_name, data in results.items():
         all_figs.extend(create_single_row_window(row_name, data, params))
+        all_figs.extend(create_single_event_window(row_name, data, params))
     return all_figs
         
 def create_single_row_window(row_name, data, params):
@@ -635,7 +521,7 @@ def create_single_row_window(row_name, data, params):
     target_wavelengths = data.get("target_wavelengths", ["470"])
     time_array = data["time"]
 
-    win_title = f"BSOID analysis - {row_name} - {params['full_event_type']}"
+    win_title = f"Event analysis - {row_name} - {params['full_event_type']}"
     win, _, inner = make_scrollable_window(win_title)
     collected = []
  
@@ -687,7 +573,7 @@ def create_single_row_window(row_name, data, params):
         if wl in data["dff"]:
             dff_vmin = min(data["dff"][wl]["mean"] - data["dff"][wl]["sem"])
             dff_vmax = max(data["dff"][wl]["mean"] + data["dff"][wl]["sem"])
-            draw_heatmap(ax_dff_heat, data["dff"][wl]["episodes"],
+            draw_heatmap(ax_dff_heat, list(chain.from_iterable(list(data["dff"][wl]["episodes"]))),
                           time_array, "coolwarm", "Δ(ΔF/F)", vmin=dff_vmin, vmax=dff_vmax)
             ax_dff_heat.set_title(f"{row_name} - Fiber Δ(ΔF/F) Heatmap {wl}nm")
         else:
@@ -698,7 +584,7 @@ def create_single_row_window(row_name, data, params):
         if wl in data["zscore"]:
             zs_vmin = min(data["zscore"][wl]["mean"] - data["zscore"][wl]["sem"])
             zs_vmax = max(data["zscore"][wl]["mean"] + data["zscore"][wl]["sem"])
-            draw_heatmap(ax_zs_heat, list(chain.from_iterable(list(data["dff"][wl]["episodes"]))),
+            draw_heatmap(ax_zs_heat, list(chain.from_iterable(list(data["zscore"][wl]["episodes"]))),
                           time_array, "coolwarm", "Z-score", vmin=zs_vmin, vmax=zs_vmax)
             ax_zs_heat.set_title(f"{row_name} - Fiber Z-score Heatmap {wl}nm")
         else:
@@ -710,4 +596,102 @@ def create_single_row_window(row_name, data, params):
         collected.append((fig, c, win_title))
 
     log_message(f"Individual row plot created for {row_name}")
+    return collected
+
+def create_single_event_window(row_name, data, params):
+    """Create a window for with selected event_type accross event id of all animals in the row"""
+    target_wavelengths = data.get("target_wavelengths", ["470"])
+    time_array = data["time"]
+
+    win_title = f"Across Event analysis - {row_name} - {params['full_event_type']}"
+    win, _, inner = make_scrollable_window(win_title)
+    collected = []
+ 
+    for wl_idx, wl in enumerate(target_wavelengths):
+        fig = make_figure(NUM_COLS)
+        fig.suptitle(f"{row_name} — Wavelength {wl} nm",
+                     fontsize=12, fontweight="bold")
+        
+        # Row 1: Traces
+        ax_dff = fig.add_subplot(2, NUM_COLS, 1)
+        if wl in data["dff"]:
+            dff_episodes = data["dff"][wl]["episodes"]
+            trial_num = dff_episodes.shape[1]
+            colors = plt.cm.tab20(np.linspace(0, 1, trial_num))
+            for trial_idx in range(trial_num):
+                mean_dff = np.mean(dff_episodes[:, trial_idx, :], axis=0)
+                sem_dff = np.std(dff_episodes[:, trial_idx, :], axis=0) / np.sqrt(dff_episodes.shape[1])
+                ax_dff.plot(time_array, mean_dff, color=colors[trial_idx], linewidth=2, label=f"{params['events_type']} {trial_idx+1}")
+                ax_dff.fill_between(
+                    time_array,
+                    mean_dff - sem_dff,
+                    mean_dff + sem_dff,
+                    color=colors[trial_idx], alpha=0.3)
+            ax_dff.axvline(x=0, color="#808080", linestyle="--",
+                            alpha=0.8, label="Event")
+            ax_dff.set_xlim(time_array[0], time_array[-1])
+            ax_dff.set_xlabel("Time (s)")
+            ax_dff.set_ylabel("Δ(ΔF/F)")
+            ax_dff.legend()
+            ax_dff.grid(False)
+        ax_dff.set_title(f"{row_name} - Fiber Δ(ΔF/F) {wl}nm")
+        
+        ax_zs = fig.add_subplot(2, NUM_COLS, 2)
+        if wl in data["zscore"]:
+            zs_episodes = data["zscore"][wl]["episodes"]
+            trial_num = zs_episodes.shape[1]
+            for trial_idx in range(trial_num):
+                mean_zs = np.mean(zs_episodes[:, trial_idx, :], axis=0)
+                sem_zs = np.std(zs_episodes[:, trial_idx, :], axis=0) / np.sqrt(zs_episodes.shape[1])
+                ax_zs.plot(time_array, mean_zs, color=colors[trial_idx], linewidth=2, label=f"{params['events_type']} {trial_idx+1}")
+                ax_zs.fill_between(
+                    time_array,
+                    mean_zs - sem_zs,
+                    mean_zs + sem_zs,
+                    color=colors[trial_idx], alpha=0.3)
+            ax_zs.axvline(x=0, color="#808080", linestyle="--",
+                            alpha=0.8, label="Event")
+            ax_zs.set_xlim(time_array[0], time_array[-1])
+            ax_zs.set_xlabel("Time (s)")
+            ax_zs.set_ylabel("Z-score")
+            ax_zs.legend()
+            ax_zs.grid(False)
+        ax_zs.set_title(f"{row_name} - Fiber Z-score {wl}nm")
+        
+        # Row 2: Heatmaps
+        ax_dff_heat = fig.add_subplot(2, NUM_COLS, 3)
+        if wl in data["dff"]:
+            dff_episodes = data["dff"][wl]["episodes"]
+            restructured_dff = [dff_episodes[:, trial_idx, :] for trial_idx in range(dff_episodes.shape[1])]
+            reshaped_dff = np.array(restructured_dff).reshape(-1, dff_episodes.shape[2])
+            dff_vmin = min(data["dff"][wl]["mean"] - data["dff"][wl]["sem"])
+            dff_vmax = max(data["dff"][wl]["mean"] + data["dff"][wl]["sem"])
+            extra_lines = [dff_episodes.shape[0] * i for i in range(dff_episodes.shape[1])]
+            draw_heatmap(ax_dff_heat, reshaped_dff,
+                          time_array, "coolwarm", "Δ(ΔF/F)", extra_lines=extra_lines, vmin=dff_vmin, vmax=dff_vmax)
+            ax_dff_heat.set_title(f"{row_name} - Fiber Δ(ΔF/F) Heatmap {wl}nm")
+        else:
+            ax_dff_heat.axis("off")
+            ax_dff_heat.set_title(f"{row_name} - Fiber Δ(ΔF/F) Heatmap {wl}nm")
+ 
+        ax_zs_heat = fig.add_subplot(2, NUM_COLS, 4)
+        if wl in data["zscore"]:
+            zs_episodes = data["zscore"][wl]["episodes"]
+            restructured_zs = [zs_episodes[:, trial_idx, :] for trial_idx in range(zs_episodes.shape[1])]
+            reshaped_zs = np.array(restructured_zs).reshape(-1, zs_episodes.shape[2])
+            zs_vmin = min(data["zscore"][wl]["mean"] - data["zscore"][wl]["sem"])
+            zs_vmax = max(data["zscore"][wl]["mean"] + data["zscore"][wl]["sem"])
+            extra_lines = [zs_episodes.shape[0] * i for i in range(zs_episodes.shape[1])]
+            draw_heatmap(ax_zs_heat, reshaped_zs,
+                          time_array, "coolwarm", "Z-score", extra_lines=extra_lines, vmin=zs_vmin, vmax=zs_vmax)
+            ax_zs_heat.set_title(f"{row_name} - Fiber Z-score Heatmap {wl}nm")
+        else:
+            ax_zs_heat.axis("off")
+            ax_zs_heat.set_title(f"{row_name} - Fiber Z-score Heatmap {wl}nm")
+            
+        fig.tight_layout(rect=[0, 0, 1, 0.96])
+        c = embed_figure(inner, fig, row_in_frame=wl_idx)
+        collected.append((fig, c, win_title))
+    
+    log_message(f"Individual event plot created for {row_name}")
     return collected

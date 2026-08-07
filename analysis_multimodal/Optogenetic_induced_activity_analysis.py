@@ -8,7 +8,9 @@ import numpy as np
 import pandas as pd
 import tkinter as tk
 
+from itertools import chain
 from infrastructure.logger import log_message
+from workflows.data_workflows import EXPERIMENT_MODE_FIBER
 from analysis_multimodal.Multimodal_analysis import (
     export_results, identify_optogenetic_events, calculate_optogenetic_pulse_info,
     identify_drug_sessions, group_optogenetic_sessions, create_control_panel,
@@ -17,7 +19,7 @@ from analysis_multimodal.Multimodal_analysis import (
     make_scrollable_window, make_figure, draw_heatmap, embed_figure,
     show_plot_controller
 )
-from workflows.data_workflows import EXPERIMENT_MODE_FIBER
+
 
 NUM_COLS = 3      # Drug: Running | dFF | Z-score
 
@@ -88,8 +90,8 @@ def show_optogenetic_induced_analysis(root, multi_animal_data, analysis_mode="op
     title_suffix = " + Drug" if analysis_mode == "optogenetics+drug" else ""
     main_window.title(f"Optogenetic-Induced Activity Analysis{title_suffix}")
     main_window.geometry("900x700")
-    main_window.transient(root)
-    main_window.grab_set()
+    # main_window.transient(root)
+    # main_window.grab_set()
     
     # Main container with two sections
     container = tk.Frame(main_window, bg="#f8f8f8")
@@ -851,9 +853,9 @@ def analyze_param_optogenetic(param_name, sessions, params):
 
             for wl in target_wavelengths:
                 if wl in result['dff']:
-                    all_dff_episodes[wl].extend(result['dff'][wl])
+                    all_dff_episodes[wl].append(result['dff'][wl])
                 if wl in result['zscore']:
-                    all_zscore_episodes[wl].extend(result['zscore'][wl])
+                    all_zscore_episodes[wl].append(result['zscore'][wl])
             
             # Collect statistics if requested
             if params['export_stats']:
@@ -1000,7 +1002,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                 n = max(len(timing_names), 1)
                 for timing_name in timing_names:
                     data = param_data[timing_name]
-                    episodes = data["dff"].get(wavelength, [])
+                    episodes = list(chain.from_iterable(list(data["dff"].get(wavelength, []))))
                     if len(episodes) > 0:
                         arr = np.array(episodes)
                         if arr.ndim == 1:
@@ -1016,7 +1018,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
         else:
             for param_idx, (param_name, param_data) in enumerate(results.items()):
                 data = param_data.get("optogenetics", {})
-                episodes = data.get("dff", {}).get(wavelength, [])
+                episodes = list(chain.from_iterable(list(data.get("dff", {}).get(wavelength, []))))
                 if len(episodes) > 0:
                     arr = np.array(episodes)
                     if arr.ndim == 1:
@@ -1053,7 +1055,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                 n = max(len(timing_names), 1)
                 for timing_name in timing_names:
                     data = param_data[timing_name]
-                    episodes = data["zscore"].get(wavelength, [])
+                    episodes = list(chain.from_iterable(list(data["zscore"].get(wavelength, []))))
                     if len(episodes) > 0:
                         arr = np.array(episodes)
                         if arr.ndim == 1:
@@ -1069,7 +1071,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
         else:
             for param_idx, (param_name, param_data) in enumerate(results.items()):
                 data = param_data.get("optogenetics", {})
-                episodes = data.get("zscore", {}).get(wavelength, [])
+                episodes = list(chain.from_iterable(list(data.get("zscore", {}).get(wavelength, []))))
                 if len(episodes) > 0:
                     arr = np.array(episodes)
                     if arr.ndim == 1:
@@ -1129,7 +1131,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
         if analysis_mode == "optogenetics+drug":
             for param_data in results.values():
                 for data in param_data.values():
-                    ep = data["dff"].get(wavelength, [])
+                    ep = list(chain.from_iterable(list(data["dff"].get(wavelength, []))))
                     if len(ep) > 0:
                         all_dff.extend(ep)
         else:
@@ -1139,7 +1141,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                 if len(ep) > 0:
                     all_dff.extend(ep)
         if all_dff:
-            draw_heatmap(ax_dff_heat, np.array(all_dff),
+            draw_heatmap(ax_dff_heat, np.array(all_dff).reshape(-1, len(time_array)),
                          time_array, "coolwarm", "Δ(ΔF/F)", vmin=dff_vmin, vmax=dff_vmax)
             ax_dff_heat.set_title(f"Fiber Δ(ΔF/F) Heatmap {wavelength}nm")
         else:
@@ -1155,7 +1157,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
         if analysis_mode == "optogenetics+drug":
             for param_data in results.values():
                 for data in param_data.values():
-                    ep = data["zscore"].get(wavelength, [])
+                    ep = list(chain.from_iterable(list(data["zscore"].get(wavelength, []))))
                     if len(ep) > 0:
                         all_zs.extend(ep)
         else:
@@ -1165,7 +1167,7 @@ def plot_optogenetic_results(results, params, analysis_mode="optogenetics"):
                 if len(ep) > 0:
                     all_zs.extend(ep)
         if all_zs:
-            draw_heatmap(ax_zs_heat, np.array(all_zs),
+            draw_heatmap(ax_zs_heat, np.array(all_zs).reshape(-1, len(time_array)),
                          time_array, "coolwarm", "Z-score", vmin=zscore_vmin, vmax=zscore_vmax)
             ax_zs_heat.set_title(f"Fiber Z-score Heatmap {wavelength}nm")
         else:
@@ -1294,7 +1296,7 @@ def create_single_param_window(param_name, param_data, params,
             n = max(len(drug_timings), 1)
             for timing_name in drug_timings:
                 data = param_data[timing_name]
-                episodes = data["dff"].get(wavelength, [])
+                episodes = list(chain.from_iterable(list(data["dff"].get(wavelength, []))))
                 if len(episodes) > 0:
                     arr = np.array(episodes)
                     if arr.ndim == 1:
@@ -1314,7 +1316,7 @@ def create_single_param_window(param_name, param_data, params,
             ax_dff.legend(fontsize=8)
         else:
             data = param_data.get("optogenetics", {})
-            episodes = data.get("dff", {}).get(wavelength, [])
+            episodes = list(chain.from_iterable(list(data.get("dff", {}).get(wavelength, []))))
             if len(episodes) > 0:
                 arr = np.array(episodes)
                 if arr.ndim == 1:
@@ -1355,7 +1357,7 @@ def create_single_param_window(param_name, param_data, params,
             n = max(len(drug_timings), 1)
             for timing_name in drug_timings:
                 data = param_data[timing_name]
-                episodes = data["zscore"].get(wavelength, [])
+                episodes = list(chain.from_iterable(list(data["zscore"].get(wavelength, []))))
                 if len(episodes) > 0:
                     arr = np.array(episodes)
                     if arr.ndim == 1:
@@ -1375,7 +1377,7 @@ def create_single_param_window(param_name, param_data, params,
             ax_zs.legend(fontsize=8)
         else:
             data = param_data.get("optogenetics", {})
-            episodes = data.get("zscore", {}).get(wavelength, [])
+            episodes = list(chain.from_iterable(list(data.get("zscore", {}).get(wavelength, []))))
             if len(episodes) > 0:
                 arr = np.array(episodes)
                 if arr.ndim == 1:
@@ -1439,13 +1441,13 @@ def create_single_param_window(param_name, param_data, params,
         if analysis_mode == "optogenetics+drug":
             all_dff, boundaries = [], []
             for timing_name, data in param_data.items():
-                ep = data["dff"].get(wavelength, [])
+                ep = list(chain.from_iterable(list(data["dff"].get(wavelength, []))))
                 if len(ep) > 0:
                     all_dff.extend(ep)
                     boundaries.append(len(all_dff))
         else:
-            all_dff = param_data.get("optogenetics", {}).get(
-                "dff", {}).get(wavelength, [])
+            all_dff = list(chain.from_iterable(list(param_data.get("optogenetics", {}).get(
+                "dff", {}).get(wavelength, []))))
             boundaries = []
         if all_dff:
             draw_heatmap(ax_dff_heat, np.array(all_dff), time_array,
@@ -1466,13 +1468,13 @@ def create_single_param_window(param_name, param_data, params,
         if analysis_mode == "optogenetics+drug":
             all_zs, boundaries = [], []
             for timing_name, data in param_data.items():
-                ep = data["zscore"].get(wavelength, [])
+                ep = list(chain.from_iterable(list(data["zscore"].get(wavelength, []))))
                 if len(ep) > 0:
                     all_zs.extend(ep)
                     boundaries.append(len(all_zs))
         else:
-            all_zs = param_data.get("optogenetics", {}).get(
-                "zscore", {}).get(wavelength, [])
+            all_zs = list(chain.from_iterable(list(param_data.get("optogenetics", {}).get(
+                "zscore", {}).get(wavelength, []))))
             boundaries = []
         if all_zs:
             draw_heatmap(ax_zs_heat, np.array(all_zs), time_array,

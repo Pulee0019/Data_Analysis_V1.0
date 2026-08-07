@@ -2,23 +2,12 @@ import os
 import signal
 import pickle
 import tkinter as tk
+
 from tkinter import ttk
-
 from datetime import datetime
-
-from analysis_multimodal.Multimodal_analysis import calculate_optogenetic_pulse_info, group_optogenetic_sessions, identify_drug_sessions, identify_optogenetic_events
 from infrastructure.logger import log_message, set_log_widget
-from ui.view_controller import clear_all
-import ui.windows.visualization_windows as visualization_windows
-import workflows.data_workflows as data_workflows
-import workflows.analysis_workflows as analysis_workflows
-import ui.bodypart_controller as bodypart_controller
-import ui.view_controller as view_controller
-import analysis_multimodal.Bout_analysis as bout_analysis
-import analysis_multimodal.Drug_induced_activity_analysis as drug_induced_analysis
-import analysis_multimodal.Optogenetic_induced_activity_analysis as optogenetic_induced_analysis
-import analysis_multimodal.Multimodal_analysis as multimodal_analysis
-import analysis_multimodal.BSOID_analysis as bsoid_analysis
+from analysis_multimodal.Multimodal_analysis import calculate_optogenetic_pulse_info, group_optogenetic_sessions, identify_drug_sessions, identify_optogenetic_events
+
 
 _deps = {}
 
@@ -37,77 +26,6 @@ def setup_log_display():
     
     set_log_widget(log_text_widget)
     log_message("The log system has been initialized. All messages will be displayed here.", "INFO")
-
-def update_ui_for_mode():
-    """Update UI elements based on current experiment mode"""
-    global current_experiment_mode
-    
-    # Update menu items
-    if current_experiment_mode == EXPERIMENT_MODE_AST2:
-        analysis_menu.entryconfig("Behavior Analysis", state="disabled")
-        analysis_menu.entryconfig("Running Data Analysis", state="normal")
-        analysis_menu.entryconfig("Fiber Data Preprocessing", state="disabled")
-        analysis_menu.entryconfig("Fiber Data Analysis", state="disabled")
-        multimodal_menu.entryconfig("Running-Induced Activity Analysis", state="disabled")
-        multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="disabled")
-        multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="disabled")
-        multimodal_menu.entryconfig("Bout Analysis", state="normal")
-        bout_menu.entryconfig("Running", state="normal")
-        bout_menu.entryconfig("Running + Drug", state="disabled")
-        multimodal_menu.entryconfig("BSOID Analysis", state="disabled")
-        bsoid_menu.entryconfig("BSOID", state="disabled")
-    elif current_experiment_mode == EXPERIMENT_MODE_FIBER:
-        analysis_menu.entryconfig("Behavior Analysis", state="disabled")
-        analysis_menu.entryconfig("Running Data Analysis", state="disabled")
-        analysis_menu.entryconfig("Fiber Data Preprocessing", state="normal")
-        analysis_menu.entryconfig("Fiber Data Analysis", state="normal")
-        multimodal_menu.entryconfig("Running-Induced Activity Analysis", state="disabled")
-        multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="normal")
-        multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="normal")
-        multimodal_menu.entryconfig("Bout Analysis", state="disabled")
-        bout_menu.entryconfig("Running", state="disabled")
-        bout_menu.entryconfig("Running + Drug", state="disabled")
-        multimodal_menu.entryconfig("BSOID Analysis", state="disabled")
-        bsoid_menu.entryconfig("BSOID", state="disabled")
-    elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
-        analysis_menu.entryconfig("Behavior Analysis", state="disabled")
-        analysis_menu.entryconfig("Running Data Analysis", state="normal")
-        analysis_menu.entryconfig("Fiber Data Preprocessing", state="normal")
-        analysis_menu.entryconfig("Fiber Data Analysis", state="normal")
-        multimodal_menu.entryconfig("Running-Induced Activity Analysis", state="normal")
-        multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="normal")
-        multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="normal")
-        multimodal_menu.entryconfig("Bout Analysis", state="normal")
-        bout_menu.entryconfig("Running", state="normal")
-        bout_menu.entryconfig("Running + Drug", state="normal")
-        multimodal_menu.entryconfig("BSOID Analysis", state="disabled")
-        bsoid_menu.entryconfig("BSOID", state="disabled")
-    elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
-        analysis_menu.entryconfig("Behavior Analysis", state="disabled")
-        analysis_menu.entryconfig("Running Data Analysis", state="normal")
-        analysis_menu.entryconfig("Fiber Data Preprocessing", state="normal")
-        analysis_menu.entryconfig("Fiber Data Analysis", state="normal")
-        multimodal_menu.entryconfig("Running-Induced Activity Analysis", state="normal")
-        multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="normal")
-        multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="normal")
-        multimodal_menu.entryconfig("Bout Analysis", state="normal")
-        bout_menu.entryconfig("Running", state="normal")
-        bout_menu.entryconfig("Running + Drug", state="normal")
-        multimodal_menu.entryconfig("BSOID Analysis", state="disabled")
-        bsoid_menu.entryconfig("BSOID", state="disabled")
-    elif current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID:
-        analysis_menu.entryconfig("Behavior Analysis", state="disabled")
-        analysis_menu.entryconfig("Running Data Analysis", state="disabled")
-        analysis_menu.entryconfig("Fiber Data Preprocessing", state="normal")
-        analysis_menu.entryconfig("Fiber Data Analysis", state="normal")
-        multimodal_menu.entryconfig("Running-Induced Activity Analysis", state="disabled")
-        multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="normal")
-        multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="normal")
-        multimodal_menu.entryconfig("Bout Analysis", state="disabled")
-        bout_menu.entryconfig("Running", state="disabled")
-        bout_menu.entryconfig("Running + Drug", state="disabled")
-        multimodal_menu.entryconfig("BSOID Analysis", state="normal")
-        bsoid_menu.entryconfig("BSOID", state="normal")
 
 def show_opto_power_config_dialog():
     """Show optogenetic power configuration dialog"""
@@ -244,16 +162,17 @@ def show_opto_power_config_dialog():
             log_message(f"Invalid power value: {str(e)}", "ERROR")
 
     # Buttons
-    btn_frame = tk.Frame(dialog, bg="#f8f8f8")
-    btn_frame.pack(fill=tk.X, padx=10, pady=10)
+    btn_frame = ttk.Frame(dialog)
+    btn_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
     
-    tk.Button(btn_frame, text="Apply", command=apply_power,
-                bg="#4CAF50", fg="white", font=("Microsoft YaHei", 9, "bold"),
-                relief=tk.FLAT, padx=20, pady=5).pack(side=tk.RIGHT, padx=5)
+    style = ttk.Style()
+    style.configure("Accent.TButton", 
+                    font=("Microsoft YaHei", 9),
+                    padding=(5, 2))
     
-    tk.Button(btn_frame, text="Cancel", command=dialog.destroy,
-                bg="#f44336", fg="white", font=("Microsoft YaHei", 9, "bold"),
-                relief=tk.FLAT, padx=20, pady=5).pack(side=tk.RIGHT, padx=5)
+    ttk.Button(btn_frame, text="Apply", command=apply_power, style="Accent.TButton").pack(side=tk.LEFT)
+    
+    ttk.Button(btn_frame, text="Cancel", command=dialog.destroy, style="Accent.TButton").pack(side=tk.RIGHT)
 
 def show_drug_name_config_dialog():
     """Show drug name configuration dialog with onset and offset times"""
@@ -449,21 +368,24 @@ def show_drug_name_config_dialog():
             traceback.print_exc()
 
     # Buttons
-    btn_frame = tk.Frame(dialog, bg="#f8f8f8")
+    btn_frame = ttk.Frame(dialog)
     btn_frame.pack(fill=tk.X, padx=10, pady=10)
     
-    tk.Button(btn_frame, text="Apply", command=apply_config,
-                bg="#4CAF50", fg="white", font=("Microsoft YaHei", 9, "bold"),
-                relief=tk.FLAT, padx=15, pady=5).pack(side=tk.LEFT, padx=5)
+    style = ttk.Style()
+    style.configure("Accent.TButton", 
+                    font=("Microsoft YaHei", 9),
+                    padding=(5, 2))
     
-    tk.Button(btn_frame, text="Cancel", command=dialog.destroy,
-                bg="#f44336", fg="white", font=("Microsoft YaHei", 9, "bold"),
-                relief=tk.FLAT, padx=15, pady=5).pack(side=tk.LEFT, padx=5)
+    ttk.Button(btn_frame, text="Apply", command=apply_config,
+                style="Accent.TButton").pack(side=tk.LEFT, padx=1)
+    ttk.Button(btn_frame, text="Cancel", command=dialog.destroy,
+                style="Accent.TButton").pack(side=tk.LEFT, padx=1)
     
     # Help text
     help_text = ("Onset Time: When the drug starts to take effect (default: admin time)\n"
                 "Offset Time: When the drug effect ends (default: next drug admin or running end)\n"
                 "Click 'Auto' to auto-fill with defaults")
+    
     tk.Label(btn_frame, text=help_text, bg="#f8f8f8", fg="#666666",
             font=("Microsoft YaHei", 8), justify=tk.LEFT).pack(side=tk.RIGHT, padx=10)
 

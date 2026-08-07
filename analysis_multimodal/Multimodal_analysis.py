@@ -1,21 +1,26 @@
 """
 Shared functions
 """
-import tkinter as tk
-from tkinter import filedialog, ttk
-import numpy as np
-import pandas as pd
-from datetime import datetime
+
 import os
 import json
+import numpy as np
+import pandas as pd
+import tkinter as tk
 import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
+from itertools import chain
+from datetime import datetime
+from tkinter import filedialog, ttk
+from matplotlib.figure import Figure
 from infrastructure.logger import log_message
 from workflows.data_workflows import EXPERIMENT_MODE_FIBER
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
 _deps = {}
+
+# Global figure registry for the Figure Controller menu button
+_figure_registry = []
 
 def bind_multimodal_dependencies(deps):
     _deps.clear()
@@ -29,6 +34,36 @@ FIBER_COLORS = ['#44B444', '#FF0000', '#FF9900']
 
 SUBPLOT_H = 6
 FIG_DPI   = 100
+
+def get_target_fps(animals):
+    fiber_fpss = []
+    for animal_data in animals:
+        if 'fiber_data_trimmed' in animal_data and animal_data['fiber_data_trimmed'] is not None:
+            fiber_data = animal_data['fiber_data_trimmed']
+        else:
+            fiber_data = animal_data.get('fiber_data')
+        
+        if fiber_data is None or fiber_data.empty:
+            log_message(f"No fiber data for {animal_data.get('animal_single_channel_id', 'Unknown')}", "WARNING")
+            continue
+        
+        channels = animal_data.get('channels', {})
+        time_col = channels.get('time')
+        if time_col not in fiber_data.columns:
+            log_message(f"Time column '{time_col}' not found in fiber data for {animal_data.get('animal_single_channel_id', 'Unknown')}", "WARNING")
+            continue
+        
+        fiber_timestamps = fiber_data[time_col].values
+        if len(fiber_timestamps) < 2:
+            log_message(f"Not enough timestamps in fiber data for {animal_data.get('animal_single_channel_id', 'Unknown')}", "WARNING")
+            continue
+        
+        # Calculate fiber sampling frequency
+        fiber_fps = 1 / np.mean(np.diff(fiber_timestamps))
+        fiber_fpss.append(fiber_fps)
+
+    target_fps = round(min(fiber_fpss))
+    return target_fps
 
 def get_events_from_bouts(animal_data, event_type, duration=False):
     """Extract events from bouts data based on event type"""
@@ -126,6 +161,40 @@ def get_events_from_bsoid(animal_data, event_type):
             events.append(start_time + duration)
         elif event_kind == 'duration':
             events.append((start_time, start_time + duration))
+    
+    return events
+
+def get_events_from_event(animal_data, event_type):
+    """Extract events from event data based on event type"""
+    events = []
+    
+    event_data = animal_data.get('events')
+    if event_data is None:
+        return events
+    # Parse event type to get bout type and event kind
+    if event_type.endswith('_onsets'):
+        event_name = event_type.replace('_onsets', '')
+        event_kind = 'onset'
+    elif event_type.endswith('_offsets'):
+        event_name = event_type.replace('_offsets', '')
+        event_kind = 'offset'
+    else:
+        event_name = event_type.replace('_durations', '')
+        event_kind = 'duration'
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'event mapping.json')
+    with open(config_path, 'r', encoding='utf-8') as f:
+        event_mapping = json.load(f)
+    target_events = event_data[event_data['Event Type'].isin(event_mapping.get(event_name, []))]
+    syn_time = event_data['start_time'].iloc[0]
+    for evt in target_events.itertuples(index=False):
+        start_time = evt[0] - syn_time
+        end_time = evt[1] - syn_time
+        if event_kind == 'onset':
+            events.append(start_time)
+        elif event_kind == 'offset':
+            events.append(end_time)
+        elif event_kind == 'duration':
+            events.append((start_time, end_time))
     
     return events
 
@@ -503,18 +572,91 @@ def calculate_running_episodes(events, running_timestamps, running_speed,
         'dff': dff_episodes,
         'zscore': zscore_episodes
     }
+    
+def calculate_event_traces(time_array, events, fiber_timestamps, dff_data, active_channels, target_wavelengths, plot_pre, plot_post, baseline_start, baseline_end, target_fps):
+    """Calculate episodes around events with custom baseline"""
+    # Fiber episodes
+    dff_episodes = {}
+    zscore_episodes = {}
+    
+    for wavelength in target_wavelengths:
+        dff_episodes[wavelength] = []
+        zscore_episodes[wavelength] = []
+    
+    for channel in active_channels:
+        for wavelength in target_wavelengths:
+            dff_key = f"{channel}_{wavelength}"
+            if dff_key in dff_data:
+                data = dff_data[dff_key]
+                if isinstance(data, pd.Series):
+                    data = data.values
+                
+                for event in events:
+                    if isinstance(event, tuple):
+                        event_start, event_end = event
+                    else:
+                        event_start = event
+                        event_end = event
+                        
+                    if event_start - plot_pre < fiber_timestamps[0] or event_end + plot_post > fiber_timestamps[-1]:
+                        log_message(f"Event at {event:.2f}s is too close to the edge of fiber data and will be skipped", "WARNING")
+                        continue
+                    # Calculate baseline statistics from custom window
+                    baseline_start_time = event_start + baseline_start
+                    baseline_end_time = event_start + baseline_end
+                    
+                    baseline_start_idx = np.argmin(np.abs(fiber_timestamps - baseline_start_time))
+                    baseline_end_idx = np.argmin(np.abs(fiber_timestamps - baseline_end_time))
+                    
+                    if baseline_end_idx > baseline_start_idx:
+                        baseline_data = data[baseline_start_idx:baseline_end_idx]
+                        mean_dff = np.nanmean(baseline_data)
+                        std_dff = np.nanstd(baseline_data)
+                        
+                        if std_dff == 0:
+                            std_dff = 1e-10
+                        
+                        # Extract plotting window
+                        start_idx = np.argmin(np.abs(fiber_timestamps - (event_start - plot_pre)))
+                        end_idx = np.argmin(np.abs(fiber_timestamps - (event_end + plot_post)))
+                        
+                        if end_idx > start_idx:
+                            episode_data = data[start_idx:end_idx]
+                            episode_times = fiber_timestamps[start_idx:end_idx] - event_start
+                            
+                            if len(episode_times) > 1:
+                                # Store dFF data
+                                interp_dff = np.interp(time_array, episode_times, episode_data)
+                                ddff = interp_dff - mean_dff  # Store dFF with custom baseline
+                                dff_episodes[wavelength].append(ddff)
+                                
+                                # Calculate z-score using custom baseline
+                                zscore_episode = (episode_data - mean_dff) / std_dff
+                                interp_zscore = np.interp(time_array, episode_times, zscore_episode)
+                                zscore_episodes[wavelength].append(interp_zscore)
+    
+    return {
+        'time': time_array,
+        'dff': dff_episodes,
+        'zscore': zscore_episodes
+    }
 
 def rebuild_results(results):
     all_rows = []
     counters = {}
     counter = 0
 
-    def extract_trials(value):
+    def extract_trials(value, data_type=None):
         """Extract a list of trial arrays from a value that may be a list or a dict with 'episodes'."""
         if isinstance(value, list):
-            return value
+            if data_type == 'running':
+                return value
+            else:
+                return chain.from_iterable(value)
         if isinstance(value, dict) and 'episodes' in value:
             episodes = value['episodes']
+            if data_type != 'running':
+                episodes = list(chain.from_iterable(list(episodes)))
             if isinstance(episodes, np.ndarray) and episodes.ndim == 2:
                 # 2D array: rows are trials
                 return [episodes[i, :] for i in range(episodes.shape[0])]
@@ -532,49 +674,67 @@ def rebuild_results(results):
             # Nested structure: param_data itself is a dict of groups
             groups = param_data
         for group_name, group_data in groups.items():
-            if 'time' in group_data and counter == 0:  # Only add time column once
-                all_rows.append((f"time", group_data['time']))
-                counter += 1
-            # Process dFF signals
-            if 'dff' in group_data:
-                dff_dict = group_data['dff']
-                for wavelength, value in dff_dict.items():
-                    trials = extract_trials(value)
-                    for trial_data in trials:
-                        key = (param_name, group_name, 'dff', wavelength)
-                        counters[key] = counters.get(key, 0) + 1
-                        if group_name:
-                            col_name = f"{param_name}_{group_name}_dff_{wavelength}_trial{counters[key]}"
-                        else:
-                            col_name = f"{param_name}_dff_{wavelength}_trial{counters[key]}"
-                        all_rows.append((col_name, trial_data))
+            if isinstance(group_data, dict):
+                top_level_signals_dff = [key for key in ['dff', 'zscore', 'running'] if key in group_data]
+                if top_level_signals_dff:
+                    # Flat structure: treat as a single group with empty group name
+                    groups1 = {'': group_data}
+                else:
+                    # Nested structure: group_data itself is a dict of groups
+                    groups1 = group_data
+                for group_name1, group_data1 in groups1.items():
+                    if 'time' in group_data1 and counter == 0:  # Only add time column once
+                        all_rows.append((f"time", group_data1['time']))
+                        counter += 1
+                    # Process dFF signals
+                    if 'dff' in group_data1:
+                        dff_dict = group_data1['dff']
+                        for wavelength, value in dff_dict.items():
+                            trials = extract_trials(value)
+                            for trial_data in trials:
+                                key = (param_name, group_name, group_name1, 'dff', wavelength)
+                                counters[key] = counters.get(key, 0) + 1
+                                if group_name:
+                                    if group_name1:
+                                        col_name = f"{param_name}_{group_name}_{group_name1}_dff_{wavelength}_trial{counters[key]}"
+                                    else:
+                                        col_name = f"{param_name}_{group_name}_dff_{wavelength}_trial{counters[key]}"
+                                else:
+                                    col_name = f"{param_name}_dff_{wavelength}_trial{counters[key]}"
+                                all_rows.append((col_name, trial_data))
+                
+                    # Process z-score signals
+                    if 'zscore' in group_data1:
+                        zscore_dict = group_data1['zscore']
+                        for wavelength, value in zscore_dict.items():
+                            trials = extract_trials(value)
+                            for trial_data in trials:
+                                key = (param_name, group_name, group_name1, 'zscore', wavelength)
+                                counters[key] = counters.get(key, 0) + 1
+                                if group_name:
+                                    if group_name1:
+                                        col_name = f"{param_name}_{group_name}_{group_name1}_zscore_{wavelength}_trial{counters[key]}"
+                                    else:
+                                        col_name = f"{param_name}_{group_name}_zscore_{wavelength}_trial{counters[key]}"
+                                else:
+                                    col_name = f"{param_name}_zscore_{wavelength}_trial{counters[key]}"
+                                all_rows.append((col_name, trial_data))
 
-            # Process z-score signals
-            if 'zscore' in group_data:
-                zscore_dict = group_data['zscore']
-                for wavelength, value in zscore_dict.items():
-                    trials = extract_trials(value)
-                    for trial_data in trials:
-                        key = (param_name, group_name, 'zscore', wavelength)
-                        counters[key] = counters.get(key, 0) + 1
-                        if group_name:
-                            col_name = f"{param_name}_{group_name}_zscore_{wavelength}_trial{counters[key]}"
-                        else:
-                            col_name = f"{param_name}_zscore_{wavelength}_trial{counters[key]}"
-                        all_rows.append((col_name, trial_data))
-
-            # Process running speed signals
-            if 'running' in group_data:
-                running_value = group_data['running']
-                trials = extract_trials(running_value)
-                for trial_data in trials:
-                    key = (param_name, group_name, 'running')
-                    counters[key] = counters.get(key, 0) + 1
-                    if group_name:
-                        col_name = f"{param_name}_{group_name}_running_speed_trial{counters[key]}"
-                    else:
-                        col_name = f"{param_name}_running_speed_trial{counters[key]}"
-                    all_rows.append((col_name, trial_data))
+                    # Process running speed signals
+                    if 'running' in group_data1:
+                        running_value = group_data1['running']
+                        trials = extract_trials(running_value, data_type='running')
+                        for trial_data in trials:
+                            key = (param_name, group_name, group_name1, 'running')
+                            counters[key] = counters.get(key, 0) + 1
+                            if group_name:
+                                if group_name1:
+                                    col_name = f"{param_name}_{group_name}_{group_name1}_running_speed_trial{counters[key]}"
+                                else:
+                                    col_name = f"{param_name}_{group_name}_running_speed_trial{counters[key]}"
+                            else:
+                                col_name = f"{param_name}_running_speed_trial{counters[key]}"
+                            all_rows.append((col_name, trial_data))
 
     # Build DataFrame
     df_dict = {col: data for col, data in all_rows}
@@ -639,6 +799,8 @@ def create_parameter_panel(parent, param_config):
         - 'bout_types': List of available bout types (default: [])
         - 'show_bout_directions': Whether to show bout direction selection (default: False)
         - 'bout_directions': List of available bout directions (default: [])
+        - 'show_events_type': Whether to show events type selection (default: False)
+        - 'events_types': List of available events types (default: [])
         - 'show_event_type': Whether to show event type selection (default: False)
         - 'show_export': Whether to show export option (default: True)
     """
@@ -658,6 +820,8 @@ def create_parameter_panel(parent, param_config):
         'bout_types': [],
         'show_bout_directions': False,
         'bout_directions': [],
+        'show_events_type': False,
+        'events_types': [],
         'show_event_type': False,
         'show_export': True,
     }
@@ -779,7 +943,25 @@ def create_parameter_panel(parent, param_config):
             bout_direction_combo.set(config['bout_directions'][0])
         
         param_frame.bout_direction_var = bout_direction_var
+    
+    if config['show_events_type'] and config['events_types']:
+        events_type_frame = tk.LabelFrame(param_frame, text="Events Type", 
+                                          font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
+        events_type_frame.pack(fill=tk.X, padx=10, pady=10)
         
+        tk.Label(events_type_frame, text="Select Event Type:", bg="#f8f8f8", 
+                font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=10, pady=(5,2))
+        
+        events_type_var = tk.StringVar()
+        events_type_combo = ttk.Combobox(events_type_frame, textvariable=events_type_var,
+                                         values=config['events_types'], state="readonly",
+                                         font=("Microsoft YaHei", 8))
+        events_type_combo.pack(padx=10, pady=5, fill=tk.X)
+        if config['events_types']:
+            events_type_combo.set(config['events_types'][0])
+        
+        param_frame.events_type_var = events_type_var
+    
     # Event type selection (if needed)
     if config['show_event_type']:
         event_frame = tk.LabelFrame(param_frame, text="Event Type", 
@@ -791,6 +973,9 @@ def create_parameter_panel(parent, param_config):
                       value="onset", bg="#f8f8f8", font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=20)
         tk.Radiobutton(event_frame, text="Offset", variable=event_type_var, 
                       value="offset", bg="#f8f8f8", font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=20)
+        if config['show_events_type']:
+            tk.Radiobutton(event_frame, text="Duration", variable=event_type_var, 
+                          value="duration", bg="#f8f8f8", font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=20)
         
         param_frame.event_type_var = event_type_var
         
@@ -809,7 +994,7 @@ def create_parameter_panel(parent, param_config):
     
     return param_frame
 
-def get_parameters_from_ui(param_frame, require_plot_window=False, require_statistics_window=False, require_baseline_window=False, require_bout_type=False, require_bout_direction=False, require_event_type=False):
+def get_parameters_from_ui(param_frame, require_plot_window=False, require_statistics_window=False, require_baseline_window=False, require_bout_type=False, require_bout_direction=False, require_events_type=False, require_event_type=False):
     """Extract parameters from UI"""
     try:
         params = {}
@@ -845,6 +1030,9 @@ def get_parameters_from_ui(param_frame, require_plot_window=False, require_stati
             
         if hasattr(param_frame, 'bout_direction_var') and require_bout_direction:
             params['bout_direction'] = param_frame.bout_direction_var.get()
+
+        if hasattr(param_frame, 'events_type_var') and require_events_type:
+            params['events_type'] = param_frame.events_type_var.get()
 
         if hasattr(param_frame, 'event_type_var') and require_event_type:
             params['event_type'] = param_frame.event_type_var.get()
@@ -1032,9 +1220,6 @@ def draw_heatmap(ax, episodes_array, time_array, cmap, label,
             ax.axhline(y=y, color="k", linestyle="--", linewidth=1)
     plt.colorbar(im, ax=ax, label=label, orientation="horizontal")
     return im
- 
-# Global figure registry for the Figure Controller menu button
-_figure_registry = []
 
 def register_figures(figure_pairs):
     """Register figure pairs in the global registry for later access via menu."""
@@ -1048,10 +1233,8 @@ def open_figure_controller():
     from ui.plot_parameter_controller import PlotParameterController
     PlotParameterController(list(_figure_registry))
 
-
 def make_figure(NUM_COLS):
     return Figure(figsize=(NUM_COLS * SUBPLOT_H, SUBPLOT_H * 2), dpi=FIG_DPI)
-
 
 def show_plot_controller(figure_pairs):
     """Launch the PlotParameterController with collected figure pairs.

@@ -110,13 +110,13 @@ def position_analysis(parsed_data, selected_bodyparts, root):
     ax1.set_title('X Coordinate Over Time', fontsize=12, fontweight='bold')
     ax1.set_xlabel('Time Frame')
     ax1.set_ylabel('X Coordinate')
-    ax1.grid(True, alpha=0.3)
+    ax1.grid(False)
     ax1.legend()
     
     ax2.set_title('Y Coordinate Over Time', fontsize=12, fontweight='bold')
     ax2.set_xlabel('Time Frame')
     ax2.set_ylabel('Y Coordinate')
-    ax2.grid(True, alpha=0.3)
+    ax2.grid(False)
     ax2.legend()
     
     fig.tight_layout()
@@ -394,7 +394,7 @@ def displacement_analysis(parsed_data, selected_bodyparts, root):
         ax.set_title('Displacement Over Time', fontsize=14, fontweight='bold')
         ax.set_xlabel(xlabel if 'xlabel' in locals() else 'Time Frame', fontsize=12)
         ax.set_ylabel('Displacement Distance', fontsize=12)
-        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.grid(False)
         ax.legend()
         
         fig.tight_layout()
@@ -686,7 +686,7 @@ def x_displacement_analysis(parsed_data, selected_bodyparts, root):
         ax.set_title('X Displacement Over Time', fontsize=14, fontweight='bold')
         ax.set_xlabel(xlabel if 'xlabel' in locals() else 'Time Frame', fontsize=12)
         ax.set_ylabel('X Displacement Distance', fontsize=12)
-        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.grid(False)
         ax.legend()
         
         fig.tight_layout()
@@ -708,12 +708,82 @@ def x_displacement_analysis(parsed_data, selected_bodyparts, root):
     
     log_message(f"X displacement analysis completed - Analyzed {len(selected_bodyparts)} bodyparts", "INFO")
 
-# Reserved space for adding more analysis algorithms
-# TODO: Add more analysis functions here
-# For example:
-# - Velocity analysis
-# - Acceleration analysis
-# - Trajectory analysis
-# - Behavioral pattern recognition
-# - Statistical analysis
-# - Machine learning analysis
+def trajectory_pointcloud_analysis(parsed_data, selected_bodyparts, root):
+    if not parsed_data:
+        log_message("Please read behavioral data file first", "WARNING")
+        return
+    if not selected_bodyparts:
+        log_message("Please select bodyparts to analyze first", "WARNING")
+        return
+
+    analysis_window = tk.Toplevel(root)
+    analysis_window.title("Trajectory Point Cloud Analysis")
+    analysis_window.geometry("1200x900")
+    analysis_window.resizable(True, True)
+
+    control_frame = tk.Frame(analysis_window, bg="#f0f0f0", relief=tk.RAISED, bd=1)
+    control_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
+
+    show_data_points_var = tk.BooleanVar(value=True)
+    show_points_check = tk.Checkbutton(control_frame, text="Show Data Points",
+        variable=show_data_points_var, bg="#f0f0f0", font=("Arial", 10))
+    show_points_check.pack(side=tk.LEFT, padx=10)
+
+    info_label = tk.Label(control_frame,
+        text=f"Displaying trajectory point cloud for {len(selected_bodyparts)} bodyparts",
+        bg="#f0f0f0", fg="#2c3e50", font=("Arial", 10))
+    info_label.pack(side=tk.RIGHT, padx=10)
+
+    plot_frame = tk.Frame(analysis_window)
+    plot_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+    fig = Figure(figsize=(10, 8), dpi=100)
+    ax = fig.add_subplot(111)
+    canvas = FigureCanvasTkAgg(fig, plot_frame)
+    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+    colors = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6',
+              '#1abc9c','#e67e22','#34495e','#f1c40f','#95a5a6']
+
+    def draw_plot():
+        ax.clear()
+        ax.set_title("Trajectory Point Cloud Visualization", fontsize=16, fontweight='bold', pad=20)
+        ax.set_xlabel("X Coordinate", fontsize=12, fontweight='bold')
+        ax.set_ylabel("Y Coordinate", fontsize=12, fontweight='bold')
+        ax.grid(False)
+        ax.set_facecolor('#ffffff')
+
+        all_bodyparts = list(parsed_data.keys())
+        for bodypart in selected_bodyparts:
+            if bodypart not in parsed_data:
+                continue
+            data = parsed_data[bodypart]
+            step = 2
+            x_sampled = data['x'][::step]
+            y_sampled = data['y'][::step]
+            color = colors[all_bodyparts.index(bodypart) % len(colors)]
+            ax.plot(x_sampled, y_sampled, color='lightgray', linewidth=0.5, alpha=0.3)
+            if show_data_points_var.get():
+                ax.scatter(x_sampled, y_sampled, s=10, alpha=0.7,
+                          color=color, edgecolors='white', linewidth=0.5,
+                          label=f'{bodypart} ({len(x_sampled)} points)')
+            else:
+                ax.plot([], [], color=color, linewidth=2, label=f'{bodypart} trajectory')
+
+        all_x = np.concatenate([parsed_data[bp]['x'] for bp in selected_bodyparts if bp in parsed_data])
+        all_y = np.concatenate([parsed_data[bp]['y'] for bp in selected_bodyparts if bp in parsed_data])
+        margin_x = (max(all_x) - min(all_x)) * 0.1
+        margin_y = (max(all_y) - min(all_y)) * 0.1
+        ax.set_xlim(min(all_x) - margin_x, max(all_x) + margin_x)
+        ax.set_ylim(min(all_y) - margin_y, max(all_y) + margin_y)
+        ax.legend(loc='upper right', framealpha=0.9, fontsize=10)
+        fig.tight_layout()
+        canvas.draw()
+
+    show_points_check.config(command=draw_plot)
+    draw_plot()
+
+    close_btn = tk.Button(analysis_window, text="Close", command=analysis_window.destroy, width=10)
+    close_btn.pack(pady=10)
+
+    log_message(f"Trajectory point cloud completed - {len(selected_bodyparts)} bodyparts displayed", "INFO")

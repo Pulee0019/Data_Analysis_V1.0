@@ -1,12 +1,12 @@
-import fnmatch
-import glob
 import os
+import glob
+import fnmatch
 import traceback
-import tkinter as tk
-from tkinter import filedialog, ttk
-
 import numpy as np
+import pandas as pd
+import tkinter as tk
 
+from tkinter import filedialog, ttk
 from infrastructure.logger import log_message
 from core.io import h_AST2_raw2Speed, h_AST2_readData, load_fiber_data, load_fiber_events, read_dlc_file, load_bsoid_data
 
@@ -15,6 +15,7 @@ EXPERIMENT_MODE_FIBER = "fiber"
 EXPERIMENT_MODE_FIBER_AST2 = "fiber+ast2"
 EXPERIMENT_MODE_FIBER_AST2_DLC = "fiber+ast2+dlc"
 EXPERIMENT_MODE_FIBER_BSOID = "fiber+bsoid"
+EXPERIMENT_MODE_FIBER_EVENT = "fiber+event"
 
 _deps = {}
 
@@ -56,7 +57,9 @@ def import_multi_animals():
                     'fiber': ['fluorescence.csv'],
                     'fiber_events': ['Events.csv'],
                     'ast2': ['*.ast2'],
-                    'bsoid': ['*bout_lengths*.csv']
+                    'bsoid': ['*bout_lengths*.csv'],
+                    'events': ['*events*.csv'],
+                    'timestamps': ['*timestamps*.csv']
                 }
 
                 # Determine required files based on mode
@@ -70,6 +73,8 @@ def import_multi_animals():
                     required_files = ['dlc', 'fiber', 'fiber_events', 'ast2']
                 elif current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID:
                     required_files = ['fiber', 'fiber_events', 'bsoid']
+                elif current_experiment_mode == EXPERIMENT_MODE_FIBER_EVENT:
+                    required_files = ['fiber', 'fiber_events', 'events', 'timestamps']
 
                 for file_type, file_patterns in patterns.items():
                     if file_type in ['fiber', 'fiber_events'] and current_experiment_mode == EXPERIMENT_MODE_AST2:
@@ -82,6 +87,9 @@ def import_multi_animals():
                         continue
                     
                     if file_type == 'dlc' and current_experiment_mode != EXPERIMENT_MODE_FIBER_AST2_DLC:
+                        continue
+                    
+                    if file_type in ['events', 'timestamps'] and current_experiment_mode != EXPERIMENT_MODE_FIBER_EVENT:
                         continue
                     
                     found_file = None
@@ -145,6 +153,19 @@ def import_multi_animals():
                         bsoid_data = load_bsoid_data(files_found['bsoid'])
                     except Exception as e:
                         log_message(f"Failed to load BSOID data for {base_animal_id}: {str(e)}", "ERROR")
+                
+                # Process Event and Timestamps files for Event Analysis mode        
+                events = None
+                timestamps = None
+                if current_experiment_mode == EXPERIMENT_MODE_FIBER_EVENT:
+                    if 'events' in files_found and 'timestamps' in files_found:
+                        try:
+                            events = pd.read_csv(files_found['events'])
+                            timestamps = pd.read_csv(files_found['timestamps'])
+                        except Exception as e:
+                            log_message(f"Failed to load Event or Timestamps data for {base_animal_id}: {str(e)}", "ERROR")
+                    else:
+                        log_message(f"Event or Timestamps files missing for {base_animal_id}", "WARNING")
 
                 if fiber_result is not None:
                     # Create separate animal_data for each channel
@@ -186,6 +207,13 @@ def import_multi_animals():
                         if bsoid_data is not None:
                             animal_data['bsoid_data'] = bsoid_data
 
+                        # Add Event and Timestamps data (same for all channels of this animal)
+                        if events is not None:
+                            animal_data['events'] = events
+
+                        if timestamps is not None:
+                            animal_data['timestamps'] = timestamps
+
                         multi_animal_data.append(animal_data)
                         selected_files.append(animal_data)
 
@@ -226,6 +254,8 @@ def import_multi_animals():
                 mode_name = "Fiber+AST2"
             elif current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID:
                 mode_name = "Fiber+BSOID"
+            elif current_experiment_mode == EXPERIMENT_MODE_FIBER_EVENT:
+                mode_name = "Fiber+Event"
             elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
                 mode_name = "Fiber+AST2+DLC"
             else:
@@ -265,7 +295,9 @@ def import_single_animal():
             'fiber': ['fluorescence.csv'],
             'fiber_events': ['Events.csv'],
             'ast2': ['*.ast2'],
-            'bsoid': ['*bout_lengths*.csv']
+            'bsoid': ['*bout_lengths*.csv'],
+            'events': ['*events*.csv'],
+            'timestamps': ['*timestamps*.csv']
         }
 
         # Determine required files based on mode
@@ -279,6 +311,8 @@ def import_single_animal():
             required_files = ['dlc', 'fiber', 'fiber_events', 'ast2']
         elif current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID:
             required_files = ['fiber', 'fiber_events', 'bsoid']
+        elif current_experiment_mode == EXPERIMENT_MODE_FIBER_EVENT:
+            required_files = ['fiber', 'fiber_events', 'events', 'timestamps']
 
         for file_type, file_patterns in patterns.items():
             if file_type in ['fiber', 'fiber_events'] and current_experiment_mode == EXPERIMENT_MODE_AST2:
@@ -291,6 +325,9 @@ def import_single_animal():
                 continue
             
             if file_type == 'dlc' and current_experiment_mode != EXPERIMENT_MODE_FIBER_AST2_DLC:
+                continue
+            
+            if file_type in ['events', 'timestamps'] and current_experiment_mode != EXPERIMENT_MODE_FIBER_EVENT:
                 continue
             
             found_file = None
@@ -362,6 +399,19 @@ def import_single_animal():
                 bsoid_data = load_bsoid_data(files_found['bsoid'])
             except Exception as e:
                 log_message(f"Failed to load BSOID data for {base_animal_id}: {str(e)}", "ERROR")
+                
+        # Process Event and Timestamps files for Event Analysis mode
+        events = None
+        timestamps = None
+        if current_experiment_mode == EXPERIMENT_MODE_FIBER_EVENT :
+            if 'events' in files_found and 'timestamps' in files_found:
+                try:
+                    events = pd.read_csv(files_found['events'])
+                    timestamps = pd.read_csv(files_found['timestamps'])
+                except Exception as e:
+                    log_message(f"Failed to load Event or Timestamps data for {base_animal_id}: {str(e)}", "ERROR")
+            else:
+                log_message(f"Event or Timestamps files missing for {base_animal_id}", "WARNING")
              
         if fiber_result is not None:
             # Create separate animal_data for each channel
@@ -405,6 +455,14 @@ def import_single_animal():
                     log_message(f"Adding BSOID data for {animal_single_channel_id}")
                     animal_data['bsoid_data'] = bsoid_data
                     
+                if events is not None:
+                    log_message(f"Adding Event data for {animal_single_channel_id}")
+                    animal_data['events'] = events
+
+                if timestamps is not None:
+                    log_message(f"Adding Timestamps data for {animal_single_channel_id}")
+                    animal_data['timestamps'] = timestamps
+
                 multi_animal_data.append(animal_data)
                 selected_files.append(animal_data)
                     
@@ -446,6 +504,8 @@ def import_single_animal():
                 mode_name = "Fiber+BSOID"
             elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
                 mode_name = "Fiber+AST2+DLC"
+            elif current_experiment_mode == EXPERIMENT_MODE_FIBER_EVENT:
+                mode_name = "Fiber+Event"
             else:
                 mode_name = "Unknown"
             log_message(f"Added {base_animal_id} with {added_count} channels ({mode_name} mode)", "INFO")
@@ -501,7 +561,7 @@ def show_channel_selection_dialog():
     
     ttk.Label(header_frame, text="Enable", width=11, font=("Arial", 9, "bold")).grid(row=0, column=0, padx=2)
     ttk.Label(header_frame, text="Animal ID-Channel ID", width=35, font=("Arial", 9, "bold")).grid(row=0, column=1, padx=2)
-    if current_experiment_mode != EXPERIMENT_MODE_FIBER:
+    if current_experiment_mode != EXPERIMENT_MODE_FIBER and current_experiment_mode != EXPERIMENT_MODE_FIBER_BSOID and current_experiment_mode != EXPERIMENT_MODE_FIBER_EVENT:
         ttk.Label(header_frame, text="Running Ch", width=13, font=("Arial", 9, "bold")).grid(row=0, column=2, padx=2)
         ttk.Label(header_frame, text="Invert", width=10, font=("Arial", 9, "bold")).grid(row=0, column=3, padx=2)
         ttk.Label(header_frame, text="Diameter(cm)", width=12, font=("Arial", 9, "bold")).grid(row=0, column=4, padx=2)
@@ -524,7 +584,7 @@ def show_channel_selection_dialog():
         # Animal-Channel ID label
         ttk.Label(row_frame, text=animal_single_channel_id, width=35).grid(row=0, column=1, padx=2)
         
-        if current_experiment_mode != EXPERIMENT_MODE_FIBER and current_experiment_mode != EXPERIMENT_MODE_FIBER_BSOID:
+        if current_experiment_mode != EXPERIMENT_MODE_FIBER and current_experiment_mode != EXPERIMENT_MODE_FIBER_BSOID and current_experiment_mode != EXPERIMENT_MODE_FIBER_EVENT:
             # Running channel selection
             available_channels = []
             if 'ast2_data' in animal_data and animal_data['ast2_data']:
@@ -686,8 +746,15 @@ def finalize_channel_selection(dialog):
                     if 'fiber_data' in animal_data:
                         animal_data['fiber_data_trimmed'] = animal_data['fiber_data']
                         
+            elif 'events' in animal_data and animal_data['events'] is not None and 'timestamps' in animal_data and animal_data['timestamps'] is not None:
+                aligment_success = align_event_fiber(animal_data)
+                if not aligment_success:
+                    log_message(f"Failed to align Event data for {animal_single_channel_id}", "WARNING")
+                    if 'fiber_data' in animal_data:
+                        animal_data['fiber_data_trimmed'] = animal_data['fiber_data']
+                        
             else:
-                log_message(f"No AST2 data / BSOID data to align for {animal_single_channel_id}, skipping alignment", "INFO")
+                log_message(f"No AST2 data / BSOID data / Event data to align for {animal_single_channel_id}, skipping alignment", "INFO")
                 if 'fiber_data' in animal_data:
                     fiber_data = animal_data.get('fiber_data')
                     channels = animal_data.get('channels', {})
@@ -748,12 +815,6 @@ def finalize_channel_selection(dialog):
         global current_animal_index
         current_animal_index = 0
         main_visualization(multi_animal_data[current_animal_index])
-        
-        if 'fiber_data' in multi_animal_data[current_animal_index] and multi_animal_data[current_animal_index]['fiber_data'] is not None:
-            create_fiber_visualization(multi_animal_data[current_animal_index])
-            if fiber_plot_window:
-                fiber_plot_window.set_plot_type("raw")
-                fiber_plot_window.update_plot()
 
 def align_running_fiber(animal_data=None):
     """Modified align_data to support different experiment modes"""
@@ -1192,5 +1253,153 @@ def align_bsoid_fiber(animal_data=None):
     
     except Exception as e:
         log_message(f"Failed to align BSOID data: {str(e)}", "ERROR")
+        log_message(f"Traceback: {traceback.format_exc()}", "ERROR")
+        return False
+    
+def align_event_fiber(animal_data=None):
+    """Align Event data to fiber data using fiber events: running start (Input2) as reference point"""
+    global current_experiment_mode
+    
+    try:
+        # Determine which data to use
+        if animal_data:
+            fiber_data = animal_data.get('fiber_data')
+            timestamps = animal_data.get('timestamps')
+            channels = animal_data.get('channels', {})
+            active_channels = animal_data.get('active_channels', [])
+            experiment_mode = animal_data.get('experiment_mode', current_experiment_mode)
+        else:
+            fiber_data = globals().get('fiber_data')
+            timestamps = globals().get('timestamps')
+            channels = globals().get('channels', {})
+            active_channels = globals().get('active_channels', [])
+            experiment_mode = current_experiment_mode
+
+        log_message(f"Alignment debug - Experiment mode: {experiment_mode}")
+        log_message(f"Alignment debug - Fiber data: {fiber_data is not None}")
+        log_message(f"Alignment debug - Channels: {channels}")
+        log_message(f"Alignment debug - Active channels: {active_channels}")
+        log_message(f"Alignment debug - Timestamps data: {timestamps is not None}")
+
+        # Check if we have the necessary data
+        if fiber_data is None:
+            log_message("Fiber data is None, cannot align", "ERROR")
+            return False
+            
+        if not active_channels:
+            log_message("No active channels selected, cannot align", "ERROR")
+            return False
+            
+        if timestamps is None:
+            log_message("No Timestamps data available, cannot align", "ERROR")
+            return False
+
+        # Get events column from fiber data
+        events_col = channels.get('events')
+        if events_col is None or events_col not in fiber_data.columns:
+            log_message("Events column not found in fiber data", "ERROR")
+            return False
+        
+        time_col = channels['time']
+        
+        opto_event_name = event_config.get('opto_event', 'Input3')
+        running_start_name = event_config.get('running_start', 'Input2')
+        drug_event_names = event_config.get('drug_event', 'Event1')
+        # Support multiple drug events separated by comma
+        if isinstance(drug_event_names, str):
+            drug_event_names = [name.strip() for name in drug_event_names.split(',')]
+        elif not isinstance(drug_event_names, list):
+            drug_event_names = [str(drug_event_names)]
+
+        global input3_events, drug_events
+
+        input3_events = fiber_data[fiber_data[events_col].str.startswith(opto_event_name, na=False)]
+        if len(input3_events) < 1:
+            multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="disabled")
+            log_message("Could not find Input3 events for optogenetic analysis", "INFO")
+            running_induced_menu.entryconfig("Running + Optogenetics", state="disabled")
+            setting_menu.entryconfig("Optogenetic Configuration", state="disabled")
+        else:
+            multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="normal")
+            running_induced_menu.entryconfig("Running + Optogenetics", state="normal")
+            setting_menu.entryconfig("Optogenetic Configuration", state="normal")
+        
+        drug_events = fiber_data[fiber_data[events_col].str.contains('|'.join(drug_event_names), na=False)]
+        if len(drug_events) < 1:
+            multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="disabled")
+            running_induced_menu.entryconfig("Running + Drug", state="disabled")
+            setting_menu.entryconfig("Drug Configuration", state="disabled")
+            log_message("Could not find Event2 events for drug analysis", "INFO")
+        else:
+            multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="normal")
+            running_induced_menu.entryconfig("Running + Drug", state="normal")
+            setting_menu.entryconfig("Drug Configuration", state="normal")
+
+        if len(input3_events) < 1 or len(drug_events) < 1:
+            optogenetics_induced_menu.entryconfig("Optogenetics + Drug", state="disabled")
+            running_induced_menu.entryconfig("Running + Optogenetics + Drug", state="disabled")
+        elif len(input3_events) >= 1 and len(drug_events) >= 1:
+            optogenetics_induced_menu.entryconfig("Optogenetics + Drug", state="normal")
+            running_induced_menu.entryconfig("Running + Optogenetics + Drug", state="normal") 
+
+        if animal_data is not None:
+            animal_data['input3_events'] = input3_events
+            animal_data['drug_events'] = drug_events
+            
+        # Find Input2 events (video markers) - video start time and video end time
+        input2_events = fiber_data[fiber_data[events_col].str.startswith(running_start_name, na=False)]
+        if len(input2_events) < 1:
+            log_message("Could not find Input2 events for running start", "ERROR")
+            return False
+        video_start_time = input2_events[time_col].iloc[0]
+        video_end_time = input2_events[time_col].iloc[-2]
+        
+        video_start_timestamp = timestamps[(timestamps['Device'] == 'Camera 0') & (timestamps['Action'] == 'Start')]['Timestamp'].values
+        exp_start_timestamp = timestamps[(timestamps['Device'] == 'Experiment') & (timestamps['Action'] == 'Start')]['Timestamp'].values
+        relative_time = video_start_timestamp[0] - exp_start_timestamp[0]
+        
+        # Get fiber start time (first timestamp in fiber data)
+        fiber_start_time = fiber_data[time_col].iloc[0]
+        
+        log_message(f"Video start time: {video_start_time:.2f}s")
+        log_message(f"Video end time: {video_end_time:.2f}s")
+        log_message(f"Fiber start time: {fiber_start_time:.2f}s")
+        log_message(f"Relative time: {relative_time:.2f}s")
+        
+        # Adjust fiber data relative to video start time
+        fiber_data_adjusted = fiber_data.copy()
+        fiber_data_adjusted[time_col] = fiber_data_adjusted[time_col] - video_start_time - relative_time
+        # Trim fiber data to video duration
+        fiber_data_trimmed = fiber_data_adjusted[
+            (fiber_data_adjusted[time_col] >= 0) & 
+            (fiber_data_adjusted[time_col] <= (video_end_time - video_start_time - relative_time))].copy()
+        
+        if animal_data is not None:
+            animal_data.update({
+                'fiber_data_adjusted': fiber_data_adjusted,
+                'fiber_data_trimmed': fiber_data_trimmed,
+                'video_start_time': video_start_time,
+                'video_end_time': video_end_time
+            })
+        else:
+            globals()['fiber_data_adjusted'] = fiber_data_adjusted
+            globals()['fiber_data_trimmed'] = fiber_data_trimmed
+            globals()['video_start_time'] = video_start_time
+            globals()['video_end_time'] = video_end_time
+            
+        # Display alignment information
+        info_message = f"Data aligned successfully (Event data to fiber data)!\n"
+        info_message += f"Experiment Mode: {experiment_mode}\n"
+        info_message += f"Video start time: {video_start_time:.2f}s\n"
+        info_message += f"Video end time: {video_end_time:.2f}s\n"
+        info_message += f"Fiber start time: {fiber_start_time:.2f}s\n"
+        info_message += f"Relative time: {relative_time:.2f}s\n"
+
+        log_message(info_message, "INFO")
+        log_message("Data aligned successfully using fiber data as reference for Event alignment")
+        return True
+    
+    except Exception as e:
+        log_message(f"Failed to align Event data with fiber data: {str(e)}", "ERROR")
         log_message(f"Traceback: {traceback.format_exc()}", "ERROR")
         return False

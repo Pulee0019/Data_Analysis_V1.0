@@ -1,5 +1,4 @@
 import re
-
 import numpy as np
 import pandas as pd
 
@@ -211,7 +210,6 @@ def read_dlc_file(file_path):
                 return
                 
             log_message(f"Detected bodyparts: {unique_bodyparts}")
-            log_message(f"CSV file total columns: {df.shape[1]}")
             
             # Create dictionary to store x, y, likelihood data for each bodypart
             bodypart_data = {}
@@ -253,23 +251,6 @@ def read_dlc_file(file_path):
                     continue
                 
                 col_index += 3
-            
-            # Display parsing results
-            result_info = f"File parsed successfully!\n"
-            result_info += f"Found {len(unique_bodyparts)} bodyparts: {', '.join(unique_bodyparts)}\n"
-            result_info += f"Data rows: {len(data_rows)}\n"
-            
-            for bodypart, data in bodypart_data.items():
-                result_info += f"{bodypart}: x({len(data['x'])}), y({len(data['y'])}), likelihood({len(data['likelihood'])})"
-            log_message(result_info, "INFO")
-            
-            # Print first few rows for verification
-            log_message(f"Bodyparts found: {unique_bodyparts}")
-            for bodypart, data in bodypart_data.items():
-                log_message(f"\n{bodypart}:")
-                log_message(f"  X (first 5): {data['x'][:5]}")
-                log_message(f"  Y (first 5): {data['y'][:5]}")
-                log_message(f"  Likelihood (first 5): {data['likelihood'][:5]}")
             
             # Store data as global variable for later use
             global parsed_data

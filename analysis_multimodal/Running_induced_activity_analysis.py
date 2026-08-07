@@ -4,9 +4,10 @@ Supports both running-only and running+drug analysis
 """
 import os
 import json
-import tkinter as tk
 import numpy as np
+import tkinter as tk
 
+from itertools import chain
 from infrastructure.logger import log_message
 from analysis_multimodal.Multimodal_analysis import (
     get_events_from_bouts, calculate_running_episodes, export_results,
@@ -120,8 +121,8 @@ def show_running_induced_analysis(root, multi_animal_data, analysis_mode="runnin
     
     main_window.title(title)
     main_window.geometry("900x700")
-    main_window.transient(root)
-    main_window.grab_set()
+    # main_window.transient(root)
+    # main_window.grab_set()
     
     # Main container with two sections
     container = tk.Frame(main_window, bg="#f8f8f8")
@@ -731,9 +732,9 @@ def analyze_row_running(row_name, animals, params):
             
             for wl in target_wavelengths:
                 if wl in result['dff']:
-                    all_dff_episodes[wl].extend(result['dff'][wl])
+                    all_dff_episodes[wl].append(result['dff'][wl])
                 if wl in result['zscore']:
-                    all_zscore_episodes[wl].extend(result['zscore'][wl])
+                    all_zscore_episodes[wl].append(result['zscore'][wl])
             
             # Collect statistics if requested
             if params['export_stats']:
@@ -750,7 +751,7 @@ def analyze_row_running(row_name, animals, params):
         return None, None
     
     # Calculate results
-    result = {
+    results = {
         'time': time_array,
         'running': {
             'episodes': np.array(all_running_episodes),
@@ -765,21 +766,23 @@ def analyze_row_running(row_name, animals, params):
     for wl in target_wavelengths:
         if all_dff_episodes[wl]:
             episodes_array = np.array(all_dff_episodes[wl])
-            result['dff'][wl] = {
+            converted_episodes = np.array(list(chain.from_iterable(list(episodes_array))))
+            results['dff'][wl] = {
                 'episodes': episodes_array,
-                'mean': np.nanmean(episodes_array, axis=0),
-                'sem': np.nanstd(episodes_array, axis=0) / np.sqrt(len(all_dff_episodes[wl]))
+                'mean': np.nanmean(converted_episodes, axis=0),
+                'sem': np.nanstd(converted_episodes, axis=0) / np.sqrt(len(converted_episodes))
             }
         
         if all_zscore_episodes[wl]:
             episodes_array = np.array(all_zscore_episodes[wl])
-            result['zscore'][wl] = {
+            converted_episodes = np.array(list(chain.from_iterable(list(episodes_array))))
+            results['zscore'][wl] = {
                 'episodes': episodes_array,
-                'mean': np.nanmean(episodes_array, axis=0),
-                'sem': np.nanstd(episodes_array, axis=0) / np.sqrt(len(all_zscore_episodes[wl]))
+                'mean': np.nanmean(converted_episodes, axis=0),
+                'sem': np.nanstd(converted_episodes, axis=0) / np.sqrt(len(converted_episodes))
             }
     
-    return result, statistics_rows if params['export_stats'] else None
+    return results, statistics_rows if params['export_stats'] else None
 
 def analyze_row_running_drug(row_name, animals, params):
     """Analyze one row for running+drug mode with multiple drugs
@@ -971,9 +974,9 @@ def analyze_row_running_drug(row_name, animals, params):
                 
                 for wl in target_wavelengths:
                     if wl in category_result['dff']:
-                        category_data[category]['dff'][wl].extend(category_result['dff'][wl])
+                        category_data[category]['dff'][wl].append(category_result['dff'][wl])
                     if wl in category_result['zscore']:
-                        category_data[category]['zscore'][wl].extend(category_result['zscore'][wl])
+                        category_data[category]['zscore'][wl].append(category_result['zscore'][wl])
                 
                 # Collect statistics
                 if params['export_stats']:
@@ -1010,18 +1013,20 @@ def analyze_row_running_drug(row_name, animals, params):
             for wl in target_wavelengths:
                 if category_data[category]['dff'][wl]:
                     episodes_array = np.array(category_data[category]['dff'][wl])
+                    converted_episodes = np.array(list(chain.from_iterable(list(episodes_array))))
                     result[category]['dff'][wl] = {
                         'episodes': episodes_array,
-                        'mean': np.nanmean(episodes_array, axis=0),
-                        'sem': np.nanstd(episodes_array, axis=0) / np.sqrt(len(category_data[category]['dff'][wl]))
+                        'mean': np.nanmean(converted_episodes, axis=0),
+                        'sem': np.nanstd(converted_episodes, axis=0) / np.sqrt(len(converted_episodes))
                     }
                 
                 if category_data[category]['zscore'][wl]:
                     episodes_array = np.array(category_data[category]['zscore'][wl])
+                    converted_episodes = np.array(list(chain.from_iterable(list(episodes_array))))
                     result[category]['zscore'][wl] = {
                         'episodes': episodes_array,
-                        'mean': np.nanmean(episodes_array, axis=0),
-                        'sem': np.nanstd(episodes_array, axis=0) / np.sqrt(len(category_data[category]['zscore'][wl]))
+                        'mean': np.nanmean(converted_episodes, axis=0),
+                        'sem': np.nanstd(converted_episodes, axis=0) / np.sqrt(len(converted_episodes))
                     }
     
     return result, statistics_rows if params['export_stats'] else None
@@ -1127,9 +1132,9 @@ def analyze_row_running_optogenetics(row_name, animals, params, all_optogenetic_
                 
                 for wl in target_wavelengths:
                     if wl in with_result['dff']:
-                        with_opto['dff'][wl].extend(with_result['dff'][wl])
+                        with_opto['dff'][wl].append(with_result['dff'][wl])
                     if wl in with_result['zscore']:
-                        with_opto['zscore'][wl].extend(with_result['zscore'][wl])
+                        with_opto['zscore'][wl].append(with_result['zscore'][wl])
                 
                 # Collect statistics
                 if params['export_stats'] and len(with_result['running']) > 0:
@@ -1164,9 +1169,9 @@ def analyze_row_running_optogenetics(row_name, animals, params, all_optogenetic_
                 
                 for wl in target_wavelengths:
                     if wl in without_result['dff']:
-                        without_opto['dff'][wl].extend(without_result['dff'][wl])
+                        without_opto['dff'][wl].append(without_result['dff'][wl])
                     if wl in without_result['zscore']:
-                        without_opto['zscore'][wl].extend(without_result['zscore'][wl])
+                        without_opto['zscore'][wl].append(without_result['zscore'][wl])
                 
                 # Collect statistics
                 if params['export_stats'] and len(without_result['running']) > 0:
@@ -1217,34 +1222,38 @@ def analyze_row_running_optogenetics(row_name, animals, params, all_optogenetic_
     for wl in target_wavelengths:
         if with_opto['dff'][wl]:
             episodes_array = np.array(with_opto['dff'][wl])
+            converted_episodes = np.array(list(chain.from_iterable(list(episodes_array))))
             result['with_opto']['dff'][wl] = {
                 'episodes': episodes_array,
-                'mean': np.nanmean(episodes_array, axis=0),
-                'sem': np.nanstd(episodes_array, axis=0) / np.sqrt(len(with_opto['dff'][wl]))
+                'mean': np.nanmean(converted_episodes, axis=0),
+                'sem': np.nanstd(converted_episodes, axis=0) / np.sqrt(len(converted_episodes))
             }
         
         if with_opto['zscore'][wl]:
             episodes_array = np.array(with_opto['zscore'][wl])
+            converted_episodes = np.array(list(chain.from_iterable(list(episodes_array))))
             result['with_opto']['zscore'][wl] = {
                 'episodes': episodes_array,
-                'mean': np.nanmean(episodes_array, axis=0),
-                'sem': np.nanstd(episodes_array, axis=0) / np.sqrt(len(with_opto['zscore'][wl]))
+                'mean': np.nanmean(converted_episodes, axis=0),
+                'sem': np.nanstd(converted_episodes, axis=0) / np.sqrt(len(converted_episodes))
             }
         
         if without_opto['dff'][wl]:
             episodes_array = np.array(without_opto['dff'][wl])
+            converted_episodes = np.array(list(chain.from_iterable(list(episodes_array))))
             result['without_opto']['dff'][wl] = {
                 'episodes': episodes_array,
-                'mean': np.nanmean(episodes_array, axis=0),
-                'sem': np.nanstd(episodes_array, axis=0) / np.sqrt(len(without_opto['dff'][wl]))
+                'mean': np.nanmean(converted_episodes, axis=0),
+                'sem': np.nanstd(converted_episodes, axis=0) / np.sqrt(len(converted_episodes))
             }
         
         if without_opto['zscore'][wl]:
             episodes_array = np.array(without_opto['zscore'][wl])
+            converted_episodes = np.array(list(chain.from_iterable(list(episodes_array))))
             result['without_opto']['zscore'][wl] = {
                 'episodes': episodes_array,
-                'mean': np.nanmean(episodes_array, axis=0),
-                'sem': np.nanstd(episodes_array, axis=0) / np.sqrt(len(without_opto['zscore'][wl]))
+                'mean': np.nanmean(converted_episodes, axis=0),
+                'sem': np.nanstd(converted_episodes, axis=0) / np.sqrt(len(converted_episodes))
             }
     
     return result, statistics_rows if params['export_stats'] else None
@@ -1460,7 +1469,7 @@ def plot_running_results(results, params):
         dff_vmin, dff_vmax = None, None
         for data in results.values():
             if wl in data["dff"]:
-                ep = data["dff"][wl]["episodes"]
+                ep = list(chain.from_iterable(list(data["dff"][wl]["episodes"])))
                 all_dff.extend(ep)
                 counts.append(len(ep))
                 if dff_vmin is None and dff_vmax is None:
@@ -1488,7 +1497,7 @@ def plot_running_results(results, params):
         zs_vmin, zs_vmax = None, None
         for data in results.values():
             if wl in data["zscore"]:
-                ep = data["zscore"][wl]["episodes"]
+                ep = list(chain.from_iterable(list(data["zscore"][wl]["episodes"])))
                 all_zs.extend(ep)
                 counts.append(len(ep))
                 if zs_vmin is None and zs_vmax is None:
@@ -1614,7 +1623,7 @@ def create_single_row_window_running(row_name, data, params):
         if wl in data["dff"]:
             dff_vmin = min(data["dff"][wl]["mean"] - data["dff"][wl]["sem"])
             dff_vmax = max(data["dff"][wl]["mean"] + data["dff"][wl]["sem"])
-            draw_heatmap(ax_dff_heat, data["dff"][wl]["episodes"],
+            draw_heatmap(ax_dff_heat, list(chain.from_iterable(list(data["dff"][wl]["episodes"]))),
                           time_array, "coolwarm", "Δ(ΔF/F)", vmin=dff_vmin, vmax=dff_vmax)
             ax_dff_heat.set_title(f"{row_name} - Fiber Δ(ΔF/F) Heatmap {wl}nm")
         else:
@@ -1625,7 +1634,7 @@ def create_single_row_window_running(row_name, data, params):
         if wl in data["zscore"]:
             zs_vmin = min(data["zscore"][wl]["mean"] - data["zscore"][wl]["sem"])
             zs_vmax = max(data["zscore"][wl]["mean"] + data["zscore"][wl]["sem"])
-            draw_heatmap(ax_zs_heat, data["zscore"][wl]["episodes"],
+            draw_heatmap(ax_zs_heat, list(chain.from_iterable(list(data["zscore"][wl]["episodes"]))),
                           time_array, "coolwarm", "Z-score", vmin=zs_vmin, vmax=zs_vmax)
             ax_zs_heat.set_title(f"{row_name} - Fiber Z-score Heatmap {wl}nm")
         else:
@@ -1784,7 +1793,7 @@ def plot_running_drug_results(results, params):
             category_episodes = []
             for row_name, data in results.items():
                 if category in data and wl in data[category]['dff']:
-                    category_episodes.extend(data[category]['dff'][wl]['episodes'])
+                    category_episodes.extend(list(chain.from_iterable(list(data[category]['dff'][wl]['episodes']))))
                     if dff_vmin is None and dff_vmax is None:
                         dff_vmin = min(data[category]['dff'][wl]['mean'] - data[category]['dff'][wl]['sem'])
                         dff_vmax = max(data[category]['dff'][wl]['mean'] + data[category]['dff'][wl]['sem'])
@@ -1812,7 +1821,7 @@ def plot_running_drug_results(results, params):
             category_episodes = []
             for row_name, data in results.items():
                 if category in data and wl in data[category]['zscore']:
-                    category_episodes.extend(data[category]['zscore'][wl]['episodes'])
+                    category_episodes.extend(list(chain.from_iterable(list(data[category]['zscore'][wl]['episodes']))))
                     if zs_vmin is None and zs_vmax is None:
                         zs_vmin = min(data[category]['zscore'][wl]['mean'] - data[category]['zscore'][wl]['sem'])
                         zs_vmax = max(data[category]['zscore'][wl]['mean'] + data[category]['zscore'][wl]['sem'])
@@ -1968,7 +1977,7 @@ def create_single_row_window_running_drug(row_name, data, params):
         dff_vmin, dff_vmax = None, None
         for category in drug_categories:
             if category in data and wl in data[category]['dff']:
-                all_dff_episodes.extend(data[category]['dff'][wl]['episodes'])
+                all_dff_episodes.extend(list(chain.from_iterable(list(data[category]['dff'][wl]['episodes']))))
                 if dff_vmin is None and dff_vmax is None:
                     dff_vmin = min(data[category]['dff'][wl]['mean'] - data[category]['dff'][wl]['sem'])
                     dff_vmax = max(data[category]['dff'][wl]['mean'] + data[category]['dff'][wl]['sem'])
@@ -1992,7 +2001,7 @@ def create_single_row_window_running_drug(row_name, data, params):
         zs_vmin, zs_vmax = None, None
         for category in drug_categories:
             if category in data and wl in data[category]['zscore']:
-                all_zscore_episodes.extend(data[category]['zscore'][wl]['episodes'])
+                all_zscore_episodes.extend(list(chain.from_iterable(list(data[category]['zscore'][wl]['episodes']))))
                 if zs_vmin is None and zs_vmax is None:
                     zs_vmin = min(data[category]['zscore'][wl]['mean'] - data[category]['zscore'][wl]['sem'])
                     zs_vmax = max(data[category]['zscore'][wl]['mean'] + data[category]['zscore'][wl]['sem'])
@@ -2172,7 +2181,7 @@ def plot_running_optogenetics_results(results, params):
         without_opto_dff_vmin, without_opto_dff_vmax = None, None
         for row_name, data in results.items():
             if wl in data['with_opto']['dff']:
-                all_with_opto_dff.extend(data['with_opto']['dff'][wl]['episodes'])
+                all_with_opto_dff.extend(list(chain.from_iterable(list(data['with_opto']['dff'][wl]['episodes']))))
                 if with_opto_dff_vmin is None or with_opto_dff_vmax is None:
                     with_opto_dff_vmin = min(data['with_opto']['dff'][wl]['mean'] - data['with_opto']['dff'][wl]['sem'])
                     with_opto_dff_vmax = max(data['with_opto']['dff'][wl]['mean'] + data['with_opto']['dff'][wl]['sem'])
@@ -2180,7 +2189,7 @@ def plot_running_optogenetics_results(results, params):
                     with_opto_dff_vmin = min(with_opto_dff_vmin, min(data['with_opto']['dff'][wl]['mean'] - data['with_opto']['dff'][wl]['sem']))
                     with_opto_dff_vmax = max(with_opto_dff_vmax, max(data['with_opto']['dff'][wl]['mean'] + data['with_opto']['dff'][wl]['sem']))
             if wl in data['without_opto']['dff']:
-                all_without_opto_dff.extend(data['without_opto']['dff'][wl]['episodes'])
+                all_without_opto_dff.extend(list(chain.from_iterable(list(data['without_opto']['dff'][wl]['episodes']))))
                 if without_opto_dff_vmin is None or without_opto_dff_vmax is None:
                     without_opto_dff_vmin = min(data['without_opto']['dff'][wl]['mean'] - data['without_opto']['dff'][wl]['sem'])
                     without_opto_dff_vmax = max(data['without_opto']['dff'][wl]['mean'] + data['without_opto']['dff'][wl]['sem'])
@@ -2215,7 +2224,7 @@ def plot_running_optogenetics_results(results, params):
         without_opto_zs_vmin, without_opto_zs_vmax = None, None
         for row_name, data in results.items():
             if wl in data['with_opto']['zscore']:
-                all_with_opto_zscore.extend(data['with_opto']['zscore'][wl]['episodes'])
+                all_with_opto_zscore.extend(list(chain.from_iterable(list(data['with_opto']['zscore'][wl]['episodes']))))
                 if with_opto_zs_vmin is None or with_opto_zs_vmax is None:
                     with_opto_zs_vmin = min(data['with_opto']['zscore'][wl]['mean'] - data['with_opto']['zscore'][wl]['sem'])
                     with_opto_zs_vmax = max(data['with_opto']['zscore'][wl]['mean'] + data['with_opto']['zscore'][wl]['sem'])
@@ -2223,7 +2232,7 @@ def plot_running_optogenetics_results(results, params):
                     with_opto_zs_vmin = min(with_opto_zs_vmin, min(data['with_opto']['zscore'][wl]['mean'] - data['with_opto']['zscore'][wl]['sem']))
                     with_opto_zs_vmax = max(with_opto_zs_vmax, max(data['with_opto']['zscore'][wl]['mean'] + data['with_opto']['zscore'][wl]['sem']))
             if wl in data['without_opto']['zscore']:
-                all_without_opto_zscore.extend(data['without_opto']['zscore'][wl]['episodes'])
+                all_without_opto_zscore.extend(list(chain.from_iterable(list(data['without_opto']['zscore'][wl]['episodes']))))
                 if without_opto_zs_vmin is None or without_opto_zs_vmax is None:
                     without_opto_zs_vmin = min(data['without_opto']['zscore'][wl]['mean'] - data['without_opto']['zscore'][wl]['sem'])
                     without_opto_zs_vmax = max(data['without_opto']['zscore'][wl]['mean'] + data['without_opto']['zscore'][wl]['sem'])
@@ -2383,8 +2392,8 @@ def create_single_row_window_running_optogenetics(row_name, data, params):
         if (wl in data['with_opto']['dff'] and wl in data['without_opto']['dff'] and
                 len(data['with_opto']['dff'][wl]['episodes']) > 0 and
                 len(data['without_opto']['dff'][wl]['episodes']) > 0):
-            combined = np.vstack([data['with_opto']['dff'][wl]['episodes'],
-                                  data['without_opto']['dff'][wl]['episodes']])
+            combined = np.vstack([list(chain.from_iterable(list(data['with_opto']['dff'][wl]['episodes']))),
+                                  list(chain.from_iterable(list(data['without_opto']['dff'][wl]['episodes'])))])
             with_opto_dff_vmin = min(data['with_opto']['dff'][wl]['mean'] - data['with_opto']['dff'][wl]['sem'])
             with_opto_dff_vmax = max(data['with_opto']['dff'][wl]['mean'] + data['with_opto']['dff'][wl]['sem'])
             without_opto_dff_vmin = min(data['without_opto']['dff'][wl]['mean'] - data['without_opto']['dff'][wl]['sem'])
@@ -2397,11 +2406,11 @@ def create_single_row_window_running_optogenetics(row_name, data, params):
                          extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
             ax_dff_heat.set_title(f'{row_name} - Fiber Δ(ΔF/F) Heatmap {wl}nm')
         elif wl in data['with_opto']['dff'] and len(data['with_opto']['dff'][wl]['episodes']) > 0:
-            draw_heatmap(ax_dff_heat, data['with_opto']['dff'][wl]['episodes'],
+            draw_heatmap(ax_dff_heat, list(chain.from_iterable(list(data['with_opto']['dff'][wl]['episodes']))),
                          time_array, 'coolwarm', 'Δ(ΔF/F)', vmin=combined_vmin, vmax=combined_vmax)
             ax_dff_heat.set_title(f'{row_name} - Fiber Δ(ΔF/F) Heatmap {wl}nm')
         elif wl in data['without_opto']['dff'] and len(data['without_opto']['dff'][wl]['episodes']) > 0:
-            draw_heatmap(ax_dff_heat, data['without_opto']['dff'][wl]['episodes'],
+            draw_heatmap(ax_dff_heat, list(chain.from_iterable(list(data['without_opto']['dff'][wl]['episodes']))),
                          time_array, 'coolwarm', 'Δ(ΔF/F)', vmin=combined_vmin, vmax=combined_vmax)
             ax_dff_heat.set_title(f'{row_name} - Fiber Δ(ΔF/F) Heatmap {wl}nm')
         else:
@@ -2415,8 +2424,8 @@ def create_single_row_window_running_optogenetics(row_name, data, params):
         if (wl in data['with_opto']['zscore'] and wl in data['without_opto']['zscore'] and
                 len(data['with_opto']['zscore'][wl]['episodes']) > 0 and
                 len(data['without_opto']['zscore'][wl]['episodes']) > 0):
-            combined = np.vstack([data['with_opto']['zscore'][wl]['episodes'],
-                                  data['without_opto']['zscore'][wl]['episodes']])
+            combined = np.vstack([list(chain.from_iterable(list(data['with_opto']['zscore'][wl]['episodes']))),
+                                  list(chain.from_iterable(list(data['without_opto']['zscore'][wl]['episodes'])))])
             n_with = len(data['with_opto']['zscore'][wl]['episodes'])
             with_opto_zs_vmin = min(data['with_opto']['zscore'][wl]['mean'] - data['with_opto']['zscore'][wl]['sem'])
             with_opto_zs_vmax = max(data['with_opto']['zscore'][wl]['mean'] + data['with_opto']['zscore'][wl]['sem'])
@@ -2429,11 +2438,11 @@ def create_single_row_window_running_optogenetics(row_name, data, params):
                          extra_lines=[n_with] if n_with > 0 and len(combined) > n_with else None)
             ax_zscore_heat.set_title(f'{row_name} - Fiber Z-score Heatmap {wl}nm')
         elif wl in data['with_opto']['zscore'] and len(data['with_opto']['zscore'][wl]['episodes']) > 0:
-            draw_heatmap(ax_zscore_heat, data['with_opto']['zscore'][wl]['episodes'],
+            draw_heatmap(ax_zscore_heat, list(chain.from_iterable(list(data['with_opto']['zscore'][wl]['episodes']))),
                          time_array, 'coolwarm', 'Z-score', vmin=combined_vmin, vmax=combined_vmax)
             ax_zscore_heat.set_title(f'{row_name} - Fiber Z-score Heatmap {wl}nm')
         elif wl in data['without_opto']['zscore'] and len(data['without_opto']['zscore'][wl]['episodes']) > 0:
-            draw_heatmap(ax_zscore_heat, data['without_opto']['zscore'][wl]['episodes'],
+            draw_heatmap(ax_zscore_heat, list(chain.from_iterable(list(data['without_opto']['zscore'][wl]['episodes']))),
                          time_array, 'coolwarm', 'Z-score', vmin=combined_vmin, vmax=combined_vmax)
             ax_zscore_heat.set_title(f'{row_name} - Fiber Z-score Heatmap {wl}nm')
         else:
@@ -2699,9 +2708,9 @@ def analyze_row_running_optogenetics_drug(row_name, animals, params,
                     
                     for wl in target_wavelengths:
                         if wl in with_result['dff']:
-                            conditions[category]['with_opto']['dff'][wl].extend(with_result['dff'][wl])
+                            conditions[category]['with_opto']['dff'][wl].append(with_result['dff'][wl])
                         if wl in with_result['zscore']:
-                            conditions[category]['with_opto']['zscore'][wl].extend(with_result['zscore'][wl])
+                            conditions[category]['with_opto']['zscore'][wl].append(with_result['zscore'][wl])
                     
                     # Collect statistics
                     if params['export_stats'] and len(with_result['running']) > 0:
@@ -2728,9 +2737,9 @@ def analyze_row_running_optogenetics_drug(row_name, animals, params,
                     
                     for wl in target_wavelengths:
                         if wl in without_result['dff']:
-                            conditions[category]['without_opto']['dff'][wl].extend(without_result['dff'][wl])
+                            conditions[category]['without_opto']['dff'][wl].append(without_result['dff'][wl])
                         if wl in without_result['zscore']:
-                            conditions[category]['without_opto']['zscore'][wl].extend(without_result['zscore'][wl])
+                            conditions[category]['without_opto']['zscore'][wl].append(without_result['zscore'][wl])
                     
                     # Collect statistics
                     if params['export_stats'] and len(without_result['running']) > 0:
@@ -2762,6 +2771,7 @@ def analyze_row_running_optogenetics_drug(row_name, animals, params,
                 condition_data = conditions[category][opto_condition]
                 
                 result[category][opto_condition] = {
+                    'time': time_array,
                     'running': {
                         'episodes': np.array(condition_data['running']) if condition_data['running'] else np.array([]),
                         'mean': np.nanmean(condition_data['running'], axis=0) if condition_data['running'] else None,
@@ -2774,18 +2784,20 @@ def analyze_row_running_optogenetics_drug(row_name, animals, params,
                 for wl in target_wavelengths:
                     if condition_data['dff'][wl]:
                         episodes_array = np.array(condition_data['dff'][wl])
+                        converted_episodes = list(chain.from_iterable(list(episodes_array)))
                         result[category][opto_condition]['dff'][wl] = {
                             'episodes': episodes_array,
-                            'mean': np.nanmean(episodes_array, axis=0),
-                            'sem': np.nanstd(episodes_array, axis=0) / np.sqrt(len(condition_data['dff'][wl]))
+                            'mean': np.nanmean(converted_episodes, axis=0),
+                            'sem': np.nanstd(converted_episodes, axis=0) / np.sqrt(len(converted_episodes))
                         }
                     
                     if condition_data['zscore'][wl]:
                         episodes_array = np.array(condition_data['zscore'][wl])
+                        converted_episodes = list(chain.from_iterable(list(episodes_array)))
                         result[category][opto_condition]['zscore'][wl] = {
                             'episodes': episodes_array,
-                            'mean': np.nanmean(episodes_array, axis=0),
-                            'sem': np.nanstd(episodes_array, axis=0) / np.sqrt(len(condition_data['zscore'][wl]))
+                            'mean': np.nanmean(converted_episodes, axis=0),
+                            'sem': np.nanstd(converted_episodes, axis=0) / np.sqrt(len(converted_episodes))
                         }
     
     return result, statistics_rows if params['export_stats'] else None
@@ -3116,9 +3128,9 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
                 continue
             category_data = data[category]
             if condition1_key in category_data and wl in category_data[condition1_key]['dff']:
-                all_cond1_dff.extend(category_data[condition1_key]['dff'][wl]['episodes'])
+                all_cond1_dff.extend(list(chain.from_iterable(list(category_data[condition1_key]['dff'][wl]['episodes']))))
             if condition2_key in category_data and wl in category_data[condition2_key]['dff']:
-                all_cond2_dff.extend(category_data[condition2_key]['dff'][wl]['episodes'])
+                all_cond2_dff.extend(list(chain.from_iterable(list(category_data[condition2_key]['dff'][wl]['episodes']))))
         if all_cond1_dff or all_cond2_dff:
             combined_dff = np.array(all_cond1_dff + all_cond2_dff) if all_cond1_dff + all_cond2_dff else None
             if combined_dff is not None:
@@ -3141,9 +3153,9 @@ def plot_comparison_window_multi_drug(results, params, category, condition1_key,
                 continue
             category_data = data[category]
             if condition1_key in category_data and wl in category_data[condition1_key]['zscore']:
-                all_cond1_zscore.extend(category_data[condition1_key]['zscore'][wl]['episodes'])
+                all_cond1_zscore.extend(list(chain.from_iterable(list(category_data[condition1_key]['zscore'][wl]['episodes']))))
             if condition2_key in category_data and wl in category_data[condition2_key]['zscore']:
-                all_cond2_zscore.extend(category_data[condition2_key]['zscore'][wl]['episodes'])
+                all_cond2_zscore.extend(list(chain.from_iterable(list(category_data[condition2_key]['zscore'][wl]['episodes']))))
         if all_cond1_zscore or all_cond2_zscore:
             combined_zscore = np.array(all_cond1_zscore + all_cond2_zscore) if all_cond1_zscore + all_cond2_zscore else None
             if combined_zscore is not None:
@@ -3317,7 +3329,7 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
                     continue
                 category_data = data[category]
                 if condition_key in category_data and wl in category_data[condition_key]['dff']:
-                    category_episodes.extend(category_data[condition_key]['dff'][wl]['episodes'])
+                    category_episodes.extend(list(chain.from_iterable(list(category_data[condition_key]['dff'][wl]['episodes']))))
             if category_episodes:
                 all_episodes.extend(category_episodes)
                 if all_episodes:
@@ -3343,7 +3355,7 @@ def plot_comparison_window_multi_drug_categories(results, params, condition_key,
                     continue
                 category_data = data[category]
                 if condition_key in category_data and wl in category_data[condition_key]['zscore']:
-                    category_episodes.extend(category_data[condition_key]['zscore'][wl]['episodes'])
+                    category_episodes.extend(list(chain.from_iterable(list(category_data[condition_key]['zscore'][wl]['episodes']))))
             if category_episodes:
                 all_episodes.extend(category_episodes)
                 if all_episodes:
@@ -3546,9 +3558,9 @@ def create_single_row_category_window(row_name, data, params, category, window_t
         with_dff = []
         without_dff = []
         if 'with_opto' in category_data and wl in category_data['with_opto']['dff']:
-            with_dff = list(category_data['with_opto']['dff'][wl]['episodes'])
+            with_dff = list(chain.from_iterable(list(category_data['with_opto']['dff'][wl]['episodes'])))
         if 'without_opto' in category_data and wl in category_data['without_opto']['dff']:
-            without_dff = list(category_data['without_opto']['dff'][wl]['episodes'])
+            without_dff = list(chain.from_iterable(list(category_data['without_opto']['dff'][wl]['episodes'])))
         if with_dff or without_dff:
             combined = np.array(with_dff + without_dff)
             n_with = len(with_dff)
@@ -3566,9 +3578,9 @@ def create_single_row_category_window(row_name, data, params, category, window_t
         with_zscore = []
         without_zscore = []
         if 'with_opto' in category_data and wl in category_data['with_opto']['zscore']:
-            with_zscore = list(category_data['with_opto']['zscore'][wl]['episodes'])
+            with_zscore = list(chain.from_iterable(list(category_data['with_opto']['zscore'][wl]['episodes'])))
         if 'without_opto' in category_data and wl in category_data['without_opto']['zscore']:
-            without_zscore = list(category_data['without_opto']['zscore'][wl]['episodes'])
+            without_zscore = list(chain.from_iterable(list(category_data['without_opto']['zscore'][wl]['episodes'])))
         if with_zscore or without_zscore:
             combined = np.array(with_zscore + without_zscore)
             n_with = len(with_zscore)
@@ -3815,11 +3827,11 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
                 continue
             category_data = data[category]
             if 'with_opto' in category_data and wl in category_data['with_opto']['dff']:
-                all_dff_episodes.extend(category_data['with_opto']['dff'][wl]['episodes'])
+                all_dff_episodes.extend(list(chain.from_iterable(list(category_data['with_opto']['dff'][wl]['episodes']))))
                 if all_dff_episodes:
                     condition_boundaries_dff.append(len(all_dff_episodes))
             if 'without_opto' in category_data and wl in category_data['without_opto']['dff']:
-                all_dff_episodes.extend(category_data['without_opto']['dff'][wl]['episodes'])
+                all_dff_episodes.extend(list(chain.from_iterable(list(category_data['without_opto']['dff'][wl]['episodes']))))
                 if all_dff_episodes:
                     category_boundaries_dff.append(len(all_dff_episodes))
         if all_dff_episodes:
@@ -3865,11 +3877,11 @@ def create_single_row_all_categories_window(row_name, data, params, window_title
                 continue
             category_data = data[category]
             if 'with_opto' in category_data and wl in category_data['with_opto']['zscore']:
-                all_zscore_episodes.extend(category_data['with_opto']['zscore'][wl]['episodes'])
+                all_zscore_episodes.extend(list(chain.from_iterable(list(category_data['with_opto']['zscore'][wl]['episodes']))))
                 if all_zscore_episodes:
                     condition_boundaries_zscore.append(len(all_zscore_episodes))
             if 'without_opto' in category_data and wl in category_data['without_opto']['zscore']:
-                all_zscore_episodes.extend(category_data['without_opto']['zscore'][wl]['episodes'])
+                all_zscore_episodes.extend(list(chain.from_iterable(list(category_data['without_opto']['zscore'][wl]['episodes']))))
                 if all_zscore_episodes:
                     category_boundaries_zscore.append(len(all_zscore_episodes))
         if all_zscore_episodes:

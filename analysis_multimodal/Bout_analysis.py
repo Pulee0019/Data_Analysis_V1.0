@@ -16,10 +16,10 @@ from datetime import datetime
 from matplotlib import colors
 from tkinter import filedialog
 from matplotlib.ticker import PercentFormatter
-
 from infrastructure.logger import log_message
-from analysis_multimodal.Multimodal_analysis import get_events_from_bouts, create_parameter_panel, get_parameters_from_ui, identify_drug_sessions, create_control_panel, create_table_window, initialize_table
 from workflows.data_workflows import EXPERIMENT_MODE_AST2
+from analysis_multimodal.Multimodal_analysis import get_events_from_bouts, create_parameter_panel, get_parameters_from_ui, identify_drug_sessions, create_control_panel, create_table_window, initialize_table
+
 
 _deps = {}
 

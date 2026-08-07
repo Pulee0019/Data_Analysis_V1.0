@@ -1,15 +1,14 @@
 import tkinter as tk
-from itertools import combinations
-from tkinter import ttk
-
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
 
+from tkinter import ttk
+from itertools import combinations
+from matplotlib.figure import Figure
+from infrastructure.logger import log_message
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from analysis_core.Fiber_analysis import apply_preprocessing, calculate_dff, calculate_zscore
 from analysis_core.Running_analysis import running_bout_analysis_classify, preprocess_running_data
-from infrastructure.logger import log_message
 
 _deps = {}
 

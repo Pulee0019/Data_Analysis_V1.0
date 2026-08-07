@@ -1,9 +1,8 @@
-import tkinter as tk
-from tkinter import ttk, colorchooser
 import numpy as np
+import tkinter as tk
 import matplotlib.pyplot as plt
-
-
+import matplotlib.colors as mcolors
+from tkinter import ttk, colorchooser
 
 class PlotParameterController:
     """Global controller for real-time plot parameter adjustment across all result windows."""
@@ -19,6 +18,7 @@ class PlotParameterController:
         self._current_fig_idx = 0
         self._current_ax_idx = 0
         self._defaults = {}
+        self._ax_store = {}
         self._filtered_axes = []
 
         self._fig_var = tk.StringVar()
@@ -198,6 +198,8 @@ class PlotParameterController:
             'ylim': ax.get_ylim(),
             'grid': bool(ax.get_xgridlines() and ax.get_xgridlines()[0].get_visible()) if ax.get_xgridlines() else False,
             'title': ax.get_title(),
+            'trace_defaults': {'linespace': 0.0, 'downsample': 1,
+                               'smooth_method': 'none', 'smooth_param': 5.0},
         }
 
     def _redraw(self):
@@ -287,8 +289,7 @@ class PlotParameterController:
 
     def _build_trace_controls(self, parent, ax):
         from matplotlib.collections import PolyCollection
-        lines = [l for l in ax.get_lines()
-                 if l.get_label() and not l.get_label().startswith("_")]
+        lines = self._trace_lines(ax)
         if not lines:
             tk.Label(parent, text="No labeled lines found.", bg="#f8f8f8",
                      fg="#666666").pack(padx=10, pady=20)
@@ -298,6 +299,8 @@ class PlotParameterController:
 
         container = tk.Frame(parent, bg="#f8f8f8")
         container.pack(fill=tk.BOTH, expand=True)
+
+        self._build_trace_processing_controls(container, ax)
 
         hdr = tk.Frame(container, bg="#e8e8e8")
         hdr.pack(fill=tk.X, pady=(0, 2))
@@ -326,11 +329,211 @@ class PlotParameterController:
             fill = fills[idx] if idx < len(fills) else None
             self._add_line_row(inner, line, fill, ax)
 
+    # ── Trace processing (linespace / downsample / smooth) ────────
+
+    @staticmethod
+    def _trace_lines(ax):
+        """Labeled data traces only (excludes axvline/axhline and legend proxies).
+
+        axvline/axhline use blended transforms, so requiring the plain
+        ``ax.transData`` transform keeps them and any other non-trace lines out
+        of the processing pipeline and control list.
+        """
+        return [l for l in ax.get_lines()
+                if l.get_label() and not l.get_label().startswith("_")
+                and l.get_transform() == ax.transData]
+
+    def _ensure_trace_store(self, ax):
+        from matplotlib.collections import PolyCollection
+        key = id(ax)
+        store = self._ax_store.get(key)
+        if store is not None:
+            return store
+        lines = self._trace_lines(ax)
+        fills = [c for c in ax.collections if isinstance(c, PolyCollection)]
+        orig_fills = {id(c): self._split_fill(c) for c in fills}
+        store = {
+            'linespace': 0.0,
+            'downsample': 1,
+            'smooth_method': 'none',
+            'smooth_param': 5.0,
+            'orig': {id(l): (np.array(l.get_xdata()), np.array(l.get_ydata()))
+                     for l in lines},
+            'orig_fills': orig_fills,
+        }
+        self._ax_store[key] = store
+        return store
+
+    @staticmethod
+    def _split_fill(fill):
+        """Reconstruct per-region (t, f1, f2) curves from fill_between vertices.
+
+        Returns a list of (t, f1, f2) arrays, or None if the vertex layout is
+        not the plain fill_between polygon and cannot be reconstructed safely.
+        """
+        regions = []
+        for p in fill.get_paths():
+            v = p.vertices
+            m = len(v)
+            if m < 6 or (m - 3) % 2 != 0:
+                return None
+            n = (m - 3) // 2
+            t = v[1:n + 1, 0]
+            t_rev = v[n + 2:2 * n + 2, 0][::-1]
+            if not np.allclose(t, t_rev):
+                return None
+            regions.append((t.copy(), v[1:n + 1, 1].copy(),
+                            v[n + 2:2 * n + 2, 1][::-1].copy()))
+        return regions if regions else None
+
+    @staticmethod
+    def _smooth(y, method, param):
+        y = np.asarray(y, dtype=float)
+        if method == 'moving_average':
+            from scipy.ndimage import uniform_filter1d
+            w = max(1, min(int(round(param)), len(y)))
+            return uniform_filter1d(y, size=w, mode='nearest')
+        if method == 'savgol':
+            from scipy.signal import savgol_filter
+            w = max(3, int(round(param)))
+            if w % 2 == 0:
+                w += 1
+            if w > len(y):
+                w = len(y) if len(y) % 2 == 1 else len(y) - 1
+            if w < 3:
+                return y
+            return savgol_filter(y, w, polyorder=2)
+        if method == 'gaussian':
+            from scipy.ndimage import gaussian_filter1d
+            return gaussian_filter1d(y, sigma=param, mode='nearest')
+        return y
+
+    def _apply_trace_processing(self, ax):
+        from matplotlib.collections import PolyCollection
+        store = self._ax_store.get(id(ax))
+        if store is None:
+            return
+        try:
+            spacing = float(store['linespace'])
+            ds = max(1, int(store['downsample']))
+            method = store['smooth_method']
+            param = float(store['smooth_param'])
+        except (TypeError, ValueError):
+            return
+
+        try:
+            lines = self._trace_lines(ax)
+            for idx, line in enumerate(lines):
+                orig = store['orig'].get(id(line))
+                if orig is None:
+                    continue
+                x = np.asarray(orig[0])
+                y = np.asarray(orig[1])
+                if ds > 1 and len(x) > ds:
+                    x = x[::ds]
+                    y = y[::ds]
+                y = self._smooth(y, method, param)
+                if spacing:
+                    y = y + idx * spacing
+                line.set_data(x, y)
+
+            fills = [c for c in ax.collections if isinstance(c, PolyCollection)]
+            for idx, fill in enumerate(fills):
+                regions = store['orig_fills'].get(id(fill))
+                if regions is None:
+                    continue
+                offset = idx * spacing if spacing else 0.0
+                verts = []
+                for t, f1, f2 in regions:
+                    if ds > 1 and len(t) > ds:
+                        t = t[::ds]
+                        f1 = f1[::ds]
+                        f2 = f2[::ds]
+                    f1 = self._smooth(f1, method, param)
+                    f2 = self._smooth(f2, method, param)
+                    if offset:
+                        f1 = f1 + offset
+                        f2 = f2 + offset
+                    n = len(t)
+                    pts = np.empty((2 * n + 2, 2))
+                    pts[0] = (t[0], f2[0])
+                    pts[1:n + 1, 0] = t
+                    pts[1:n + 1, 1] = f1
+                    pts[n + 1] = (t[-1], f2[-1])
+                    pts[n + 2:, 0] = t[::-1]
+                    pts[n + 2:, 1] = f2[::-1]
+                    verts.append(pts)
+                fill.set_verts(verts)
+        except Exception:
+            return
+        self._redraw()
+
+    def _build_trace_processing_controls(self, container, ax):
+        store = self._ensure_trace_store(ax)
+
+        title = tk.Frame(container, bg="#e8e8e8")
+        title.pack(fill=tk.X, pady=(0, 4))
+        tk.Label(title, text="Trace Processing (applies to all lines)",
+                 bg="#e8e8e8", font=("Microsoft YaHei", 8, "bold")).pack(side=tk.LEFT, padx=4)
+
+        cfg = tk.Frame(container, bg="#f8f8f8")
+        cfg.pack(fill=tk.X, padx=6, pady=(0, 6))
+
+        row1 = tk.Frame(cfg, bg="#f8f8f8")
+        row1.pack(fill=tk.X, pady=1)
+
+        tk.Label(row1, text="Linespace:", bg="#f8f8f8").pack(side=tk.LEFT)
+        ls_v = tk.DoubleVar(value=float(store['linespace']))
+        ls_s = tk.Spinbox(row1, from_=0, to=100, increment=0.05, textvariable=ls_v, width=6)
+        ls_s.pack(side=tk.LEFT, padx=(4, 14))
+
+        tk.Label(row1, text="Downsample:", bg="#f8f8f8").pack(side=tk.LEFT)
+        ds_v = tk.IntVar(value=int(store['downsample']))
+        ds_s = tk.Spinbox(row1, from_=1, to=100000, increment=1, textvariable=ds_v, width=6)
+        ds_s.pack(side=tk.LEFT, padx=(4, 0))
+
+        row2 = tk.Frame(cfg, bg="#f8f8f8")
+        row2.pack(fill=tk.X, pady=1)
+
+        tk.Label(row2, text="Smooth:", bg="#f8f8f8").pack(side=tk.LEFT)
+        sm_v = tk.StringVar(value=str(store['smooth_method']))
+        sm_c = ttk.Combobox(row2, textvariable=sm_v,
+                            values=["none", "moving_average", "savgol", "gaussian"],
+                            state="readonly", width=16)
+        sm_c.pack(side=tk.LEFT, padx=(4, 14))
+
+        tk.Label(row2, text="Param:", bg="#f8f8f8").pack(side=tk.LEFT)
+        sp_v = tk.DoubleVar(value=float(store['smooth_param']))
+        sp_s = tk.Spinbox(row2, from_=0.1, to=1000, increment=0.5, textvariable=sp_v, width=6)
+        sp_s.pack(side=tk.LEFT, padx=(4, 0))
+
+        def _set_smooth_state(*_):
+            if sm_v.get() == 'none':
+                sp_s.configure(state='disabled')
+            else:
+                sp_s.configure(state='normal')
+        _set_smooth_state()
+
+        def _commit(*_):
+            try:
+                store['linespace'] = float(ls_v.get())
+                store['downsample'] = int(ds_v.get())
+                store['smooth_method'] = sm_v.get()
+                store['smooth_param'] = float(sp_v.get())
+            except (ValueError, tk.TclError):
+                return
+            self._apply_trace_processing(ax)
+
+        ls_s.bind("<KeyRelease>", _commit)
+        ds_s.bind("<KeyRelease>", _commit)
+        sm_c.bind("<<ComboboxSelected>>", lambda e: (_set_smooth_state(), _commit()))
+        sp_s.bind("<KeyRelease>", _commit)
+
     def _add_line_row(self, parent, line, fill, ax):
         row = tk.Frame(parent, bg="#f8f8f8")
         row.pack(fill=tk.X, pady=1)
 
-        color = line.get_color()
+        color = mcolors.to_hex(line.get_color())
         swatch = tk.Frame(row, width=20, height=20, bg=color,
                           relief=tk.RAISED, bd=2, cursor="hand2")
         swatch.pack(side=tk.LEFT, padx=(15, 5))
@@ -361,8 +564,7 @@ class PlotParameterController:
             leg = ax.get_legend()
             if leg is None:
                 return
-            data_lines = [l for l in ax.get_lines()
-                          if l.get_label() and not l.get_label().startswith("_")]
+            data_lines = self._trace_lines(ax)
             for proxy, dl in zip(leg.get_lines(), data_lines):
                 proxy.set_color(dl.get_color())
                 proxy.set_alpha(dl.get_alpha() if dl.get_alpha() is not None else 1.0)
@@ -400,6 +602,16 @@ class PlotParameterController:
 
         def _upd_v():
             line.set_visible(vis_v.get())
+            if fill is not None:
+                fill.set_visible(vis_v.get())
+            leg = ax.get_legend()
+            # If the legend exists, find the corresponding text, line and set its visibility
+            if leg is not None:
+                for text, proxy in zip(leg.get_texts(), leg.get_lines()):
+                    if text.get_text() == label:
+                        text.set_visible(vis_v.get())
+                        proxy.set_visible(vis_v.get())
+                        break
             self._redraw()
         vis_c.config(command=_upd_v)
 
@@ -631,5 +843,11 @@ class PlotParameterController:
             ax.grid(d['grid'])
         if 'title' in d:
             ax.set_title(d['title'])
+        td = d.get('trace_defaults')
+        if td is not None:
+            store = self._ax_store.get(id(ax))
+            if store is not None:
+                store.update(dict(td))
+                self._apply_trace_processing(ax)
         self._rebuild_controls()
         self._redraw()
