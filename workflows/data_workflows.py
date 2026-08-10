@@ -8,9 +8,10 @@ import tkinter as tk
 
 from tkinter import filedialog, ttk
 from infrastructure.logger import log_message
-from core.io import h_AST2_raw2Speed, h_AST2_readData, load_fiber_data, load_fiber_events, read_dlc_file, load_bsoid_data
+from core.io import h_AST2_raw2Speed, h_AST2_readData, load_fiber_data, load_fiber_events, read_dlc_file, load_bsoid_data, load_freezing_data
 
 EXPERIMENT_MODE_AST2 = "ast2"
+EXPERIMENT_MODE_FREEZING = "freezing"
 EXPERIMENT_MODE_FIBER = "fiber"
 EXPERIMENT_MODE_FIBER_AST2 = "fiber+ast2"
 EXPERIMENT_MODE_FIBER_AST2_DLC = "fiber+ast2+dlc"
@@ -59,7 +60,8 @@ def import_multi_animals():
                     'ast2': ['*.ast2'],
                     'bsoid': ['*bout_lengths*.csv'],
                     'events': ['*events*.csv'],
-                    'timestamps': ['*timestamps*.csv']
+                    'timestamps': ['*timestamps*.csv'],
+                    'freezing': ['*freezing_analyze*.csv']
                 }
 
                 # Determine required files based on mode
@@ -75,21 +77,32 @@ def import_multi_animals():
                     required_files = ['fiber', 'fiber_events', 'bsoid']
                 elif current_experiment_mode == EXPERIMENT_MODE_FIBER_EVENT:
                     required_files = ['fiber', 'fiber_events', 'events', 'timestamps']
+                elif current_experiment_mode == EXPERIMENT_MODE_FREEZING:
+                    required_files = ['freezing', 'events', 'timestamps']
 
                 for file_type, file_patterns in patterns.items():
-                    if file_type in ['fiber', 'fiber_events'] and current_experiment_mode == EXPERIMENT_MODE_AST2:
+                    if file_type in ['fiber', 'fiber_events'] and (current_experiment_mode == EXPERIMENT_MODE_AST2 or current_experiment_mode == EXPERIMENT_MODE_FREEZING):
+                        log_message(f"Skipping {file_type} for mode {current_experiment_mode}")
                         continue
                     
-                    if file_type == 'ast2' and (current_experiment_mode == EXPERIMENT_MODE_FIBER or current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID):
+                    if file_type == 'ast2' and (current_experiment_mode == EXPERIMENT_MODE_FIBER or current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID or current_experiment_mode == EXPERIMENT_MODE_FIBER_EVENT or current_experiment_mode == EXPERIMENT_MODE_FREEZING):
+                        log_message(f"Skipping {file_type} for mode {current_experiment_mode}")
                         continue
                     
-                    if file_type == 'oft' and current_experiment_mode != EXPERIMENT_MODE_FIBER_BSOID:
+                    if file_type == 'bsoid' and current_experiment_mode != EXPERIMENT_MODE_FIBER_BSOID:
+                        log_message(f"Skipping {file_type} for mode {current_experiment_mode}")
                         continue
                     
                     if file_type == 'dlc' and current_experiment_mode != EXPERIMENT_MODE_FIBER_AST2_DLC:
+                        log_message(f"Skipping {file_type} for mode {current_experiment_mode}")
                         continue
                     
-                    if file_type in ['events', 'timestamps'] and current_experiment_mode != EXPERIMENT_MODE_FIBER_EVENT:
+                    if file_type in ['events', 'timestamps'] and current_experiment_mode != EXPERIMENT_MODE_FIBER_EVENT and current_experiment_mode != EXPERIMENT_MODE_FREEZING:
+                        log_message(f"Skipping {file_type} for mode {current_experiment_mode}")
+                        continue
+                    
+                    if file_type == 'freezing' and current_experiment_mode != EXPERIMENT_MODE_FREEZING:
+                        log_message(f"Skipping {file_type} for mode {current_experiment_mode}")
                         continue
                     
                     found_file = None
@@ -110,23 +123,26 @@ def import_multi_animals():
                     continue
                 
                 fiber_result = None
-                if current_experiment_mode != EXPERIMENT_MODE_AST2 and 'fiber' in files_found:
+                if (current_experiment_mode != EXPERIMENT_MODE_AST2 or current_experiment_mode != EXPERIMENT_MODE_FREEZING) and 'fiber' in files_found:
                     # Process fiber data to get available channels
                     fiber_result = load_fiber_data(files_found['fiber'])
                     if not fiber_result or 'channel_data' not in fiber_result:
                         continue
                     
                     available_channels = list(fiber_result['channel_data'].keys())
+                    log_message(f"Loaded Fiber data for {base_animal_id}")
 
                 fiber_events = None
-                if current_experiment_mode != EXPERIMENT_MODE_AST2 and 'fiber_events' in files_found:
-                    fiber_events = load_fiber_events(files_found['fiber_events'])     
+                if (current_experiment_mode != EXPERIMENT_MODE_AST2 or current_experiment_mode != EXPERIMENT_MODE_FREEZING) and 'fiber_events' in files_found:
+                    fiber_events = load_fiber_events(files_found['fiber_events'])
+                    log_message(f"Loaded Fiber Events data for {base_animal_id}")
 
                 # Process DLC file (only if in full mode)
                 dlc_data = None
                 if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC and 'dlc' in files_found:
                     try:
                         dlc_data = read_dlc_file(files_found['dlc'])
+                        log_message(f"Loaded DLC data for {base_animal_id}")
                     except Exception as e:
                         log_message(f"Failed to load DLC for {base_animal_id}: {str(e)}", "ERROR")
 
@@ -141,6 +157,7 @@ def import_multi_animals():
                                 'header': header,
                                 'data': speed
                             }
+                            log_message(f"Loaded AST2 data for {base_animal_id}")
                         else:
                             log_message(f"Running channel {running_channel} out of range for {base_animal_id}", "WARNING")
                     except Exception as e:
@@ -151,21 +168,32 @@ def import_multi_animals():
                 if current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID and 'bsoid' in files_found:
                     try:
                         bsoid_data = load_bsoid_data(files_found['bsoid'])
+                        log_message(f"Loaded BSOID data for {base_animal_id}")
                     except Exception as e:
                         log_message(f"Failed to load BSOID data for {base_animal_id}: {str(e)}", "ERROR")
                 
                 # Process Event and Timestamps files for Event Analysis mode        
                 events = None
                 timestamps = None
-                if current_experiment_mode == EXPERIMENT_MODE_FIBER_EVENT:
+                if current_experiment_mode == EXPERIMENT_MODE_FIBER_EVENT or current_experiment_mode == EXPERIMENT_MODE_FREEZING:
                     if 'events' in files_found and 'timestamps' in files_found:
                         try:
                             events = pd.read_csv(files_found['events'])
                             timestamps = pd.read_csv(files_found['timestamps'])
+                            log_message(f"Loaded Event and Timestamps data for {base_animal_id}")
                         except Exception as e:
                             log_message(f"Failed to load Event or Timestamps data for {base_animal_id}: {str(e)}", "ERROR")
                     else:
                         log_message(f"Event or Timestamps files missing for {base_animal_id}", "WARNING")
+                        
+                # Process Freezing data for Freezing Analysis mode
+                freezing_data = None
+                if current_experiment_mode == EXPERIMENT_MODE_FREEZING and 'freezing' in files_found:
+                    try:
+                        freezing_data = load_freezing_data(files_found['freezing'])
+                        log_message(f"Loaded Freezing data for {base_animal_id}")
+                    except Exception as e:
+                        log_message(f"Failed to load Freezing data for {base_animal_id}: {str(e)}", "ERROR")
 
                 if fiber_result is not None:
                     # Create separate animal_data for each channel
@@ -190,8 +218,6 @@ def import_multi_animals():
                             'channels': fiber_result['channels'].copy(),
                             'channel_data': {channel_num: fiber_result['channel_data'][channel_num]},
                             'active_channels': [channel_num],  # Only this channel
-                            'processed': True,
-                            'event_time_absolute': False,
                             'experiment_mode': current_experiment_mode
                         }
 
@@ -217,8 +243,8 @@ def import_multi_animals():
                         multi_animal_data.append(animal_data)
                         selected_files.append(animal_data)
 
-                else:
-                    # If no fiber data, just create one entry with running channel-specific data
+                elif fiber_result is None and ast2_data is not None:
+                    # If no fiber data but have ast2_data, just create one entry with running channel-specific data
                     if ast2_data is not None:
                         for channel_num in range(len(ast2_data['header']['activeChIDs'])):
                             animal_single_channel_id = f"{base_animal_id}-Ch{channel_num}"
@@ -234,12 +260,37 @@ def import_multi_animals():
                                 'channel_num': channel_num,
                                 'files': files_found.copy(),
                                 'ast2_data': ast2_data,
-                                'processed': True,
-                                'event_time_absolute': False,
                                 'experiment_mode': current_experiment_mode
                             }
                             multi_animal_data.append(animal_data)
-                            selected_files.append(animal_data)
+                            selected_files.append(animal_data)            
+                elif fiber_result is None and freezing_data is not None:
+                    # If no fiber data but have freezing_data, just create one entry
+                    animal_single_channel_id = base_animal_id  # No channel number for freezing data
+                    
+                    # Check for duplicates
+                    if any(d['animal_single_channel_id'] == animal_single_channel_id for d in multi_animal_data):
+                        log_message(f"Freezing data already exists for {base_animal_id}", "INFO")
+                        continue
+
+                    animal_data = {
+                        'data_dir': ear_bar_dirs,
+                        'animal_id': base_animal_id,
+                        'animal_single_channel_id': animal_single_channel_id,
+                        'files': files_found.copy(),
+                        'freezing_data': freezing_data,
+                        'experiment_mode': current_experiment_mode
+                    }
+                    
+                    # Add Event and Timestamps data (same for all channels of this animal)
+                    if events is not None:
+                        animal_data['events'] = events
+                    if timestamps is not None:
+                        animal_data['timestamps'] = timestamps
+                        
+                    multi_animal_data.append(animal_data)
+                    selected_files.append(animal_data)            
+            
 
         added_count = len(multi_animal_data) - before_count if 'before_count' in locals() else len(selected_files)
 
@@ -248,6 +299,8 @@ def import_multi_animals():
         else:
             if current_experiment_mode == EXPERIMENT_MODE_AST2:
                 mode_name = "AST2"
+            elif current_experiment_mode == EXPERIMENT_MODE_FREEZING:
+                mode_name = "Freezing"
             elif current_experiment_mode == EXPERIMENT_MODE_FIBER:
                 mode_name = "Fiber"
             elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
@@ -297,7 +350,8 @@ def import_single_animal():
             'ast2': ['*.ast2'],
             'bsoid': ['*bout_lengths*.csv'],
             'events': ['*events*.csv'],
-            'timestamps': ['*timestamps*.csv']
+            'timestamps': ['*timestamps*.csv'],
+            'freezing': ['*freezing_analyze*.csv']
         }
 
         # Determine required files based on mode
@@ -311,23 +365,34 @@ def import_single_animal():
             required_files = ['dlc', 'fiber', 'fiber_events', 'ast2']
         elif current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID:
             required_files = ['fiber', 'fiber_events', 'bsoid']
+        elif current_experiment_mode == EXPERIMENT_MODE_FREEZING:
+            required_files = ['freezing', 'events', 'timestamps']
         elif current_experiment_mode == EXPERIMENT_MODE_FIBER_EVENT:
             required_files = ['fiber', 'fiber_events', 'events', 'timestamps']
 
         for file_type, file_patterns in patterns.items():
-            if file_type in ['fiber', 'fiber_events'] and current_experiment_mode == EXPERIMENT_MODE_AST2:
+            if file_type in ['fiber', 'fiber_events'] and (current_experiment_mode == EXPERIMENT_MODE_AST2 or current_experiment_mode == EXPERIMENT_MODE_FREEZING):
+                log_message(f"Skipping {file_type} for mode {current_experiment_mode}")
                 continue
             
-            if file_type == 'ast2' and (current_experiment_mode == EXPERIMENT_MODE_FIBER or current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID):
+            if file_type == 'ast2' and (current_experiment_mode == EXPERIMENT_MODE_FIBER or current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID or current_experiment_mode == EXPERIMENT_MODE_FIBER_EVENT or current_experiment_mode == EXPERIMENT_MODE_FREEZING):
+                log_message(f"Skipping {file_type} for mode {current_experiment_mode}")
                 continue
             
-            if file_type == 'oft' and current_experiment_mode != EXPERIMENT_MODE_FIBER_BSOID:
+            if file_type == 'bsoid' and current_experiment_mode != EXPERIMENT_MODE_FIBER_BSOID:
+                log_message(f"Skipping {file_type} for mode {current_experiment_mode}")
                 continue
             
             if file_type == 'dlc' and current_experiment_mode != EXPERIMENT_MODE_FIBER_AST2_DLC:
+                log_message(f"Skipping {file_type} for mode {current_experiment_mode}")
                 continue
             
-            if file_type in ['events', 'timestamps'] and current_experiment_mode != EXPERIMENT_MODE_FIBER_EVENT:
+            if file_type in ['events', 'timestamps'] and current_experiment_mode != EXPERIMENT_MODE_FIBER_EVENT and current_experiment_mode != EXPERIMENT_MODE_FREEZING:
+                log_message(f"Skipping {file_type} for mode {current_experiment_mode}")
+                continue
+            
+            if file_type == 'freezing' and current_experiment_mode != EXPERIMENT_MODE_FREEZING:
+                log_message(f"Skipping {file_type} for mode {current_experiment_mode}")
                 continue
             
             found_file = None
@@ -351,28 +416,31 @@ def import_single_animal():
 
         # Process fiber data to get available channels
         fiber_result = None
-        if current_experiment_mode != EXPERIMENT_MODE_AST2 and 'fiber' in files_found:
+        if (current_experiment_mode != EXPERIMENT_MODE_AST2 or current_experiment_mode != EXPERIMENT_MODE_FREEZING) and 'fiber' in files_found:
             fiber_result = load_fiber_data(files_found['fiber'])
             if not fiber_result or 'channel_data' not in fiber_result:
                 return
 
             available_channels = list(fiber_result['channel_data'].keys())
+            log_message(f"Loaded Fiber data for {base_animal_id}")
 
         fiber_events = None
-        if current_experiment_mode != EXPERIMENT_MODE_AST2 and 'fiber_events' in files_found:
+        if (current_experiment_mode != EXPERIMENT_MODE_AST2 or current_experiment_mode != EXPERIMENT_MODE_FREEZING) and 'fiber_events' in files_found:
             fiber_events = load_fiber_events(files_found['fiber_events'])
+            log_message(f"Loaded Fiber Events data for {base_animal_id}")
         
         # Process DLC file (only if in full mode)
         dlc_data = None
         if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC and 'dlc' in files_found:
             try:
                 dlc_data = read_dlc_file(files_found['dlc'])
+                log_message(f"Loaded DLC data for {base_animal_id}")
             except Exception as e:
                 log_message(f"Failed to load DLC for {base_animal_id}: {str(e)}", "ERROR")
 
         # Process AST2 file
         ast2_data = None
-        if current_experiment_mode not in [EXPERIMENT_MODE_FIBER, EXPERIMENT_MODE_FIBER_BSOID] and 'ast2' in files_found:
+        if current_experiment_mode not in [EXPERIMENT_MODE_FIBER, EXPERIMENT_MODE_FIBER_BSOID, EXPERIMENT_MODE_FREEZING] and 'ast2' in files_found:
             try:
                 header, raw_data = h_AST2_readData(files_found['ast2'])
                 if running_channel < len(raw_data):
@@ -387,6 +455,7 @@ def import_single_animal():
                         'header': header,
                         'data': speed
                     }
+                    log_message(f"Loaded AST2 data for {base_animal_id}")
                 else:
                     log_message(f"Running channel {running_channel} out of range", "WARNING")
             except Exception as e:
@@ -397,21 +466,32 @@ def import_single_animal():
         if current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID and 'bsoid' in files_found:
             try:
                 bsoid_data = load_bsoid_data(files_found['bsoid'])
+                log_message(f"Loaded BSOID data for {base_animal_id}")
             except Exception as e:
                 log_message(f"Failed to load BSOID data for {base_animal_id}: {str(e)}", "ERROR")
                 
         # Process Event and Timestamps files for Event Analysis mode
         events = None
         timestamps = None
-        if current_experiment_mode == EXPERIMENT_MODE_FIBER_EVENT :
+        if current_experiment_mode == EXPERIMENT_MODE_FIBER_EVENT or current_experiment_mode == EXPERIMENT_MODE_FREEZING:
             if 'events' in files_found and 'timestamps' in files_found:
                 try:
                     events = pd.read_csv(files_found['events'])
                     timestamps = pd.read_csv(files_found['timestamps'])
+                    log_message(f"Loaded Event and Timestamps data for {base_animal_id}")
                 except Exception as e:
                     log_message(f"Failed to load Event or Timestamps data for {base_animal_id}: {str(e)}", "ERROR")
             else:
                 log_message(f"Event or Timestamps files missing for {base_animal_id}", "WARNING")
+                
+        # Process Freezing data for Freezing Analysis mode
+        freezing_data = None
+        if current_experiment_mode == EXPERIMENT_MODE_FREEZING and 'freezing' in files_found:
+            try:
+                freezing_data = load_freezing_data(files_found['freezing'])
+                log_message(f"Loaded Freezing data for {base_animal_id}")
+            except Exception as e:
+                log_message(f"Failed to load Freezing data for {base_animal_id}: {str(e)}", "ERROR")
              
         if fiber_result is not None:
             # Create separate animal_data for each channel
@@ -436,8 +516,6 @@ def import_single_animal():
                     'channels': fiber_result['channels'].copy(),
                     'channel_data': {channel_num: fiber_result['channel_data'][channel_num]},
                     'active_channels': [channel_num],  # Only this channel
-                    'processed': True,
-                    'event_time_absolute': False,
                     'experiment_mode': current_experiment_mode
                 }
 
@@ -466,8 +544,8 @@ def import_single_animal():
                 multi_animal_data.append(animal_data)
                 selected_files.append(animal_data)
                     
-        else:
-            # If no fiber data, just create one entry with running channel-specific data
+        elif fiber_result is None and ast2_data is not None:
+            # If no fiber data but have AST2 data, just create one entry with running channel-specific data
             if ast2_data is not None:
                 for channel_num in range(len(ast2_data['header']['activeChIDs'])):
                     animal_single_channel_id = f"{base_animal_id}-Ch{channel_num}"
@@ -478,17 +556,42 @@ def import_single_animal():
                         continue
 
                     animal_data = {
+                        'data_dir': folder_path,
                         'animal_id': base_animal_id,
                         'animal_single_channel_id': animal_single_channel_id,
                         'channel_num': channel_num,
                         'files': files_found.copy(),
                         'ast2_data': ast2_data,
-                        'processed': True,
-                        'event_time_absolute': False,
                         'experiment_mode': current_experiment_mode
                     }
                     multi_animal_data.append(animal_data)
                     selected_files.append(animal_data)
+                    
+        elif fiber_result is None and freezing_data is not None:
+            # If no fiber data but have freezing_data, just create one entry
+            animal_single_channel_id = base_animal_id  # No channel number for freezing data
+            
+            # Check for duplicates
+            if any(d['animal_single_channel_id'] == animal_single_channel_id for d in multi_animal_data):
+                log_message(f"Freezing data already exists for {base_animal_id}", "INFO")
+            else:
+                animal_data = {
+                    'animal_id': base_animal_id,
+                    'animal_single_channel_id': animal_single_channel_id,
+                    'files': files_found.copy(),
+                    'freezing_data': freezing_data,
+                    'experiment_mode': current_experiment_mode
+                }
+                
+                if events is not None:
+                    log_message(f"Adding Event data for {animal_single_channel_id}")
+                    animal_data['events'] = events
+                if timestamps is not None:
+                    log_message(f"Adding Timestamps data for {animal_single_channel_id}")
+                    animal_data['timestamps'] = timestamps
+                    
+                multi_animal_data.append(animal_data)
+                selected_files.append(animal_data)
 
         added_count = len(multi_animal_data) - before_count
 
@@ -500,6 +603,8 @@ def import_single_animal():
                 mode_name = "Fiber"
             elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
                 mode_name = "Fiber+AST2"
+            elif current_experiment_mode == EXPERIMENT_MODE_FREEZING:
+                mode_name = "Freezing"
             elif current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID:
                 mode_name = "Fiber+BSOID"
             elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
@@ -561,7 +666,7 @@ def show_channel_selection_dialog():
     
     ttk.Label(header_frame, text="Enable", width=11, font=("Arial", 9, "bold")).grid(row=0, column=0, padx=2)
     ttk.Label(header_frame, text="Animal ID-Channel ID", width=35, font=("Arial", 9, "bold")).grid(row=0, column=1, padx=2)
-    if current_experiment_mode != EXPERIMENT_MODE_FIBER and current_experiment_mode != EXPERIMENT_MODE_FIBER_BSOID and current_experiment_mode != EXPERIMENT_MODE_FIBER_EVENT:
+    if current_experiment_mode != EXPERIMENT_MODE_FIBER and current_experiment_mode != EXPERIMENT_MODE_FIBER_BSOID and current_experiment_mode != EXPERIMENT_MODE_FIBER_EVENT and current_experiment_mode != EXPERIMENT_MODE_FREEZING:
         ttk.Label(header_frame, text="Running Ch", width=13, font=("Arial", 9, "bold")).grid(row=0, column=2, padx=2)
         ttk.Label(header_frame, text="Invert", width=10, font=("Arial", 9, "bold")).grid(row=0, column=3, padx=2)
         ttk.Label(header_frame, text="Diameter(cm)", width=12, font=("Arial", 9, "bold")).grid(row=0, column=4, padx=2)
@@ -584,7 +689,7 @@ def show_channel_selection_dialog():
         # Animal-Channel ID label
         ttk.Label(row_frame, text=animal_single_channel_id, width=35).grid(row=0, column=1, padx=2)
         
-        if current_experiment_mode != EXPERIMENT_MODE_FIBER and current_experiment_mode != EXPERIMENT_MODE_FIBER_BSOID and current_experiment_mode != EXPERIMENT_MODE_FIBER_EVENT:
+        if current_experiment_mode != EXPERIMENT_MODE_FIBER and current_experiment_mode != EXPERIMENT_MODE_FIBER_BSOID and current_experiment_mode != EXPERIMENT_MODE_FIBER_EVENT and current_experiment_mode != EXPERIMENT_MODE_FREEZING:
             # Running channel selection
             available_channels = []
             if 'ast2_data' in animal_data and animal_data['ast2_data']:
@@ -730,7 +835,7 @@ def finalize_channel_selection(dialog):
                 log_message(f"Failed to reload AST2 for {animal_single_channel_id}: {str(e)}", "ERROR")
                 continue
         
-        # Align data
+        # Align fiber data
         if 'fiber_data' in animal_data and animal_data['fiber_data'] is not None:
             if 'ast2_data' in animal_data and animal_data['ast2_data'] is not None:
                 alignment_success = align_running_fiber(animal_data)
@@ -794,6 +899,15 @@ def finalize_channel_selection(dialog):
                     if animal_data is not None:
                         animal_data['input3_events'] = input3_events
                         animal_data['drug_events'] = drug_events
+                        
+        # Align freezing data
+        if 'freezing_data' in animal_data and animal_data['freezing_data'] is not None:
+            if 'timestamps' in animal_data and animal_data['timestamps'] is not None:
+                alignment_success = align_freezing(animal_data)
+                if not alignment_success:
+                    log_message(f"Failed to align Freezing data for {animal_single_channel_id}", "WARNING")
+            else:
+                log_message(f"No Timestamps data to align for {animal_single_channel_id}, skipping alignment", "INFO")
         
         enabled_animal_data.append(animal_data)
     
@@ -1265,12 +1379,14 @@ def align_event_fiber(animal_data=None):
         if animal_data:
             fiber_data = animal_data.get('fiber_data')
             timestamps = animal_data.get('timestamps')
+            events = animal_data.get('events')
             channels = animal_data.get('channels', {})
             active_channels = animal_data.get('active_channels', [])
             experiment_mode = animal_data.get('experiment_mode', current_experiment_mode)
         else:
             fiber_data = globals().get('fiber_data')
             timestamps = globals().get('timestamps')
+            events = globals().get('events')
             channels = globals().get('channels', {})
             active_channels = globals().get('active_channels', [])
             experiment_mode = current_experiment_mode
@@ -1279,6 +1395,7 @@ def align_event_fiber(animal_data=None):
         log_message(f"Alignment debug - Fiber data: {fiber_data is not None}")
         log_message(f"Alignment debug - Channels: {channels}")
         log_message(f"Alignment debug - Active channels: {active_channels}")
+        log_message(f"Alignment debug - Events data: {events is not None}")
         log_message(f"Alignment debug - Timestamps data: {timestamps is not None}")
 
         # Check if we have the necessary data
@@ -1292,6 +1409,10 @@ def align_event_fiber(animal_data=None):
             
         if timestamps is None:
             log_message("No Timestamps data available, cannot align", "ERROR")
+            return False
+        
+        if events is None:
+            log_message("No Events data available, cannot align", "ERROR")
             return False
 
         # Get events column from fiber data
@@ -1355,8 +1476,8 @@ def align_event_fiber(animal_data=None):
         video_end_time = input2_events[time_col].iloc[-2]
         
         video_start_timestamp = timestamps[(timestamps['Device'] == 'Camera 0') & (timestamps['Action'] == 'Start')]['Timestamp'].values
-        exp_start_timestamp = timestamps[(timestamps['Device'] == 'Experiment') & (timestamps['Action'] == 'Start')]['Timestamp'].values
-        relative_time = video_start_timestamp[0] - exp_start_timestamp[0]
+        event_start_timestamp = events['start_time'][0]
+        relative_time = video_start_timestamp[0] - event_start_timestamp
         
         # Get fiber start time (first timestamp in fiber data)
         fiber_start_time = fiber_data[time_col].iloc[0]
@@ -1401,5 +1522,95 @@ def align_event_fiber(animal_data=None):
     
     except Exception as e:
         log_message(f"Failed to align Event data with fiber data: {str(e)}", "ERROR")
+        log_message(f"Traceback: {traceback.format_exc()}", "ERROR")
+        return False
+    
+def align_freezing(animal_data=None):
+    """Align freezing data use timestamps file"""
+    global current_experiment_mode
+        
+    try:
+        # Determine which data to use
+        if animal_data:
+            timestamps = animal_data.get('timestamps')
+            events = animal_data.get('events')
+            freezing_data = animal_data.get('freezing_data')
+            experiment_mode = animal_data.get('experiment_mode', current_experiment_mode)
+        else:
+            timestamps = globals().get('timestamps')
+            events = globals().get('events')
+            freezing_data = globals().get('freezing_data')
+            experiment_mode = current_experiment_mode
+        
+        log_message(f"Alignment debug - Experiment mode: {experiment_mode}")
+        log_message(f"Alignment debug - Timestamps data: {timestamps is not None}")
+        log_message(f"Alignment debug - Events data: {events is not None}")
+        log_message(f"Alignment debug - Freezing data: {freezing_data is not None}")
+        
+        # Check if we have the necessary data
+        if timestamps is None:
+            log_message("No Timestamps data available, cannot align", "ERROR")
+            return False
+        
+        if events is None:
+            log_message("No Events data available, cannot align", "ERROR")
+            return False
+        
+        if freezing_data is None:
+            log_message("No Freezing data available, cannot align", "ERROR")
+            return False
+        
+        video_start_timestamp = timestamps[(timestamps['Device'] == 'Camera 0') & (timestamps['Action'] == 'Start')]['Timestamp'].values
+        video_end_timestamp = timestamps[(timestamps['Device'] == 'Camera 0') & (timestamps['Action'] == 'End')]['Timestamp'].values
+        exp_start_timestamp = events['start_time'].iloc[0]
+        exp_end_timestamp = events['end_time'].iloc[-1]
+        
+        video_duration = video_end_timestamp[0] - video_start_timestamp[0]
+        video_total_frames = len(freezing_data)
+        video_fps = video_total_frames / video_duration if video_duration > 0 else 30
+        freezing_timestamps = np.arange(0, video_total_frames) / video_fps + video_start_timestamp[0]
+        
+        freezing_data_with_timestamps = pd.DataFrame({
+            'timestamp': freezing_timestamps,
+            'freezing': freezing_data
+        })
+        
+        freezing_data_with_timestamps['timestamp'] = freezing_data_with_timestamps['timestamp'] - exp_start_timestamp
+        freezing_data_trimmed = freezing_data_with_timestamps[
+            (freezing_data_with_timestamps['timestamp'] >= 0) &
+            (freezing_data_with_timestamps['timestamp'] <= (exp_end_timestamp - exp_start_timestamp))].copy()
+        
+        if animal_data is not None:
+            animal_data.update({
+                'freezing_data_with_timestamps': freezing_data_with_timestamps,
+                'freezing_data_trimmed': freezing_data_trimmed,
+                'video_start_timestamp': video_start_timestamp[0],
+                'video_end_timestamp': video_end_timestamp[0],
+                'video_fps': video_fps
+            })
+        else:
+            globals()['freezing_data_with_timestamps'] = freezing_data_with_timestamps
+            globals()['freezing_data_trimmed'] = freezing_data_trimmed
+            globals()['video_start_timestamp'] = video_start_timestamp[0]
+            globals()['video_end_timestamp'] = video_end_timestamp[0]
+            globals()['video_fps'] = video_fps
+            
+        # Display alignment information
+        info_message = f"Data aligned successfully (Freezing data to timestamps)!\n"
+        info_message += f"Experiment Mode: {experiment_mode}\n"
+        info_message += f"Video start timestamp: {video_start_timestamp[0]:.2f}s\n"
+        info_message += f"Video end timestamp: {video_end_timestamp[0]:.2f}s\n"
+        info_message += f"Video duration: {video_duration:.2f}s\n"
+        info_message += f"Video total frames: {video_total_frames}\n"
+        info_message += f"Video FPS: {video_fps:.2f}\n"
+        info_message += f"Experiment start timestamp: {exp_start_timestamp:.2f}s\n"
+        info_message += f"Experiment end timestamp: {exp_end_timestamp:.2f}s"
+
+        log_message(info_message, "INFO")
+        log_message("Data aligned successfully using timestamps as reference for Freezing alignment")
+        return True
+    
+    except Exception as e:
+        log_message(f"Failed to align Freezing data: {str(e)}", "ERROR")
         log_message(f"Traceback: {traceback.format_exc()}", "ERROR")
         return False

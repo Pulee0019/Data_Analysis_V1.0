@@ -8,6 +8,7 @@ import workflows.analysis_workflows as analysis_workflows
 import analysis_multimodal.Bout_analysis as bout_analysis
 import analysis_multimodal.BSOID_analysis as bsoid_analysis
 import analysis_multimodal.Event_analysis as event_analysis
+import analysis_multimodal.Freezing_analysis as freezing_analysis
 import ui.windows.visualization_windows as visualization_windows
 import analysis_multimodal.Multimodal_analysis as multimodal_analysis
 import analysis_multimodal.Drug_induced_activity_analysis as drug_induced_analysis
@@ -19,6 +20,7 @@ from core.analysis_results import AnalysisResultsManager
 from analysis_multimodal.Bout_analysis import show_bout_analysis
 from analysis_multimodal.BSOID_analysis import show_bsoid_analysis
 from analysis_multimodal.Event_analysis import show_event_analysis
+from analysis_multimodal.Freezing_analysis import show_freezing_analysis
 from analysis_multimodal.Drug_induced_activity_analysis import show_drug_induced_analysis
 from analysis_multimodal.Running_induced_activity_analysis import show_running_induced_analysis
 from analysis_multimodal.Optogenetic_induced_activity_analysis import show_optogenetic_induced_analysis
@@ -392,6 +394,8 @@ def update_ui_for_mode():
         bsoid_menu.entryconfig("BSOID", state="disabled")
         multimodal_menu.entryconfig("Event Analysis", state="disabled")
         event_menu.entryconfig("Event", state="disabled")
+        multimodal_menu.entryconfig("Freezing Analysis", state="disabled")
+        freezing_menu.entryconfig("Freezing", state="disabled")
     elif current_experiment_mode == EXPERIMENT_MODE_FIBER:
         analysis_menu.entryconfig("Behavior Analysis", state="disabled")
         analysis_menu.entryconfig("Running Data Analysis", state="disabled")
@@ -407,6 +411,25 @@ def update_ui_for_mode():
         bsoid_menu.entryconfig("BSOID", state="disabled")
         multimodal_menu.entryconfig("Event Analysis", state="disabled")
         event_menu.entryconfig("Event", state="disabled")
+        multimodal_menu.entryconfig("Freezing Analysis", state="disabled")
+        freezing_menu.entryconfig("Freezing", state="disabled")
+    elif current_experiment_mode == EXPERIMENT_MODE_FREEZING:
+        analysis_menu.entryconfig("Behavior Analysis", state="disabled")
+        analysis_menu.entryconfig("Running Data Analysis", state="disabled")
+        analysis_menu.entryconfig("Fiber Data Preprocessing", state="disabled")
+        analysis_menu.entryconfig("Fiber Data Analysis", state="disabled")
+        multimodal_menu.entryconfig("Running-Induced Activity Analysis", state="disabled")
+        multimodal_menu.entryconfig("Drug-Induced Activity Analysis", state="disabled")
+        multimodal_menu.entryconfig("Optogenetics-Induced Activity Analysis", state="disabled")
+        multimodal_menu.entryconfig("Bout Analysis", state="disabled")
+        bout_menu.entryconfig("Running", state="disabled")
+        bout_menu.entryconfig("Running + Drug", state="disabled")
+        multimodal_menu.entryconfig("BSOID Analysis", state="disabled")
+        bsoid_menu.entryconfig("BSOID", state="disabled")
+        multimodal_menu.entryconfig("Event Analysis", state="disabled")
+        event_menu.entryconfig("Event", state="disabled")
+        multimodal_menu.entryconfig("Freezing Analysis", state="normal")
+        freezing_menu.entryconfig("Freezing", state="normal")
     elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
         analysis_menu.entryconfig("Behavior Analysis", state="disabled")
         analysis_menu.entryconfig("Running Data Analysis", state="normal")
@@ -422,6 +445,8 @@ def update_ui_for_mode():
         bsoid_menu.entryconfig("BSOID", state="disabled")
         multimodal_menu.entryconfig("Event Analysis", state="disabled")
         event_menu.entryconfig("Event", state="disabled")
+        multimodal_menu.entryconfig("Freezing Analysis", state="disabled")
+        freezing_menu.entryconfig("Freezing", state="disabled")
     elif current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
         analysis_menu.entryconfig("Behavior Analysis", state="disabled")
         analysis_menu.entryconfig("Running Data Analysis", state="normal")
@@ -437,6 +462,8 @@ def update_ui_for_mode():
         bsoid_menu.entryconfig("BSOID", state="disabled")
         multimodal_menu.entryconfig("Event Analysis", state="disabled")
         event_menu.entryconfig("Event", state="disabled")
+        multimodal_menu.entryconfig("Freezing Analysis", state="disabled")
+        freezing_menu.entryconfig("Freezing", state="disabled")
     elif current_experiment_mode == EXPERIMENT_MODE_FIBER_BSOID:
         analysis_menu.entryconfig("Behavior Analysis", state="disabled")
         analysis_menu.entryconfig("Running Data Analysis", state="disabled")
@@ -452,6 +479,8 @@ def update_ui_for_mode():
         bsoid_menu.entryconfig("BSOID", state="normal")
         multimodal_menu.entryconfig("Event Analysis", state="disabled")
         event_menu.entryconfig("Event", state="disabled")
+        multimodal_menu.entryconfig("Freezing Analysis", state="disabled")
+        freezing_menu.entryconfig("Freezing", state="disabled")
     elif current_experiment_mode == EXPERIMENT_MODE_FIBER_EVENT:
         analysis_menu.entryconfig("Behavior Analysis", state="disabled")
         analysis_menu.entryconfig("Running Data Analysis", state="disabled")
@@ -467,6 +496,8 @@ def update_ui_for_mode():
         bsoid_menu.entryconfig("BSOID", state="disabled")
         multimodal_menu.entryconfig("Event Analysis", state="normal")
         event_menu.entryconfig("Event", state="normal")
+        multimodal_menu.entryconfig("Freezing Analysis", state="disabled")
+        freezing_menu.entryconfig("Freezing", state="disabled")
 
 
 def bootstrap_globals(root):
@@ -476,6 +507,7 @@ def bootstrap_globals(root):
         "analysis_manager": AnalysisResultsManager(),
         "EXPERIMENT_MODE_AST2": "ast2",
         "EXPERIMENT_MODE_FIBER": "fiber",
+        "EXPERIMENT_MODE_FREEZING": "freezing",
         "EXPERIMENT_MODE_FIBER_AST2": "fiber+ast2",
         "EXPERIMENT_MODE_FIBER_AST2_DLC": "fiber+ast2+dlc",
         "EXPERIMENT_MODE_FIBER_BSOID": "fiber+bsoid",
@@ -593,6 +625,7 @@ def bind_modules(state):
     optogenetic_induced_analysis.bind_optogenetic_induced_dependencies(state)
     bsoid_analysis.bind_bsoid_dependencies(state)
     event_analysis.bind_event_dependencies(state)
+    freezing_analysis.bind_freezing_dependencies(state)
 
 
 def build_menu(root, state):
@@ -705,6 +738,13 @@ def build_menu(root, state):
     event_menu = tk.Menu(multimodal_menu, tearoff=0)
     multimodal_menu.add_cascade(label="Event Analysis", menu=event_menu)
     event_menu.add_command(label="Event", command=lambda: show_event_analysis(root, state["multi_animal_data"], "event"))
+    
+    freezing_menu = tk.Menu(multimodal_menu, tearoff=0)
+    multimodal_menu.add_cascade(label="Freezing Analysis", menu=freezing_menu)
+    freezing_menu.add_command(
+        label="Freezing",
+        command=lambda: show_freezing_analysis(root, state["multi_animal_data"], "freezing"),
+    )
 
     menubar.add_command(label="Figure Controller",
                         command=multimodal_analysis.open_figure_controller)
@@ -729,13 +769,14 @@ def build_menu(root, state):
             "bout_menu": bout_menu,
             "bsoid_menu": bsoid_menu,
             "event_menu": event_menu,
+            "freezing_menu": freezing_menu,
         }
     )
 
 
 def create_root():
     root = tk.Tk()
-    root.title("Fiber Photometry with Running Analysis")
+    root.title("Fiber Photometry with Behavior Analysis")
     if platform.system() == "Windows":
         root.state("zoomed")
     else:
@@ -760,7 +801,7 @@ def create_control_panel(root, state):
     mode_combo = ttk.Combobox(mode_row,
         values=[state["EXPERIMENT_MODE_FIBER_AST2"], state["EXPERIMENT_MODE_FIBER_AST2_DLC"],
                 state["EXPERIMENT_MODE_AST2"], state["EXPERIMENT_MODE_FIBER"],
-                state["EXPERIMENT_MODE_FIBER_BSOID"], state["EXPERIMENT_MODE_FIBER_EVENT"]],
+                state["EXPERIMENT_MODE_FIBER_BSOID"], state["EXPERIMENT_MODE_FIBER_EVENT"], state['EXPERIMENT_MODE_FREEZING']],
         state="readonly", font=_FONT, width=12)
     mode_combo.set(state["current_experiment_mode"])
     mode_combo.pack(side=tk.RIGHT, padx=(6, 0))

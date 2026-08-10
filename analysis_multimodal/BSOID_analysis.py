@@ -414,18 +414,20 @@ def analyze_row_bsoid(row_name, animals, params, target_fps):
     for wl in target_wavelengths:
         if all_dff_episodes[wl]:
             episodes_array = np.array(all_dff_episodes[wl])
+            converted_episodes = np.array(list(chain.from_iterable(list(episodes_array))))
             result['dff'][wl] = {
                 'episodes': episodes_array,
-                'mean': np.nanmean(episodes_array, axis=0),
-                'sem': np.nanstd(episodes_array, axis=0) / np.sqrt(len(all_dff_episodes[wl]))
+                'mean': np.nanmean(converted_episodes, axis=0),
+                'sem': np.nanstd(converted_episodes, axis=0) / np.sqrt(len(converted_episodes))
             }
         
         if all_zscore_episodes[wl]:
             episodes_array = np.array(all_zscore_episodes[wl])
+            converted_episodes = np.array(list(chain.from_iterable(list(episodes_array))))
             result['zscore'][wl] = {
                 'episodes': episodes_array,
-                'mean': np.nanmean(episodes_array, axis=0),
-                'sem': np.nanstd(episodes_array, axis=0) / np.sqrt(len(all_zscore_episodes[wl]))
+                'mean': np.nanmean(converted_episodes, axis=0),
+                'sem': np.nanstd(converted_episodes, axis=0) / np.sqrt(len(converted_episodes))
             }
     
     return result, statistics_rows if params['export_stats'] else None
@@ -593,7 +595,7 @@ def plot_bsoid_results(results, params):
         zs_vmin, zs_vmax = None, None
         for data in results.values():
             if wl in data["zscore"]:
-                ep = data["zscore"][wl]["episodes"]
+                ep = list(chain.from_iterable(list(data["zscore"][wl]["episodes"])))
                 all_zs.extend(ep)
                 counts.append(len(ep))
                 if zs_vmin is None and zs_vmax is None:
@@ -687,7 +689,7 @@ def create_single_row_window(row_name, data, params):
         if wl in data["dff"]:
             dff_vmin = min(data["dff"][wl]["mean"] - data["dff"][wl]["sem"])
             dff_vmax = max(data["dff"][wl]["mean"] + data["dff"][wl]["sem"])
-            draw_heatmap(ax_dff_heat, data["dff"][wl]["episodes"],
+            draw_heatmap(ax_dff_heat, list(chain.from_iterable(list(data["dff"][wl]["episodes"]))),
                           time_array, "coolwarm", "Δ(ΔF/F)", vmin=dff_vmin, vmax=dff_vmax)
             ax_dff_heat.set_title(f"{row_name} - Fiber Δ(ΔF/F) Heatmap {wl}nm")
         else:
@@ -698,7 +700,7 @@ def create_single_row_window(row_name, data, params):
         if wl in data["zscore"]:
             zs_vmin = min(data["zscore"][wl]["mean"] - data["zscore"][wl]["sem"])
             zs_vmax = max(data["zscore"][wl]["mean"] + data["zscore"][wl]["sem"])
-            draw_heatmap(ax_zs_heat, list(chain.from_iterable(list(data["dff"][wl]["episodes"]))),
+            draw_heatmap(ax_zs_heat, list(chain.from_iterable(list(data["zscore"][wl]["episodes"]))),
                           time_array, "coolwarm", "Z-score", vmin=zs_vmin, vmax=zs_vmax)
             ax_zs_heat.set_title(f"{row_name} - Fiber Z-score Heatmap {wl}nm")
         else:

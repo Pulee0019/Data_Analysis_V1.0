@@ -1199,6 +1199,7 @@ def analyze_row_running_optogenetics(row_name, animals, params, all_optogenetic_
     result = {
         'time': time_array,
         'with_opto': {
+            'time': time_array,
             'running': {
                 'episodes': np.array(with_opto['running']) if with_opto['running'] else np.array([]),
                 'mean': np.nanmean(with_opto['running'], axis=0) if with_opto['running'] else None,
@@ -1208,6 +1209,7 @@ def analyze_row_running_optogenetics(row_name, animals, params, all_optogenetic_
             'zscore': {}
         },
         'without_opto': {
+            'time': time_array,
             'running': {
                 'episodes': np.array(without_opto['running']) if without_opto['running'] else np.array([]),
                 'mean': np.nanmean(without_opto['running'], axis=0) if without_opto['running'] else None,

@@ -2,6 +2,7 @@ import re
 import numpy as np
 import pandas as pd
 
+from scipy.interpolate import interp1d
 from infrastructure.logger import log_message
 
 def convert_num(s):
@@ -348,4 +349,70 @@ def load_bsoid_data(file_path):
         return bsoid_data
     except Exception as e:
         log_message(f"Failed to load BSOID data: {str(e)}", "ERROR")
+        return None
+    
+def load_freezing_data(file_path):
+    """Load Freezing data from CSV file"""
+    path = file_path
+    try:
+        freezing_raw_data = pd.read_csv(path, header=[0,1,2])
+        scorer = freezing_raw_data.columns.levels[0][0]
+        left_ear = 'left_ear'
+        right_ear = 'right_ear'
+        tail_base = 'tail_base'
+
+        le_x = freezing_raw_data.loc[:, (scorer, left_ear, 'x')].values.astype(float)
+        le_y = freezing_raw_data.loc[:, (scorer, left_ear, 'y')].values.astype(float)
+        le_r = freezing_raw_data.loc[:, (scorer, left_ear, 'likelihood')].values.astype(float)
+        
+        re_x = freezing_raw_data.loc[:, (scorer, right_ear, 'x')].values.astype(float)
+        re_y = freezing_raw_data.loc[:, (scorer, right_ear, 'y')].values.astype(float)
+        re_r = freezing_raw_data.loc[:, (scorer, right_ear, 'likelihood')].values.astype(float)
+        
+        tb_x = freezing_raw_data.loc[:, (scorer, tail_base, 'x')].values.astype(float)
+        tb_y = freezing_raw_data.loc[:, (scorer, tail_base, 'y')].values.astype(float)
+        tb_r = freezing_raw_data.loc[:, (scorer, tail_base, 'likelihood')].values.astype(float)
+
+        def interpolate_low_reliability(values, reliability, threshold=0.99):
+            valid_mask = reliability >= threshold
+            indices = np.arange(len(values))
+            
+            if np.sum(valid_mask) > 1:
+                interp_func = interp1d(
+                    indices[valid_mask], 
+                    values[valid_mask], 
+                    kind='linear', 
+                    fill_value="extrapolate"
+                )
+                interpolated = interp_func(indices)
+                return interpolated
+            else:
+                return values
+
+        le_x_i = interpolate_low_reliability(le_x, le_r, 0.99)
+        le_y_i = interpolate_low_reliability(le_y, le_r, 0.99)
+        re_x_i = interpolate_low_reliability(re_x, re_r, 0.99)
+        re_y_i = interpolate_low_reliability(re_y, re_r, 0.99)
+        tb_x_i = interpolate_low_reliability(tb_x, tb_r, 0.99)
+        tb_y_i = interpolate_low_reliability(tb_y, tb_r, 0.99)
+
+        centroid_x = (le_x_i + re_x_i + tb_x_i) / 3
+        centroid_y = (le_y_i + re_y_i + tb_y_i) / 3
+
+        dx = np.diff(centroid_x)
+        dy = np.diff(centroid_y)
+        dist = np.sqrt(dx**2 + dy**2)
+        dist = np.insert(dist, 0, 0)
+
+        dist[dist > 200] = np.nan
+        valid = ~np.isnan(dist)
+        dist_interp = np.interp(np.arange(len(dist)), np.flatnonzero(valid), dist[valid])
+
+        kernel = np.ones(15) / 15
+        speed_smooth = np.convolve(dist_interp, kernel, mode='same')
+        log_message("Freezing data loaded", "INFO")
+
+        return speed_smooth
+    except Exception as e:
+        log_message(f"Failed to load Freezing data: {str(e)}", "ERROR")
         return None

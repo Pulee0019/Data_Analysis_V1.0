@@ -92,8 +92,8 @@ def show_bout_analysis(root, multi_animal_data, analysis_mode="running"):
         
     main_window.title(title)
     main_window.geometry("900x700")
-    main_window.transient(root)
-    main_window.grab_set()
+    # main_window.transient(root)
+    # main_window.grab_set()
     
     # Main container with two sections
     container = tk.Frame(main_window, bg="#f8f8f8")
