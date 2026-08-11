@@ -670,8 +670,8 @@ def collect_optogenetic_statistics(param_name, animal_id, result,
         List of dictionaries containing statistics for each trial/channel/wavelength
     """
     rows = []
-    pre_mask = (time_array >= -params['plot_pre']) & (time_array <= 0)
-    post_mask = (time_array >= 0) & (time_array <= params['plot_post'])
+    pre_mask = (time_array >= -params['stat_time']) & (time_array <= 0)
+    post_mask = (time_array >= 0) & (time_array <= params['stat_time'])
 
     if current_experiment_mode != EXPERIMENT_MODE_FIBER:
         # Running statistics
@@ -699,6 +699,7 @@ def collect_optogenetic_statistics(param_name, animal_id, result,
                 'signal_type': 'running_speed',
                 'baseline_start': params['baseline_start'],
                 'baseline_end': params['baseline_end'],
+                'stat_time': params['stat_time'],
                 'power_mw': power_mw
             })
     
@@ -731,6 +732,7 @@ def collect_optogenetic_statistics(param_name, animal_id, result,
                         'signal_type': 'fiber_dff',
                         'baseline_start': params['baseline_start'],
                         'baseline_end': params['baseline_end'],
+                        'stat_time': params['stat_time'],
                         'power_mw': power_mw
                     })
             
@@ -760,6 +762,7 @@ def collect_optogenetic_statistics(param_name, animal_id, result,
                         'signal_type': 'fiber_zscore',
                         'baseline_start': params['baseline_start'],
                         'baseline_end': params['baseline_end'],
+                        'stat_time': params['stat_time'],
                         'power_mw': power_mw
                     })
     

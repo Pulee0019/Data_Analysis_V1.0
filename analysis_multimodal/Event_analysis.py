@@ -351,8 +351,8 @@ def analyze_row_event(row_name, animals, params, target_fps):
             events = get_events_from_event(animal_data, params['full_event_type'])
             for event in events:
                 durations.append(event[1] - event[0])
-        duration = round(np.max(durations))
-        log_message(f"Max duration for {row_name}: {duration} seconds")
+        duration = round(np.mean(durations))
+        log_message(f"Mean duration for {row_name}: {duration} seconds")
         time_array = np.linspace(-params['plot_pre'], duration + params['plot_post'], 
                                 int((params['plot_pre'] + duration + params['plot_post']) * target_fps))
     else:
@@ -381,6 +381,9 @@ def analyze_row_event(row_name, animals, params, target_fps):
         try:
             animal_id = animal_data.get('animal_single_channel_id', 'Unknown')
             events = get_events_from_event(animal_data, params['full_event_type'])
+            if events == []:
+                log_message(f"No events found for {animal_id} with type {params['full_event_type']}", "WARNING")
+                continue
             preprocessed_data = animal_data.get('preprocessed_data')
             if preprocessed_data is None or preprocessed_data.empty:
                 continue
@@ -402,7 +405,7 @@ def analyze_row_event(row_name, animals, params, target_fps):
             if params['export_stats']:
                 statistics_rows.extend(collect_statistics(
                     row_name, animal_id, params['full_event_type'],
-                    result, time_array, params, target_wavelengths, active_channels
+                    result, time_array, params, target_wavelengths, active_channels, events
                 ))
                 
         except Exception as e:
@@ -441,70 +444,269 @@ def analyze_row_event(row_name, animals, params, target_fps):
     
     return result, statistics_rows if params['export_stats'] else None
 
-def collect_statistics(row_name, animal_id, event_type, result, time_array, params, target_wavelengths, active_channels):
+def collect_statistics(row_name, animal_id, event_type, result, time_array, params, target_wavelengths, active_channels, events):
     """Collect statistics for export"""
     rows = []
-    pre_mask = (time_array >= -params['plot_pre']) & (time_array <= 0)
-    post_mask = (time_array >= 0) & (time_array <= params['plot_post'])
-    
+    if params['event_type'] != 'duration':
+        pre_mask = (time_array >= -params['stat_time']) & (time_array <= 0)
+        post_mask = (time_array >= 0) & (time_array <= params['stat_time'])
+    else:
+        event_codes = [event[2] for event in events]
+        if 2 in event_codes or 5 in event_codes:
+            start_mask_pre = (time_array >= -params['stat_time']) & (time_array <= 0)
+            start_mask_post = (time_array >= 0) & (time_array <= params['stat_time'])
+            end_mask_pre = (time_array >= time_array[-1] - params['plot_post'] - 2*params['stat_time']) & (time_array <= time_array[-1] - params['plot_post'] - params['stat_time'])
+            shock_mask = (time_array >= time_array[-1] - params['plot_post'] - params['stat_time']) & (time_array <= time_array[-1] - params['plot_post'])
+            end_mask_post = (time_array >= time_array[-1] - params['plot_post']) & (time_array <= time_array[-1] - params['plot_post'] + params['stat_time'])
+        else:
+            start_mask_pre = (time_array >= -params['stat_time']) & (time_array <= 0)
+            start_mask_post = (time_array >= 0) & (time_array <= params['stat_time'])
+            end_mask_pre = (time_array >= time_array[-1] - params['plot_post'] - params['stat_time']) & (time_array <= time_array[-1] - params['plot_post'])
+            end_mask_post = (time_array >= time_array[-1] - params['plot_post']) & (time_array <= time_array[-1] - params['plot_post'] + params['stat_time'])
+
     # Fiber statistics
     for channel in active_channels:
         for wl in target_wavelengths:
             # dFF
             if wl in result['dff']:
                 for trial_idx, episode_data in enumerate(result['dff'][wl]):
-                    pre_data = episode_data[pre_mask]
-                    post_data = episode_data[post_mask]
+                    if params['event_type'] != 'duration':
+                        pre_data = episode_data[pre_mask]
+                        post_data = episode_data[post_mask]
+                    else:
+                        if 2 in event_codes or 5 in event_codes:
+                            start_pre_data = episode_data[start_mask_pre]
+                            start_post_data = episode_data[start_mask_post]
+                            end_pre_data = episode_data[end_mask_pre]
+                            shock_data = episode_data[shock_mask]
+                            end_post_data = episode_data[end_mask_post]
+                        else:
+                            start_pre_data = episode_data[start_mask_pre]
+                            start_post_data = episode_data[start_mask_post]
+                            end_pre_data = episode_data[end_mask_pre]
+                            end_post_data = episode_data[end_mask_post]
                     
-                    rows.append({
-                        'row': row_name,
-                        'animal_single_channel_id': animal_id,
-                        'event_type': event_type,
-                        'channel': channel,
-                        'wavelength': wl,
-                        'trial': trial_idx + 1,
-                        'pre_min': np.min(pre_data) if len(pre_data) > 0 else np.nan,
-                        'pre_max': np.max(pre_data) if len(pre_data) > 0 else np.nan,
-                        'pre_mean': np.mean(pre_data) if len(pre_data) > 0 else np.nan,
-                        'pre_std': np.std(pre_data) if len(pre_data) > 0 else np.nan,
-                        'pre_area': np.trapz(pre_data, time_array[pre_mask]) if len(pre_data) > 0 else np.nan,
-                        'post_min': np.min(post_data) if len(post_data) > 0 else np.nan,
-                        'post_max': np.max(post_data) if len(post_data) > 0 else np.nan,
-                        'post_mean': np.mean(post_data) if len(post_data) > 0 else np.nan,
-                        'post_std': np.std(post_data) if len(post_data) > 0 else np.nan,
-                        'post_area': np.trapz(post_data, time_array[post_mask]) if len(post_data) > 0 else np.nan,
-                        'signal_type': 'fiber_dff',
-                        'baseline_start': params['baseline_start'],
-                        'baseline_end': params['baseline_end']
-                    })
+                    if params['event_type'] != 'duration':
+                        rows.append({
+                            'row': row_name,
+                            'animal_single_channel_id': animal_id,
+                            'event_type': event_type,
+                            'channel': channel,
+                            'wavelength': wl,
+                            'trial': trial_idx + 1,
+                            'pre_min': np.min(pre_data) if len(pre_data) > 0 else np.nan,
+                            'pre_max': np.max(pre_data) if len(pre_data) > 0 else np.nan,
+                            'pre_mean': np.mean(pre_data) if len(pre_data) > 0 else np.nan,
+                            'pre_std': np.std(pre_data) if len(pre_data) > 0 else np.nan,
+                            'pre_area': np.trapz(pre_data, time_array[pre_mask]) if len(pre_data) > 0 else np.nan,
+                            'post_min': np.min(post_data) if len(post_data) > 0 else np.nan,
+                            'post_max': np.max(post_data) if len(post_data) > 0 else np.nan,
+                            'post_mean': np.mean(post_data) if len(post_data) > 0 else np.nan,
+                            'post_std': np.std(post_data) if len(post_data) > 0 else np.nan,
+                            'post_area': np.trapz(post_data, time_array[post_mask]) if len(post_data) > 0 else np.nan,
+                            'signal_type': 'fiber_dff',
+                            'baseline_start': params['baseline_start'],
+                            'baseline_end': params['baseline_end'],
+                            'stat_time': params['stat_time']
+                        })
+                        
+                    else:
+                        if 2 in event_codes or 5 in event_codes:
+                            rows.append({
+                                'row': row_name,
+                                'animal_single_channel_id': animal_id,
+                                'event_type': event_type,
+                                'channel': channel,
+                                'wavelength': wl,
+                                'trial': trial_idx + 1,
+                                'start_pre_min': np.min(start_pre_data) if len(start_pre_data) > 0 else np.nan,
+                                'start_pre_max': np.max(start_pre_data) if len(start_pre_data) > 0 else np.nan,
+                                'start_pre_mean': np.mean(start_pre_data) if len(start_pre_data) > 0 else np.nan,
+                                'start_pre_std': np.std(start_pre_data) if len(start_pre_data) > 0 else np.nan,
+                                'start_pre_area': np.trapz(start_pre_data, time_array[start_mask_pre]) if len(start_pre_data) > 0 else np.nan,
+                                'start_post_min': np.min(start_post_data) if len(start_post_data) > 0 else np.nan,
+                                'start_post_max': np.max(start_post_data) if len(start_post_data) > 0 else np.nan,
+                                'start_post_mean': np.mean(start_post_data) if len(start_post_data) > 0 else np.nan,
+                                'start_post_std': np.std(start_post_data) if len(start_post_data) > 0 else np.nan,
+                                'start_post_area': np.trapz(start_post_data, time_array[start_mask_post]) if len(start_post_data) > 0 else np.nan,
+                                'end_pre_min': np.min(end_pre_data) if len(end_pre_data) > 0 else np.nan,
+                                'end_pre_max': np.max(end_pre_data) if len(end_pre_data) > 0 else np.nan,
+                                'end_pre_mean': np.mean(end_pre_data) if len(end_pre_data) > 0 else np.nan,
+                                'end_pre_std': np.std(end_pre_data) if len(end_pre_data) > 0 else np.nan,
+                                'end_pre_area': np.trapz(end_pre_data, time_array[end_mask_pre]) if len(end_pre_data) > 0 else np.nan,
+                                'shock_min': np.min(shock_data) if len(shock_data) > 0 else np.nan,
+                                'shock_max': np.max(shock_data) if len(shock_data) > 0 else np.nan,
+                                'shock_mean': np.mean(shock_data) if len(shock_data) > 0 else np.nan,
+                                'shock_std': np.std(shock_data) if len(shock_data) > 0 else np.nan,
+                                'shock_area': np.trapz(shock_data, time_array[shock_mask]) if len(shock_data) > 0 else np.nan,
+                                'end_post_min': np.min(end_post_data) if len(end_post_data) > 0 else np.nan,
+                                'end_post_max': np.max(end_post_data) if len(end_post_data) > 0 else np.nan,
+                                'end_post_mean': np.mean(end_post_data) if len(end_post_data) > 0 else np.nan,
+                                'end_post_std': np.std(end_post_data) if len(end_post_data) > 0 else np.nan,
+                                'end_post_area': np.trapz(end_post_data, time_array[end_mask_post]) if len(end_post_data) > 0 else np.nan,
+                                'signal_type': 'fiber_dff',
+                                'baseline_start': params['baseline_start'],
+                                'baseline_end': params['baseline_end'],
+                                'stat_time': params['stat_time']
+                            })
+                        else:
+                            rows.append({
+                                'row': row_name,
+                                'animal_single_channel_id': animal_id,
+                                'event_type': event_type,
+                                'channel': channel,
+                                'wavelength': wl,
+                                'trial': trial_idx + 1,
+                                'start_pre_min': np.min(start_pre_data) if len(start_pre_data) > 0 else np.nan,
+                                'start_pre_max': np.max(start_pre_data) if len(start_pre_data) > 0 else np.nan,
+                                'start_pre_mean': np.mean(start_pre_data) if len(start_pre_data) > 0 else np.nan,
+                                'start_pre_std': np.std(start_pre_data) if len(start_pre_data) > 0 else np.nan,
+                                'start_pre_area': np.trapz(start_pre_data, time_array[start_mask_pre]) if len(start_pre_data) > 0 else np.nan,
+                                'start_post_min': np.min(start_post_data) if len(start_post_data) > 0 else np.nan,
+                                'start_post_max': np.max(start_post_data) if len(start_post_data) > 0 else np.nan,
+                                'start_post_mean': np.mean(start_post_data) if len(start_post_data) > 0 else np.nan,
+                                'start_post_std': np.std(start_post_data) if len(start_post_data) > 0 else np.nan,
+                                'start_post_area': np.trapz(start_post_data, time_array[start_mask_post]) if len(start_post_data) > 0 else np.nan,
+                                'end_pre_min': np.min(end_pre_data) if len(end_pre_data) > 0 else np.nan,
+                                'end_pre_max': np.max(end_pre_data) if len(end_pre_data) > 0 else np.nan,
+                                'end_pre_mean': np.mean(end_pre_data) if len(end_pre_data) > 0 else np.nan,
+                                'end_pre_std': np.std(end_pre_data) if len(end_pre_data) > 0 else np.nan,
+                                'end_pre_area': np.trapz(end_pre_data, time_array[end_mask_pre]) if len(end_pre_data) > 0 else np.nan,
+                                'shock_min': None,
+                                'shock_max': None,
+                                'shock_mean': None,
+                                'shock_std': None,
+                                'shock_area': None,
+                                'end_post_min': np.min(end_post_data) if len(end_post_data) > 0 else np.nan,
+                                'end_post_max': np.max(end_post_data) if len(end_post_data) > 0 else np.nan,
+                                'end_post_mean': np.mean(end_post_data) if len(end_post_data) > 0 else np.nan,
+                                'end_post_std': np.std(end_post_data) if len(end_post_data) > 0 else np.nan,
+                                'end_post_area': np.trapz(end_post_data, time_array[end_mask_post]) if len(end_post_data) > 0 else np.nan,
+                                'signal_type': 'fiber_dff',
+                                'baseline_start': params['baseline_start'],
+                                'baseline_end': params['baseline_end'],
+                                'stat_time': params['stat_time'],
+                            })
             
             # Z-score
             if wl in result['zscore']:
                 for trial_idx, episode_data in enumerate(result['zscore'][wl]):
-                    pre_data = episode_data[pre_mask]
-                    post_data = episode_data[post_mask]
+                    if params['event_type'] != 'duration':
+                        pre_data = episode_data[pre_mask]
+                        post_data = episode_data[post_mask]
+                    else:
+                        if 2 in event_codes or 5 in event_codes:
+                            start_pre_data = episode_data[start_mask_pre]
+                            start_post_data = episode_data[start_mask_post]
+                            end_pre_data = episode_data[end_mask_pre]
+                            shock_data = episode_data[shock_mask]
+                            end_post_data = episode_data[end_mask_post]
+                        else:
+                            start_pre_data = episode_data[start_mask_pre]
+                            start_post_data = episode_data[start_mask_post]
+                            end_pre_data = episode_data[end_mask_pre]
+                            end_post_data = episode_data[end_mask_post]
                     
-                    rows.append({
-                        'row': row_name,
-                        'animal_single_channel_id': animal_id,
-                        'event_type': event_type,
-                        'channel': channel,
-                        'wavelength': wl,
-                        'trial': trial_idx + 1,
-                        'pre_min': np.min(pre_data) if len(pre_data) > 0 else np.nan,
-                        'pre_max': np.max(pre_data) if len(pre_data) > 0 else np.nan,
-                        'pre_mean': np.mean(pre_data) if len(pre_data) > 0 else np.nan,
-                        'pre_std': np.std(pre_data) if len(pre_data) > 0 else np.nan,
-                        'pre_area': np.trapz(pre_data, time_array[pre_mask]) if len(pre_data) > 0 else np.nan,
-                        'post_min': np.min(post_data) if len(post_data) > 0 else np.nan,
-                        'post_max': np.max(post_data) if len(post_data) > 0 else np.nan,
-                        'post_mean': np.mean(post_data) if len(post_data) > 0 else np.nan,
-                        'post_std': np.std(post_data) if len(post_data) > 0 else np.nan,
-                        'post_area': np.trapz(post_data, time_array[post_mask]) if len(post_data) > 0 else np.nan,
-                        'signal_type': 'fiber_zscore',
-                        'baseline_start': params['baseline_start'],
-                        'baseline_end': params['baseline_end']
-                    })
+                    if params['event_type'] != 'duration':
+                        rows.append({
+                            'row': row_name,
+                            'animal_single_channel_id': animal_id,
+                            'event_type': event_type,
+                            'channel': channel,
+                            'wavelength': wl,
+                            'trial': trial_idx + 1,
+                            'pre_min': np.min(pre_data) if len(pre_data) > 0 else np.nan,
+                            'pre_max': np.max(pre_data) if len(pre_data) > 0 else np.nan,
+                            'pre_mean': np.mean(pre_data) if len(pre_data) > 0 else np.nan,
+                            'pre_std': np.std(pre_data) if len(pre_data) > 0 else np.nan,
+                            'pre_area': np.trapz(pre_data, time_array[pre_mask]) if len(pre_data) > 0 else np.nan,
+                            'post_min': np.min(post_data) if len(post_data) > 0 else np.nan,
+                            'post_max': np.max(post_data) if len(post_data) > 0 else np.nan,
+                            'post_mean': np.mean(post_data) if len(post_data) > 0 else np.nan,
+                            'post_std': np.std(post_data) if len(post_data) > 0 else np.nan,
+                            'post_area': np.trapz(post_data, time_array[post_mask]) if len(post_data) > 0 else np.nan,
+                            'signal_type': 'fiber_dff',
+                            'baseline_start': params['baseline_start'],
+                            'baseline_end': params['baseline_end'],
+                            'stat_time': params['stat_time']
+                        })
+                    else:
+                        if 2 in event_codes or 5 in event_codes:
+                            rows.append({
+                                'row': row_name,
+                                'animal_single_channel_id': animal_id,
+                                'event_type': event_type,
+                                'channel': channel,
+                                'wavelength': wl,
+                                'trial': trial_idx + 1,
+                                'start_pre_min': np.min(start_pre_data) if len(start_pre_data) > 0 else np.nan,
+                                'start_pre_max': np.max(start_pre_data) if len(start_pre_data) > 0 else np.nan,
+                                'start_pre_mean': np.mean(start_pre_data) if len(start_pre_data) > 0 else np.nan,
+                                'start_pre_std': np.std(start_pre_data) if len(start_pre_data) > 0 else np.nan,
+                                'start_pre_area': np.trapz(start_pre_data, time_array[start_mask_pre]) if len(start_pre_data) > 0 else np.nan,
+                                'start_post_min': np.min(start_post_data) if len(start_post_data) > 0 else np.nan,
+                                'start_post_max': np.max(start_post_data) if len(start_post_data) > 0 else np.nan,
+                                'start_post_mean': np.mean(start_post_data) if len(start_post_data) > 0 else np.nan,
+                                'start_post_std': np.std(start_post_data) if len(start_post_data) > 0 else np.nan,
+                                'start_post_area': np.trapz(start_post_data, time_array[start_mask_post]) if len(start_post_data) > 0 else np.nan,
+                                'end_pre_min': np.min(end_pre_data) if len(end_pre_data) > 0 else np.nan,
+                                'end_pre_max': np.max(end_pre_data) if len(end_pre_data) > 0 else np.nan,
+                                'end_pre_mean': np.mean(end_pre_data) if len(end_pre_data) > 0 else np.nan,
+                                'end_pre_std': np.std(end_pre_data) if len(end_pre_data) > 0 else np.nan,
+                                'end_pre_area': np.trapz(end_pre_data, time_array[end_mask_pre]) if len(end_pre_data) > 0 else np.nan,
+                                'shock_min': np.min(shock_data) if len(shock_data) > 0 else np.nan,
+                                'shock_max': np.max(shock_data) if len(shock_data) > 0 else np.nan,
+                                'shock_mean': np.mean(shock_data) if len(shock_data) > 0 else np.nan,
+                                'shock_std': np.std(shock_data) if len(shock_data) > 0 else np.nan,
+                                'shock_area': np.trapz(shock_data, time_array[shock_mask]) if len(shock_data) > 0 else np.nan,
+                                'end_post_min': np.min(end_post_data) if len(end_post_data) > 0 else np.nan,
+                                'end_post_max': np.max(end_post_data) if len(end_post_data) > 0 else np.nan,
+                                'end_post_mean': np.mean(end_post_data) if len(end_post_data) > 0 else np.nan,
+                                'end_post_std': np.std(end_post_data) if len(end_post_data) > 0 else np.nan,
+                                'end_post_area': np.trapz(end_post_data, time_array[end_mask_post]) if len(end_post_data) > 0 else np.nan,
+                                'signal_type': 'fiber_dff',
+                                'baseline_start': params['baseline_start'],
+                                'baseline_end': params['baseline_end'],
+                                'stat_time': params['stat_time'],
+                            })
+                        else:
+                            rows.append({
+                                'row': row_name,
+                                'animal_single_channel_id': animal_id,
+                                'event_type': event_type,
+                                'channel': channel,
+                                'wavelength': wl,
+                                'trial': trial_idx + 1,
+                                'start_pre_min': np.min(start_pre_data) if len(start_pre_data) > 0 else np.nan,
+                                'start_pre_max': np.max(start_pre_data) if len(start_pre_data) > 0 else np.nan,
+                                'start_pre_mean': np.mean(start_pre_data) if len(start_pre_data) > 0 else np.nan,
+                                'start_pre_std': np.std(start_pre_data) if len(start_pre_data) > 0 else np.nan,
+                                'start_pre_area': np.trapz(start_pre_data, time_array[start_mask_pre]) if len(start_pre_data) > 0 else np.nan,
+                                'start_post_min': np.min(start_post_data) if len(start_post_data) > 0 else np.nan,
+                                'start_post_max': np.max(start_post_data) if len(start_post_data) > 0 else np.nan,
+                                'start_post_mean': np.mean(start_post_data) if len(start_post_data) > 0 else np.nan,
+                                'start_post_std': np.std(start_post_data) if len(start_post_data) > 0 else np.nan,
+                                'start_post_area': np.trapz(start_post_data, time_array[start_mask_post]) if len(start_post_data) > 0 else np.nan,
+                                'end_pre_min': np.min(end_pre_data) if len(end_pre_data) > 0 else np.nan,
+                                'end_pre_max': np.max(end_pre_data) if len(end_pre_data) > 0 else np.nan,
+                                'end_pre_mean': np.mean(end_pre_data) if len(end_pre_data) > 0 else np.nan,
+                                'end_pre_std': np.std(end_pre_data) if len(end_pre_data) > 0 else np.nan,
+                                'end_pre_area': np.trapz(end_pre_data, time_array[end_mask_pre]) if len(end_pre_data) > 0 else np.nan,
+                                'shock_min': None,
+                                'shock_max': None,
+                                'shock_mean': None,
+                                'shock_std': None,
+                                'shock_area': None,
+                                'end_post_min': np.min(end_post_data) if len(end_post_data) > 0 else np.nan,
+                                'end_post_max': np.max(end_post_data) if len(end_post_data) > 0 else np.nan,
+                                'end_post_mean': np.mean(end_post_data) if len(end_post_data) > 0 else np.nan,
+                                'end_post_std': np.std(end_post_data) if len(end_post_data) > 0 else np.nan,
+                                'end_post_area': np.trapz(end_post_data, time_array[end_mask_post]) if len(end_post_data) > 0 else np.nan,
+                                'signal_type': 'fiber_dff',
+                                'baseline_start': params['baseline_start'],
+                                'baseline_end': params['baseline_end'],
+                                'stat_time': params['stat_time'],
+                            })
     
     return rows
 
@@ -512,6 +714,10 @@ def create_individual_row_windows(results, params):
     """Create individual windows for each row group"""
     all_figs = []
     for row_name, data in results.items():
+        # If the row has no data, skip it
+        if not data or not data.get("dff") and not data.get("zscore"):
+            log_message(f"No data available for row '{row_name}', skipping figure creation.", "WARNING")
+            continue
         all_figs.extend(create_single_row_window(row_name, data, params))
         all_figs.extend(create_single_event_window(row_name, data, params))
     return all_figs

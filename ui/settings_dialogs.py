@@ -25,6 +25,7 @@ def setup_log_display():
     log_text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     
     set_log_widget(log_text_widget)
+    state["log_text_widget"] = log_text_widget
     log_message("The log system has been initialized. All messages will be displayed here.", "INFO")
 
 def show_opto_power_config_dialog():

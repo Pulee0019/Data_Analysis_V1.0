@@ -435,8 +435,8 @@ def analyze_row_bsoid(row_name, animals, params, target_fps):
 def collect_statistics(row_name, animal_id, event_type, result, time_array, params, target_wavelengths, active_channels):
     """Collect statistics for export"""
     rows = []
-    pre_mask = (time_array >= -params['plot_pre']) & (time_array <= 0)
-    post_mask = (time_array >= 0) & (time_array <= params['plot_post'])
+    pre_mask = (time_array >= -params['stat_time']) & (time_array <= 0)
+    post_mask = (time_array >= 0) & (time_array <= params['stat_time'])
     
     # Fiber statistics
     for channel in active_channels:

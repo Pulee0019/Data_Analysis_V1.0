@@ -194,7 +194,15 @@ def get_events_from_event(animal_data, event_type):
         elif event_kind == 'offset':
             events.append(end_time)
         elif event_kind == 'duration':
-            events.append((start_time, end_time))
+            is_flag = False
+            for ori_evt in event_data.itertuples(index=False):
+                if evt[0] < ori_evt[0] and evt[1] > ori_evt[1]:
+                    events.append((start_time, end_time, ori_evt[2]))  # Include event name or ID if needed
+                    is_flag = True
+                    break
+                
+            if not is_flag:
+                events.append((start_time, end_time, evt[2]))  # Include event name or ID if needed
     
     return events
 
@@ -593,7 +601,7 @@ def calculate_event_traces(time_array, events, fiber_timestamps, dff_data, activ
                 
                 for event in events:
                     if isinstance(event, tuple):
-                        event_start, event_end = event
+                        event_start, event_end, _ = event
                     else:
                         event_start = event
                         event_end = event
@@ -991,6 +999,13 @@ def create_parameter_panel(parent, param_config):
                       font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=10, pady=5)
         
         param_frame.export_var = export_var
+        
+        stat_time_var = tk.IntVar(value=5)
+        tk.Label(export_frame, text="Statistical Time (s):", bg="#f8f8f8", 
+                font=("Microsoft YaHei", 8)).pack(anchor=tk.W, padx=10, pady=(5,2))
+        tk.Spinbox(export_frame, from_=0, to=100, textvariable=stat_time_var, 
+                font=("Microsoft YaHei", 8)).pack(padx=10, pady=5, fill=tk.X)
+        param_frame.stat_time_var = stat_time_var
     
     return param_frame
 
@@ -1041,6 +1056,19 @@ def get_parameters_from_ui(param_frame, require_plot_window=False, require_stati
             params['export_stats'] = param_frame.export_var.get()
         else:
             params['export_stats'] = False
+
+        if hasattr(param_frame, 'stat_time_var'):
+            params['stat_time'] = param_frame.stat_time_var.get()
+            log_message(f"Statistical time set to {params['stat_time']}s", "INFO")
+            # Stat_time can not larger than min(plot_pre, plot_post)
+            if require_plot_window and 'plot_pre' in params and 'plot_post' in params:
+                min_plot_time = min(params['plot_pre'], params['plot_post'])
+                if params['stat_time'] > min_plot_time:
+                    log_message(f"Statistical time ({params['stat_time']}s) cannot be larger than the minimum of plot pre ({params['plot_pre']}s) and plot post ({params['plot_post']}s). Adjusting stat_time to {min_plot_time}s.", "WARNING")
+                    params['stat_time'] = min_plot_time
+            if hasattr(param_frame, 'event_type_var') and params['event_type'] == 'duration':
+                params['stat_time'] = 2
+                log_message("Statistical time is set to 2s for duration events.", "INFO")
         
         return params
         

@@ -1514,7 +1514,7 @@ def align_event_fiber(animal_data=None):
         info_message += f"Video start time: {video_start_time:.2f}s\n"
         info_message += f"Video end time: {video_end_time:.2f}s\n"
         info_message += f"Fiber start time: {fiber_start_time:.2f}s\n"
-        info_message += f"Relative time: {relative_time:.2f}s\n"
+        info_message += f"Relative time: {relative_time:.2f}s"
 
         log_message(info_message, "INFO")
         log_message("Data aligned successfully using fiber data as reference for Event alignment")

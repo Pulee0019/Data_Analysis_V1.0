@@ -1264,8 +1264,8 @@ def collect_statistics(row_name, animal_id, event_type, result, time_array, para
                        target_wavelengths, active_channels):
     """Collect statistics for export"""
     rows = []
-    pre_mask = (time_array >= -params['plot_pre']) & (time_array <= 0)
-    post_mask = (time_array >= 0) & (time_array <= params['plot_post'])
+    pre_mask = (time_array >= -params['stat_time']) & (time_array <= 0)
+    post_mask = (time_array >= 0) & (time_array <= params['stat_time'])
     
     # Running statistics
     for trial_idx, episode_data in enumerate(result['running']):
@@ -1289,7 +1289,8 @@ def collect_statistics(row_name, animal_id, event_type, result, time_array, para
             'post_area': np.trapz(post_data, time_array[post_mask]) if len(post_data) > 0 else np.nan,
             'signal_type': 'running_speed',
             'baseline_start': params['baseline_start'],
-            'baseline_end': params['baseline_end']
+            'baseline_end': params['baseline_end'],
+            'stat_time': params['stat_time']
         })
     
     # Fiber statistics
@@ -1320,7 +1321,8 @@ def collect_statistics(row_name, animal_id, event_type, result, time_array, para
                         'post_area': np.trapz(post_data, time_array[post_mask]) if len(post_data) > 0 else np.nan,
                         'signal_type': 'fiber_dff',
                         'baseline_start': params['baseline_start'],
-                        'baseline_end': params['baseline_end']
+                        'baseline_end': params['baseline_end'],
+                        'stat_time': params['stat_time']
                     })
             
             # Z-score
@@ -1348,7 +1350,8 @@ def collect_statistics(row_name, animal_id, event_type, result, time_array, para
                         'post_area': np.trapz(post_data, time_array[post_mask]) if len(post_data) > 0 else np.nan,
                         'signal_type': 'fiber_zscore',
                         'baseline_start': params['baseline_start'],
-                        'baseline_end': params['baseline_end']
+                        'baseline_end': params['baseline_end'],
+                        'stat_time': params['stat_time']
                     })
     
     return rows
@@ -2809,8 +2812,8 @@ def collect_statistics_with_condition(row_name, animal_id, event_type, result,
                                       active_channels, condition):
     """Collect statistics with condition label"""
     rows = []
-    pre_mask = (time_array >= -params['plot_pre']) & (time_array <= 0)
-    post_mask = (time_array >= 0) & (time_array <= params['plot_post'])
+    pre_mask = (time_array >= -params['stat_time']) & (time_array <= 0)
+    post_mask = (time_array >= 0) & (time_array <= params['stat_time'])
     
     # Running statistics
     for trial_idx, episode_data in enumerate(result['running']):

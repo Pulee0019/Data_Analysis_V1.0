@@ -470,8 +470,8 @@ def collect_statistics(row_name, animal_id, session_idx, drug_name, result,
                            time_array, params, target_wavelengths, active_channels):
     """Collect statistics for drug-induced running and fiber analysis"""
     rows = []
-    pre_mask = (time_array >= -params['plot_pre']) & (time_array <= 0)
-    post_mask = (time_array >= 0) & (time_array <= params['plot_post'])
+    pre_mask = (time_array >= -params['stat_time']) & (time_array <= 0)
+    post_mask = (time_array >= 0) & (time_array <= params['stat_time'])
 
     full_id = f"{animal_id}_Session{session_idx+1}_{drug_name}"
 
